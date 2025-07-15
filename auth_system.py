@@ -64,7 +64,7 @@ class AuthSystem:
     
     def _hash_password(self, password: str, salt: str) -> str:
         """Hash password with salt."""
-        return hashlib.pbkdf2_hex(password.encode(), salt.encode(), 100000)
+        return hashlib.pbkdf2_hmac('sha256', password.encode(), salt.encode(), 100000).hex()
     
     def _generate_salt(self) -> str:
         """Generate random salt for password hashing."""
