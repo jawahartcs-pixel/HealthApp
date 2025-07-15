@@ -304,7 +304,7 @@ def upload_results_page(file_parser, data_processor, user_id):
                                                 result['test_type'], str(result['value'])
                                             )
                                             if snippet_bytes:
-                                                st.image(snippet_bytes, caption=f"Document snippet for {result['test_type']}", use_column_width=True)
+                                                st.image(snippet_bytes, caption=f"Document snippet for {result['test_type']}", use_container_width=True)
                                             else:
                                                 st.caption("📷 No image snippet available for this test")
                                         
