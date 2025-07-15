@@ -864,59 +864,7 @@ def manage_data_page(db):
             else:
                 st.dataframe(df.drop('ID', axis=1), use_container_width=True, hide_index=True)
     
-    if deletion_type == "Delete Individual Test Results":
-        st.subheader("🎯 Delete Individual Test Results")
-        
-        # Patient selection
-        patients = db.get_all_patients()
-        if not patients:
-            st.info("No patients found.")
-            return
-        
-        patient_names = [patient[1] for patient in patients]
-        selected_patient = st.selectbox("Select Patient", patient_names, index=None, placeholder="Choose a patient...")
-        
-        if selected_patient:
-            # Get test results with IDs
-            test_results = db.get_patient_test_results_with_ids(selected_patient)
-            
-            if not test_results:
-                st.info("No test results found for this patient.")
-                return
-            
-            st.write(f"**Test Results for {selected_patient}**")
-            
-            # Create DataFrame for display
-            df = pd.DataFrame(test_results, columns=['ID', 'Date', 'Test Type', 'Value', 'Unit', 'Reference Range'])
-            
-            # Multi-select for deletion
-            selected_indices = st.multiselect(
-                "Select test results to delete",
-                options=range(len(df)),
-                format_func=lambda x: f"{df.iloc[x]['Date']} - {df.iloc[x]['Test Type']}: {df.iloc[x]['Value']} {df.iloc[x]['Unit']}"
-            )
-            
-            if selected_indices:
-                st.dataframe(df.iloc[selected_indices], use_container_width=True, hide_index=True)
-                
-                col1, col2 = st.columns([1, 3])
-                with col1:
-                    if st.button("🗑️ Delete Selected", type="primary"):
-                        deleted_count = 0
-                        for idx in selected_indices:
-                            result_id = df.iloc[idx]['ID']
-                            if db.delete_test_result(result_id):
-                                deleted_count += 1
-                        
-                        if deleted_count > 0:
-                            st.success(f"Successfully deleted {deleted_count} test results!")
-                            st.rerun()
-                        else:
-                            st.error("Failed to delete test results.")
-            else:
-                st.dataframe(df.drop('ID', axis=1), use_container_width=True, hide_index=True)
-    
-    elif deletion_type == "Delete Report by Date":
+    elif management_type == "Delete Report by Date":
         st.subheader("📅 Delete Report by Date")
         
         # Patient selection
@@ -951,7 +899,7 @@ def manage_data_page(db):
                         else:
                             st.error("Failed to delete test results.")
     
-    elif deletion_type == "Delete by Test Type":
+    elif management_type == "Delete by Test Type":
         st.subheader("🧪 Delete by Test Type")
         
         # Patient selection
@@ -999,7 +947,7 @@ def manage_data_page(db):
                             else:
                                 st.error("Failed to delete test results.")
     
-    elif deletion_type == "Delete Patient Data":
+    elif management_type == "Delete Patient Data":
         st.subheader("👤 Delete Patient Data")
         
         # Patient selection
@@ -1037,7 +985,7 @@ def manage_data_page(db):
                             else:
                                 st.error("Failed to delete patient data.")
     
-    elif deletion_type == "Delete All Data":
+    elif management_type == "Delete All Data":
         st.subheader("🚨 Delete All Data")
         
         st.error("⚠️ **DANGER ZONE** ⚠️")
