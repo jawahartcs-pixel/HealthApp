@@ -228,7 +228,8 @@ class AlertSystem:
         # Get all patients
         patients = self.database.get_all_patients()
         
-        for patient_id, patient_name in patients:
+        for patient_data in patients:
+            patient_id, patient_name = patient_data[0], patient_data[1]
             patient_alerts = self.get_patient_alerts(patient_name)
             alerts.extend(patient_alerts)
         
