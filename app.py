@@ -797,7 +797,166 @@ def manage_data_page(db):
                 
                 # Always show the complete data table at the bottom
                 st.subheader("📋 Complete Database Records")
-                st.dataframe(edit_df.drop('ID', axis=1), use_container_width=True, hide_index=True)
+                
+                # Add sorting and filtering controls
+                st.write("**Table Controls:**")
+                
+                # Row 1: Sort and Test Type Filter
+                col1, col2, col3 = st.columns(3)
+                
+                with col1:
+                    sort_column = st.selectbox(
+                        "Sort by:",
+                        options=['Date', 'Test Type', 'Value', 'Unit'],
+                        index=0
+                    )
+                
+                with col2:
+                    sort_order = st.selectbox(
+                        "Sort order:",
+                        options=['Ascending', 'Descending'],
+                        index=1
+                    )
+                
+                with col3:
+                    filter_test_type = st.selectbox(
+                        "Filter by Test Type:",
+                        options=['All'] + sorted(edit_df['Test Type'].unique().tolist()),
+                        index=0
+                    )
+                
+                # Row 2: Date Range Filter
+                col1, col2, col3 = st.columns(3)
+                
+                with col1:
+                    # Convert date strings to datetime for filtering
+                    edit_df['Date_dt'] = pd.to_datetime(edit_df['Date'])
+                    min_date = edit_df['Date_dt'].min().date()
+                    max_date = edit_df['Date_dt'].max().date()
+                    
+                    start_date = st.date_input(
+                        "Start Date:",
+                        value=min_date,
+                        min_value=min_date,
+                        max_value=max_date
+                    )
+                
+                with col2:
+                    end_date = st.date_input(
+                        "End Date:",
+                        value=max_date,
+                        min_value=min_date,
+                        max_value=max_date
+                    )
+                
+                with col3:
+                    # Value range filter
+                    min_value = edit_df['Value'].min()
+                    max_value = edit_df['Value'].max()
+                    
+                    value_range = st.slider(
+                        "Value Range:",
+                        min_value=float(min_value),
+                        max_value=float(max_value),
+                        value=(float(min_value), float(max_value)),
+                        step=0.1
+                    )
+                
+                # Search functionality
+                search_term = st.text_input("🔍 Search in table:", placeholder="Search test type, unit, or reference range...")
+                
+                # Reset filters button
+                if st.button("🔄 Reset All Filters"):
+                    st.rerun()
+                
+                # Apply filters and sorting
+                filtered_df = edit_df.copy()
+                
+                # Apply test type filter
+                if filter_test_type != 'All':
+                    filtered_df = filtered_df[filtered_df['Test Type'] == filter_test_type]
+                
+                # Apply date range filter
+                filtered_df = filtered_df[
+                    (filtered_df['Date_dt'].dt.date >= start_date) & 
+                    (filtered_df['Date_dt'].dt.date <= end_date)
+                ]
+                
+                # Apply value range filter
+                filtered_df = filtered_df[
+                    (filtered_df['Value'] >= value_range[0]) & 
+                    (filtered_df['Value'] <= value_range[1])
+                ]
+                
+                # Apply search filter
+                if search_term:
+                    search_mask = (
+                        filtered_df['Test Type'].str.contains(search_term, case=False, na=False) |
+                        filtered_df['Unit'].str.contains(search_term, case=False, na=False) |
+                        filtered_df['Reference Range'].str.contains(search_term, case=False, na=False)
+                    )
+                    filtered_df = filtered_df[search_mask]
+                
+                # Apply sorting
+                ascending = sort_order == 'Ascending'
+                if sort_column == 'Date':
+                    filtered_df = filtered_df.sort_values('Date', ascending=ascending)
+                elif sort_column == 'Value':
+                    filtered_df = filtered_df.sort_values('Value', ascending=ascending)
+                else:
+                    filtered_df = filtered_df.sort_values(sort_column, ascending=ascending)
+                
+                # Display filtered and sorted data (remove helper columns)
+                display_df = filtered_df.drop(['ID', 'Date_dt'], axis=1)
+                
+                # Show result count and export option
+                col1, col2 = st.columns([2, 1])
+                with col1:
+                    st.info(f"Showing {len(display_df)} of {len(edit_df)} records")
+                
+                with col2:
+                    if not display_df.empty:
+                        csv = display_df.to_csv(index=False)
+                        st.download_button(
+                            label="📥 Download CSV",
+                            data=csv,
+                            file_name=f"filtered_test_results_{pd.Timestamp.now().strftime('%Y%m%d_%H%M%S')}.csv",
+                            mime="text/csv"
+                        )
+                
+                # Display the table with column configuration
+                if not display_df.empty:
+                    st.dataframe(
+                        display_df,
+                        use_container_width=True,
+                        hide_index=True,
+                        column_config={
+                            "Date": st.column_config.DateColumn(
+                                "Date",
+                                format="DD/MM/YYYY",
+                                width="medium"
+                            ),
+                            "Test Type": st.column_config.TextColumn(
+                                "Test Type",
+                                width="medium"
+                            ),
+                            "Value": st.column_config.NumberColumn(
+                                "Value",
+                                format="%.2f",
+                                width="small"
+                            ),
+                            "Unit": st.column_config.TextColumn(
+                                "Unit",
+                                width="small"
+                            ),
+                            "Reference Range": st.column_config.TextColumn(
+                                "Reference Range",
+                                width="medium"
+                            )
+                        }
+                    )
+                else:
+                    st.warning("No records match the current filters.")
                 
                 # Add quick stats
                 col1, col2, col3 = st.columns(3)
