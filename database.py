@@ -235,6 +235,112 @@ class Database:
             print(f"Error deleting patient: {e}")
             return False
     
+    def delete_test_result(self, result_id: int) -> bool:
+        """Delete a specific test result by ID."""
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+                cursor.execute('DELETE FROM test_results WHERE result_id = ?', (result_id,))
+                conn.commit()
+                return cursor.rowcount > 0
+        except Exception as e:
+            print(f"Error deleting test result: {e}")
+            return False
+    
+    def delete_test_results_by_date(self, patient_name: str, test_date: date) -> bool:
+        """Delete all test results for a patient on a specific date."""
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+                cursor.execute('''
+                    DELETE FROM test_results 
+                    WHERE patient_id = (SELECT patient_id FROM patients WHERE patient_name = ?)
+                    AND test_date = ?
+                ''', (patient_name, test_date))
+                conn.commit()
+                return cursor.rowcount > 0
+        except Exception as e:
+            print(f"Error deleting test results by date: {e}")
+            return False
+    
+    def delete_test_results_by_type(self, patient_name: str, test_type: str) -> bool:
+        """Delete all test results of a specific type for a patient."""
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+                cursor.execute('''
+                    DELETE FROM test_results 
+                    WHERE patient_id = (SELECT patient_id FROM patients WHERE patient_name = ?)
+                    AND test_type = ?
+                ''', (patient_name, test_type))
+                conn.commit()
+                return cursor.rowcount > 0
+        except Exception as e:
+            print(f"Error deleting test results by type: {e}")
+            return False
+    
+    def delete_all_data(self) -> bool:
+        """Delete all data from the database."""
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+                cursor.execute('DELETE FROM test_results')
+                cursor.execute('DELETE FROM patients')
+                conn.commit()
+                return True
+        except Exception as e:
+            print(f"Error deleting all data: {e}")
+            return False
+    
+    def get_patient_test_results_with_ids(self, patient_name: str) -> List[Tuple]:
+        """Get all test results for a patient with result IDs."""
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.cursor()
+            cursor.execute('''
+                SELECT 
+                    tr.result_id,
+                    tr.test_date,
+                    tr.test_type,
+                    tr.test_value,
+                    tr.unit,
+                    tr.reference_range
+                FROM test_results tr
+                JOIN patients p ON tr.patient_id = p.patient_id
+                WHERE p.patient_name = ?
+                ORDER BY tr.test_date DESC, tr.test_type
+            ''', (patient_name,))
+            return cursor.fetchall()
+    
+    def get_test_results_by_date(self, patient_name: str) -> Dict[str, List[Tuple]]:
+        """Get test results grouped by date for a patient."""
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.cursor()
+            cursor.execute('''
+                SELECT 
+                    tr.test_date,
+                    tr.test_type,
+                    tr.test_value,
+                    tr.unit,
+                    tr.reference_range,
+                    COUNT(*) as count
+                FROM test_results tr
+                JOIN patients p ON tr.patient_id = p.patient_id
+                WHERE p.patient_name = ?
+                GROUP BY tr.test_date, tr.test_type
+                ORDER BY tr.test_date DESC
+            ''', (patient_name,))
+            
+            results = cursor.fetchall()
+            grouped = {}
+            
+            for result in results:
+                date_str = result[0]
+                if date_str not in grouped:
+                    grouped[date_str] = []
+                grouped[date_str].append(result[1:])  # Exclude date from tuple
+            
+            return grouped
+
     def get_database_stats(self) -> Dict[str, Any]:
         """Get database statistics."""
         with sqlite3.connect(self.db_path) as conn:

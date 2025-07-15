@@ -121,11 +121,17 @@ Preferred communication style: Simple, everyday language.
 
 ## Recent Changes
 
-### July 15, 2025 - Enhanced PDF Parsing
+### July 15, 2025 - Enhanced PDF Parsing & Data Management
 - **Improved PDF Text Extraction**: Added table extraction capability to handle structured lab reports
 - **Multiple Pattern Matching**: Implemented tabular, regex, and generic pattern matching for comprehensive test result extraction
 - **Enhanced Debug Information**: Added extraction method breakdown and text preview for troubleshooting
 - **Better Duplicate Handling**: Refined duplicate removal to be less aggressive while maintaining accuracy
+- **Comprehensive Data Management**: Added new "Manage Data" page with multiple deletion options:
+  - Delete individual test results with multi-select capability
+  - Delete entire reports by date
+  - Delete all results of a specific test type for a patient
+  - Delete complete patient records with confirmation
+  - Delete all database data with multiple safety confirmations
 
 ## Development Notes
 

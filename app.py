@@ -41,7 +41,7 @@ def main():
     st.sidebar.title("Navigation")
     page = st.sidebar.selectbox(
         "Select Page",
-        ["Upload Results", "View Patients", "Patient Dashboard", "Search & Filter", "Export Data"]
+        ["Upload Results", "View Patients", "Patient Dashboard", "Search & Filter", "Export Data", "Manage Data"]
     )
     
     if page == "Upload Results":
@@ -54,6 +54,8 @@ def main():
         search_filter_page(db, visualization)
     elif page == "Export Data":
         export_data_page(db)
+    elif page == "Manage Data":
+        manage_data_page(db)
 
 def upload_results_page(file_parser, data_processor):
     st.header("📁 Upload Blood Test Results")
@@ -409,6 +411,234 @@ def export_data_page(db):
                     file_name="all_test_results.csv",
                     mime="text/csv"
                 )
+
+def manage_data_page(db):
+    st.header("🗂️ Manage Data")
+    
+    # Database statistics
+    stats = db.get_database_stats()
+    
+    col1, col2, col3, col4 = st.columns(4)
+    with col1:
+        st.metric("Total Patients", stats['total_patients'])
+    with col2:
+        st.metric("Total Tests", stats['total_tests'])
+    with col3:
+        st.metric("Test Types", stats['unique_test_types'])
+    with col4:
+        if stats['earliest_test'] and stats['latest_test']:
+            st.metric("Date Range", f"{stats['earliest_test']} to {stats['latest_test']}")
+    
+    st.divider()
+    
+    # Deletion options
+    deletion_type = st.selectbox(
+        "Choose deletion type",
+        ["Select an option", "Delete Individual Test Results", "Delete Report by Date", "Delete by Test Type", "Delete Patient Data", "Delete All Data"],
+        index=0
+    )
+    
+    if deletion_type == "Delete Individual Test Results":
+        st.subheader("🎯 Delete Individual Test Results")
+        
+        # Patient selection
+        patients = db.get_all_patients()
+        if not patients:
+            st.info("No patients found.")
+            return
+        
+        patient_names = [patient[1] for patient in patients]
+        selected_patient = st.selectbox("Select Patient", patient_names, index=None, placeholder="Choose a patient...")
+        
+        if selected_patient:
+            # Get test results with IDs
+            test_results = db.get_patient_test_results_with_ids(selected_patient)
+            
+            if not test_results:
+                st.info("No test results found for this patient.")
+                return
+            
+            st.write(f"**Test Results for {selected_patient}**")
+            
+            # Create DataFrame for display
+            df = pd.DataFrame(test_results, columns=['ID', 'Date', 'Test Type', 'Value', 'Unit', 'Reference Range'])
+            
+            # Multi-select for deletion
+            selected_indices = st.multiselect(
+                "Select test results to delete",
+                options=range(len(df)),
+                format_func=lambda x: f"{df.iloc[x]['Date']} - {df.iloc[x]['Test Type']}: {df.iloc[x]['Value']} {df.iloc[x]['Unit']}"
+            )
+            
+            if selected_indices:
+                st.dataframe(df.iloc[selected_indices], use_container_width=True, hide_index=True)
+                
+                col1, col2 = st.columns([1, 3])
+                with col1:
+                    if st.button("🗑️ Delete Selected", type="primary"):
+                        deleted_count = 0
+                        for idx in selected_indices:
+                            result_id = df.iloc[idx]['ID']
+                            if db.delete_test_result(result_id):
+                                deleted_count += 1
+                        
+                        if deleted_count > 0:
+                            st.success(f"Successfully deleted {deleted_count} test results!")
+                            st.rerun()
+                        else:
+                            st.error("Failed to delete test results.")
+            else:
+                st.dataframe(df.drop('ID', axis=1), use_container_width=True, hide_index=True)
+    
+    elif deletion_type == "Delete Report by Date":
+        st.subheader("📅 Delete Report by Date")
+        
+        # Patient selection
+        patients = db.get_all_patients()
+        if not patients:
+            st.info("No patients found.")
+            return
+        
+        patient_names = [patient[1] for patient in patients]
+        selected_patient = st.selectbox("Select Patient", patient_names, index=None, placeholder="Choose a patient...")
+        
+        if selected_patient:
+            # Get test results grouped by date
+            results_by_date = db.get_test_results_by_date(selected_patient)
+            
+            if not results_by_date:
+                st.info("No test results found for this patient.")
+                return
+            
+            st.write(f"**Test Reports for {selected_patient}**")
+            
+            for test_date, tests in results_by_date.items():
+                with st.expander(f"📋 Report from {test_date} ({len(tests)} tests)"):
+                    # Show tests for this date
+                    date_df = pd.DataFrame(tests, columns=['Test Type', 'Value', 'Unit', 'Reference Range', 'Count'])
+                    st.dataframe(date_df, use_container_width=True, hide_index=True)
+                    
+                    if st.button(f"🗑️ Delete Entire Report ({test_date})", key=f"delete_date_{test_date}"):
+                        if db.delete_test_results_by_date(selected_patient, test_date):
+                            st.success(f"Successfully deleted all test results from {test_date}!")
+                            st.rerun()
+                        else:
+                            st.error("Failed to delete test results.")
+    
+    elif deletion_type == "Delete by Test Type":
+        st.subheader("🧪 Delete by Test Type")
+        
+        # Patient selection
+        patients = db.get_all_patients()
+        if not patients:
+            st.info("No patients found.")
+            return
+        
+        patient_names = [patient[1] for patient in patients]
+        selected_patient = st.selectbox("Select Patient", patient_names, index=None, placeholder="Choose a patient...")
+        
+        if selected_patient:
+            # Get available test types for this patient
+            patient_tests = db.get_patient_tests(selected_patient)
+            if not patient_tests:
+                st.info("No test results found for this patient.")
+                return
+            
+            # Extract unique test types
+            test_types = list(set([test[1] for test in patient_tests]))
+            test_types.sort()
+            
+            selected_test_type = st.selectbox("Select Test Type to Delete", test_types, index=None, placeholder="Choose a test type...")
+            
+            if selected_test_type:
+                # Show tests of this type
+                filtered_tests = [test for test in patient_tests if test[1] == selected_test_type]
+                
+                st.warning(f"⚠️ This will delete **{len(filtered_tests)}** {selected_test_type} test results for {selected_patient}!")
+                
+                with st.expander("Preview of data to be deleted"):
+                    test_df = pd.DataFrame(filtered_tests, columns=['Date', 'Test Type', 'Value', 'Unit', 'Reference Range'])
+                    st.dataframe(test_df, use_container_width=True, hide_index=True)
+                
+                # Confirmation
+                confirm = st.checkbox(f"I confirm I want to delete all {selected_test_type} results for {selected_patient}")
+                
+                if confirm:
+                    col1, col2 = st.columns([1, 3])
+                    with col1:
+                        if st.button(f"🗑️ Delete {selected_test_type} Results", type="primary"):
+                            if db.delete_test_results_by_type(selected_patient, selected_test_type):
+                                st.success(f"Successfully deleted all {selected_test_type} results for {selected_patient}!")
+                                st.rerun()
+                            else:
+                                st.error("Failed to delete test results.")
+    
+    elif deletion_type == "Delete Patient Data":
+        st.subheader("👤 Delete Patient Data")
+        
+        # Patient selection
+        patients = db.get_all_patients()
+        if not patients:
+            st.info("No patients found.")
+            return
+        
+        patient_names = [patient[1] for patient in patients]
+        selected_patient = st.selectbox("Select Patient to Delete", patient_names, index=None, placeholder="Choose a patient...")
+        
+        if selected_patient:
+            # Show patient summary
+            patient_tests = db.get_patient_tests(selected_patient)
+            if patient_tests:
+                st.warning(f"⚠️ This will delete **{selected_patient}** and **{len(patient_tests)}** test results permanently!")
+                
+                # Show recent tests
+                with st.expander("Preview of data to be deleted"):
+                    recent_df = pd.DataFrame(patient_tests[:10], columns=['Date', 'Test Type', 'Value', 'Unit', 'Reference Range'])
+                    st.dataframe(recent_df, use_container_width=True, hide_index=True)
+                    if len(patient_tests) > 10:
+                        st.write(f"... and {len(patient_tests) - 10} more test results")
+                
+                # Confirmation
+                confirm = st.checkbox(f"I confirm I want to delete all data for {selected_patient}")
+                
+                if confirm:
+                    col1, col2 = st.columns([1, 3])
+                    with col1:
+                        if st.button("🗑️ Delete Patient", type="primary"):
+                            if db.delete_patient(selected_patient):
+                                st.success(f"Successfully deleted {selected_patient} and all associated test results!")
+                                st.rerun()
+                            else:
+                                st.error("Failed to delete patient data.")
+    
+    elif deletion_type == "Delete All Data":
+        st.subheader("🚨 Delete All Data")
+        
+        st.error("⚠️ **DANGER ZONE** ⚠️")
+        st.warning("This will permanently delete ALL patient data and test results from the database!")
+        
+        if stats['total_patients'] > 0:
+            st.write(f"This action will delete:")
+            st.write(f"- **{stats['total_patients']}** patients")
+            st.write(f"- **{stats['total_tests']}** test results")
+            st.write(f"- **{stats['unique_test_types']}** different test types")
+            
+            # Multiple confirmations required
+            confirm1 = st.checkbox("I understand this action cannot be undone")
+            confirm2 = st.checkbox("I want to delete ALL data from the database") if confirm1 else False
+            confirm3 = st.text_input("Type 'DELETE ALL DATA' to confirm") if confirm2 else ""
+            
+            if confirm1 and confirm2 and confirm3 == "DELETE ALL DATA":
+                col1, col2 = st.columns([1, 3])
+                with col1:
+                    if st.button("🗑️ DELETE ALL DATA", type="primary"):
+                        if db.delete_all_data():
+                            st.success("All data has been permanently deleted!")
+                            st.rerun()
+                        else:
+                            st.error("Failed to delete all data.")
+        else:
+            st.info("Database is already empty.")
 
 if __name__ == "__main__":
     main()
