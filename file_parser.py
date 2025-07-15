@@ -169,13 +169,24 @@ class FileParser:
                     # Try to extract tables which might contain test results
                     try:
                         tables = page.extract_tables()
-                        for table in tables:
-                            for row in table:
-                                if row:
-                                    # Join non-None cells with tabs
-                                    row_text = '\t'.join([str(cell) if cell is not None else '' for cell in row])
-                                    tables_text += row_text + "\n"
-                    except:
+                        for table_idx, table in enumerate(tables):
+                            if table:
+                                tables_text += f"\n--- TABLE {table_idx + 1} ---\n"
+                                for row_idx, row in enumerate(table):
+                                    if row and any(cell for cell in row if cell is not None):
+                                        # Clean and join cells
+                                        cleaned_row = []
+                                        for cell in row:
+                                            if cell is not None:
+                                                cell_str = str(cell).strip()
+                                                if cell_str:
+                                                    cleaned_row.append(cell_str)
+                                        
+                                        if cleaned_row:
+                                            row_text = '\t'.join(cleaned_row)
+                                            tables_text += row_text + "\n"
+                                tables_text += f"--- END TABLE {table_idx + 1} ---\n"
+                    except Exception as e:
                         # If table extraction fails, continue with text extraction
                         pass
                 
@@ -308,18 +319,44 @@ class FileParser:
         generic_results = self._extract_generic_test_results(text)
         results.extend(generic_results)
         
-        # Remove duplicates but be less aggressive - only remove exact matches
+        # Remove duplicates with improved matching, keeping source info for debugging
         unique_results = []
-        seen = set()
+        seen = {}
+        
+        # Sort by source priority (tabular and line_analysis preferred over regex/generic)
+        source_priority = {'tabular': 0, 'line_analysis': 1, 'regex': 2, 'generic': 3}
+        results.sort(key=lambda x: source_priority.get(x.get('source', 'regex'), 4))
         
         for result in results:
-            # Create a more specific key to avoid removing different tests with same value
-            key = (result['test_type'].lower().strip(), round(result['value'], 2))
-            if key not in seen:
-                seen.add(key)
-                # Remove the source field before returning
-                if 'source' in result:
-                    del result['source']
+            test_name = result['test_type'].lower().strip()
+            test_value = round(result['value'], 2)
+            
+            # Create key based on test name similarity
+            test_key = re.sub(r'[^a-z0-9]', '', test_name)
+            
+            # Check for duplicates with similar test names
+            is_duplicate = False
+            for existing_key, existing_result in list(seen.items()):
+                existing_name = re.sub(r'[^a-z0-9]', '', existing_key)
+                
+                # Check if test names are similar and values are close
+                if (test_key in existing_name or existing_name in test_key) and len(test_key) > 2:
+                    value_diff = abs(test_value - round(existing_result['value'], 2))
+                    if value_diff < 0.1:  # Values are very close
+                        current_priority = source_priority.get(result.get('source', 'regex'), 4)
+                        existing_priority = source_priority.get(existing_result.get('source', 'regex'), 4)
+                        
+                        if current_priority <= existing_priority:
+                            # Replace with better source
+                            unique_results = [r for r in unique_results if r != existing_result]
+                            del seen[existing_key]
+                            break
+                        else:
+                            is_duplicate = True
+                            break
+            
+            if not is_duplicate:
+                seen[test_name] = result
                 unique_results.append(result)
         
         return unique_results
@@ -365,19 +402,30 @@ class FileParser:
         """Extract test results from tabular format commonly found in lab reports."""
         results = []
         
-        # Look for common tabular patterns where test name, value, and range are on the same line
-        # Pattern: Test Name | Value | Unit | Reference Range
+        # Enhanced tabular patterns to capture more variations including decimal numbers
         tabular_patterns = [
-            # Tab-separated values (most common in extracted tables)
-            r'([a-zA-Z][a-zA-Z\s\(\)\/\-]+?)\t+(\d+(?:\.\d+)?)\t*([a-zA-Z\/\%\^]*)\t*([^\n\r]*)',
-            # Multiple spaces or tabs
-            r'([a-zA-Z][a-zA-Z\s\(\)\/\-]+?)\s{2,}(\d+(?:\.\d+)?)\s+([a-zA-Z\/\%\^]*)\s*([^\n\r]*)',
-            # Pattern with vertical bars or pipes
-            r'([a-zA-Z][a-zA-Z\s\(\)\/\-]+?)\s*[\|\-]\s*(\d+(?:\.\d+)?)\s*[\|\-]\s*([a-zA-Z\/\%\^]*)\s*[\|\-]?\s*([^\n\r]*)',
-            # Pattern with colons
-            r'([a-zA-Z][a-zA-Z\s\(\)\/\-]+?):\s*(\d+(?:\.\d+)?)\s+([a-zA-Z\/\%\^]*)\s*([^\n\r]*)',
-            # Pattern with dots leading to values
-            r'([a-zA-Z][a-zA-Z\s\(\)\/\-]+?)\.{2,}\s*(\d+(?:\.\d+)?)\s+([a-zA-Z\/\%\^]*)\s*([^\n\r]*)'
+            # Tab-separated values with decimal support
+            r'([a-zA-Z][a-zA-Z\s\(\)\/\-\.]+?)\t+(\d+(?:\.\d+)?)\t*([a-zA-Z\/\%\^µμmM]*)\t*([^\n\r\t]*)',
+            # Multiple spaces with flexible spacing and decimal support
+            r'([a-zA-Z][a-zA-Z\s\(\)\/\-\.]+?)\s{3,}(\d+(?:\.\d+)?)\s*([a-zA-Z\/\%\^µμmM]*)\s*([^\n\r]*)',
+            # Values at end of line with decimal support
+            r'([a-zA-Z][a-zA-Z\s\(\)\/\-\.]+?)\s+(\d+(?:\.\d+)?)\s*([a-zA-Z\/\%\^µμmM]*)\s*$',
+            # Pattern with vertical bars, pipes, or dashes with decimal support
+            r'([a-zA-Z][a-zA-Z\s\(\)\/\-\.]+?)\s*[\|\-]\s*(\d+(?:\.\d+)?)\s*[\|\-]?\s*([a-zA-Z\/\%\^µμmM]*)\s*[\|\-]?\s*([^\n\r]*)',
+            # Pattern with colons and decimal support
+            r'([a-zA-Z][a-zA-Z\s\(\)\/\-\.]+?):\s*(\d+(?:\.\d+)?)\s*([a-zA-Z\/\%\^µμmM]*)\s*([^\n\r]*)',
+            # Pattern with dots or dashes leading to values with decimal support
+            r'([a-zA-Z][a-zA-Z\s\(\)\/\-\.]+?)[\.\-]{2,}\s*(\d+(?:\.\d+)?)\s*([a-zA-Z\/\%\^µμmM]*)\s*([^\n\r]*)',
+            # Pattern for values in parentheses or brackets with decimal support
+            r'([a-zA-Z][a-zA-Z\s\(\)\/\-\.]+?)\s*[\(\[]\s*(\d+(?:\.\d+)?)\s*[\)\]]\s*([a-zA-Z\/\%\^µμmM]*)',
+            # Pattern for scientific notation values
+            r'([a-zA-Z][a-zA-Z\s\(\)\/\-\.]+?)\s+(\d+(?:\.\d+)?(?:[eE][\+\-]?\d+)?)\s*([a-zA-Z\/\%\^µμmM]*)\s*([^\n\r]*)',
+            # Pattern for ranges like "Test Name 10.5 - 15.2" (capture first value)
+            r'([a-zA-Z][a-zA-Z\s\(\)\/\-\.]+?)\s+(\d+(?:\.\d+)?)\s*[\-\–]\s*\d+(?:\.\d+)?\s*([a-zA-Z\/\%\^µμmM]*)',
+            # Pattern for values followed by reference ranges in parentheses
+            r'([a-zA-Z][a-zA-Z\s\(\)\/\-\.]+?)\s+(\d+(?:\.\d+)?)\s*([a-zA-Z\/\%\^µμmM]*)\s*\([^)]*\)',
+            # Simple pattern for test name followed by number anywhere in line
+            r'^([a-zA-Z][a-zA-Z\s\(\)\/\-\.]{2,40}?)\s.*?(\d+(?:\.\d+))\s*([a-zA-Z\/\%\^µμmM]*)'
         ]
         
         for pattern in tabular_patterns:
@@ -395,12 +443,12 @@ class FileParser:
                     test_name = test_name.strip('.,()[]{}')
                     
                     # Skip if test name is too short or looks invalid
-                    if len(test_name) < 2 or len(test_name) > 50:
+                    if len(test_name) < 2 or len(test_name) > 60:
                         continue
                     
-                    # Skip common non-test words
-                    skip_words = ['page', 'lab', 'report', 'date', 'time', 'patient', 'doctor', 'reference', 'normal', 'abnormal']
-                    if any(word in test_name.lower() for word in skip_words):
+                    # Skip common non-test words but be less restrictive
+                    skip_words = ['page', 'report', 'signature', 'address', 'phone', 'email', 'total', 'subtotal']
+                    if any(word == test_name.lower().strip() for word in skip_words):
                         continue
                     
                     value = float(value_str)
@@ -421,6 +469,77 @@ class FileParser:
                     
                 except (ValueError, IndexError, AttributeError):
                     continue
+        
+        # Additional line-by-line analysis for missed values
+        line_results = self._extract_line_by_line(text)
+        results.extend(line_results)
+        
+        return results
+    
+    def _extract_line_by_line(self, text: str) -> List[Dict[str, Any]]:
+        """Extract test results by analyzing each line for numeric patterns."""
+        results = []
+        lines = text.split('\n')
+        
+        for line in lines:
+            line = line.strip()
+            if not line or len(line) < 5:
+                continue
+            
+            # Look for any numeric value in the line
+            numeric_matches = re.findall(r'\d+(?:\.\d+)?', line)
+            if not numeric_matches:
+                continue
+                
+            # Try to find test name and value patterns
+            # Pattern: any text followed by one or more numbers
+            patterns = [
+                r'^([a-zA-Z][a-zA-Z\s\(\)\/\-\.]+?)\s+(\d+(?:\.\d+)?)',
+                r'^([a-zA-Z][a-zA-Z\s\(\)\/\-\.]+?)[\s\t]+(\d+(?:\.\d+)?)',
+                r'([a-zA-Z][a-zA-Z\s\(\)\/\-\.]{3,})\s*[\:\-\=]\s*(\d+(?:\.\d+)?)',
+                r'([a-zA-Z][a-zA-Z\s\(\)\/\-\.]{3,})\s+(\d+(?:\.\d+)?)\s*[a-zA-Z\/\%\^µμ]*\s*$'
+            ]
+            
+            for pattern in patterns:
+                match = re.search(pattern, line, re.IGNORECASE)
+                if match:
+                    try:
+                        test_name = match.group(1).strip()
+                        value_str = match.group(2).strip()
+                        
+                        # Clean test name
+                        test_name = re.sub(r'\s+', ' ', test_name)
+                        test_name = test_name.strip('.,()[]{}')
+                        
+                        # Skip if looks like header or non-test
+                        if len(test_name) < 3 or len(test_name) > 50:
+                            continue
+                            
+                        skip_words = ['page', 'total', 'sum', 'count', 'number', 'id', 'code']
+                        if any(word in test_name.lower() for word in skip_words):
+                            continue
+                            
+                        value = float(value_str)
+                        if value < 0 or value > 50000:
+                            continue
+                            
+                        # Extract unit if present
+                        unit_match = re.search(r'(\d+(?:\.\d+)?)\s*([a-zA-Z\/\%\^µμ]+)', line)
+                        unit = unit_match.group(2) if unit_match else ''
+                        
+                        result = {
+                            'test_type': test_name.title(),
+                            'value': value,
+                            'unit': unit,
+                            'reference_range': '',
+                            'source': 'line_analysis'
+                        }
+                        
+                        results.append(result)
+                        break  # Found a match for this line, move to next
+                        
+                    except (ValueError, IndexError, AttributeError):
+                        continue
         
         return results
     

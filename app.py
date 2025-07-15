@@ -147,9 +147,24 @@ def upload_results_page(file_parser, data_processor):
                                         method = result.get('source', 'regex')
                                         extraction_methods[method] = extraction_methods.get(method, 0) + 1
                                     
-                                    st.write("Tests extracted by method:")
-                                    for method, count in extraction_methods.items():
-                                        st.write(f"- {method.title()}: {count} tests")
+                                    col1, col2 = st.columns(2)
+                                    with col1:
+                                        st.write("**Tests extracted by method:**")
+                                        for method, count in extraction_methods.items():
+                                            st.write(f"- {method.title()}: {count} tests")
+                                    
+                                    with col2:
+                                        st.write("**All extracted values:**")
+                                        for i, result in enumerate(test_data['results'], 1):
+                                            source = result.get('source', 'regex')
+                                            unit = result.get('unit', '')
+                                            unit_text = f" {unit}" if unit else ""
+                                            st.write(f"{i}. {result['test_type']}: {result['value']}{unit_text} ({source})")
+                                    
+                                    # Add text preview for debugging
+                                    with st.expander("Raw extracted text (first 2000 chars)"):
+                                        extracted_text = file_parser.parse_file(uploaded_file)
+                                        st.text(extracted_text[:2000] + "..." if len(extracted_text) > 2000 else extracted_text)
                         else:
                             status_text.text("❌ Failed to save")
                             st.error("Failed to save test results to database")
