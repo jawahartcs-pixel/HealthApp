@@ -121,6 +121,28 @@ Preferred communication style: Simple, everyday language.
 
 ## Recent Changes
 
+### July 15, 2025 - Alert System for Abnormal Values
+- **Comprehensive Alert System**: Created intelligent alert system for abnormal test results
+  - Critical value thresholds for immediate medical attention
+  - Four-level alert severity system (Critical, High, Medium, Low)
+  - Automatic severity determination based on deviation from normal ranges
+  - Test-specific recommendations and clinical guidance
+- **Alert Dashboard**: Dedicated page for monitoring all alerts across patients
+  - Real-time alert summary with metrics and counters
+  - Advanced filtering by alert level and patient
+  - Visual alert indicators with color coding and icons
+  - Recent alerts tracking (last 7 days)
+- **Integrated Alert Display**: Enhanced existing pages with alert information
+  - Patient dashboard shows active alerts with expandable details
+  - View patients page displays alert counts and recent alerts
+  - Color-coded visual indicators for different alert levels
+  - Actionable recommendations for each alert type
+- **Smart Alert Logic**: Intelligent alert generation system
+  - Reference range-based normal value checking
+  - Critical threshold monitoring for emergency situations
+  - Test-specific medical recommendations
+  - Trend analysis capabilities for pattern detection
+
 ### July 15, 2025 - Multiple File Format Support
 - **Enhanced File Parser**: Added support for multiple file formats beyond PDF and Word
   - Excel files (.xlsx, .xls) with multi-sheet support
