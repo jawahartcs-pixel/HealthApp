@@ -10,5 +10,6 @@ dependencies = [
     "pillow>=11.3.0",
     "plotly>=6.2.0",
     "pytesseract>=0.3.13",
+    "python-docx>=1.2.0",
     "streamlit>=1.46.1",
 ]

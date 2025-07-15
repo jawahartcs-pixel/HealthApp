@@ -7,6 +7,7 @@ import streamlit as st
 import pytesseract
 from pdf2image import convert_from_bytes
 from PIL import Image
+from docx import Document
 
 class FileParser:
     def __init__(self):
@@ -128,29 +129,40 @@ class FileParser:
             'ferritin': '12-150 ng/mL (F), 12-300 ng/mL (M)'
         }
         
-        # Date patterns
+        # Date patterns - prioritize DD-MM-YY format at document top
         self.date_patterns = [
-            r'(?:date|test\s+date|collection\s+date)[:\-]?\s*(\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4})',
-            r'(?:date|test\s+date|collection\s+date)[:\-]?\s*(\d{2,4}[\/\-]\d{1,2}[\/\-]\d{1,2})',
-            r'(\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4})',
-            r'(\d{2,4}[\/\-]\d{1,2}[\/\-]\d{1,2})'
+            r'(?:date|test\s+date|report\s+date|collection\s+date)[:\-]?\s*(\d{1,2}[\-\/]\d{1,2}[\-\/]\d{2,4})',
+            r'(\d{1,2}[\-\/]\d{1,2}[\-\/]\d{2})',  # DD-MM-YY or DD/MM/YY
+            r'(\d{1,2}[\-\/]\d{1,2}[\-\/]\d{4})',  # DD-MM-YYYY or DD/MM/YYYY
+            r'(\d{2,4}[\-\/]\d{1,2}[\-\/]\d{1,2})'
         ]
         
-        # Patient name patterns - prioritize text near "Name"
+        # Patient name patterns - prioritize Mr/Mrs at document top near "Name"
         self.patient_patterns = [
+            r'(?:mr|mrs|ms|dr)\.?\s+([A-Za-z]+(?:\s+[A-Za-z]+)*)',  # Mr/Mrs prefix first
+            r'Name\s*[:\-]?\s*(?:mr|mrs|ms|dr)\.?\s+([A-Za-z\s]{2,50})',  # Name: Mr/Mrs
+            r'Name\s*[:\-]?\s*([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)',  # Name: Capitalized words
+            r'name\s*[:\-]?\s*(?:mr|mrs|ms|dr)\.?\s+([A-Za-z\s]{2,50})',
+            r'NAME\s*[:\-]?\s*(?:mr|mrs|ms|dr)\.?\s+([A-Za-z\s]{2,50})',
+            r'(?:patient|patient\s+name)[:\-]?\s*(?:mr|mrs|ms|dr)\.?\s+([A-Za-z\s]+?)(?:\n|$|,)',
+            r'Patient\s*[:\-]?\s*(?:mr|mrs|ms|dr)\.?\s+([A-Za-z\s]{2,50})',
             r'Name\s*[:\-]?\s*([A-Za-z\s]{2,50})',
             r'name\s*[:\-]?\s*([A-Za-z\s]{2,50})',
             r'NAME\s*[:\-]?\s*([A-Za-z\s]{2,50})',
-            r'(?:patient|patient\s+name)[:\-]?\s*([A-Za-z\s]+?)(?:\n|$|,)',
-            r'Patient\s*[:\-]?\s*([A-Za-z\s]{2,50})',
-            r'(?:mr|mrs|ms|dr)\.?\s+([A-Za-z\s]+?)(?:\n|$|,)',
             r'^([A-Z][a-z]+\s+[A-Z][a-z]+)',
             r'([A-Z][a-z]+\s+[A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)\s*(?:\n|$)',
-            r'^\s*([A-Z][a-z]+\s+[A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)\s*$',
-            r'([A-Z][a-z]+\s+[A-Z][a-z]+)',
-            r'Mary\s+Stella',
-            r'([A-Z][a-z]*\s+[A-Z][a-z]*(?:\s+[A-Z][a-z]*)?)'
         ]
+        
+        # Medical terminology validation set
+        self.medical_terms = {
+            'glucose', 'sugar', 'fasting_glucose', 'random_glucose', 'hba1c', 'hemoglobin_a1c',
+            'cholesterol', 'hdl', 'ldl', 'triglycerides', 'hemoglobin', 'hematocrit', 
+            'rbc', 'wbc', 'platelets', 'alt', 'ast', 'bilirubin', 'albumin', 'creatinine',
+            'bun', 'egfr', 'tsh', 't3', 't4', 'sodium', 'potassium', 'chloride', 'calcium',
+            'phosphorus', 'magnesium', 'uric_acid', 'protein', 'globulin', 'alkaline_phosphatase',
+            'ggt', 'lactate_dehydrogenase', 'cpk', 'vitamin_d', 'vitamin_b12', 'folate',
+            'iron', 'ferritin', 'transferrin', 'esr', 'crp', 'psa', 'insulin', 'cortisol'
+        }
     
     def parse_file(self, uploaded_file, force_ocr: bool = False) -> str:
         """Parse uploaded file and extract text content."""
@@ -159,6 +171,8 @@ class FileParser:
                 return self._parse_pdf(uploaded_file, force_ocr)
             elif uploaded_file.type == "text/plain":
                 return self._parse_text(uploaded_file)
+            elif uploaded_file.type == "application/vnd.openxmlformats-officedocument.wordprocessingml.document":
+                return self._parse_docx(uploaded_file)
             else:
                 raise ValueError(f"Unsupported file type: {uploaded_file.type}")
         except Exception as e:
@@ -349,6 +363,32 @@ class FileParser:
         except Exception as e:
             raise Exception(f"Error reading text file: {str(e)}")
     
+    def _parse_docx(self, uploaded_file) -> str:
+        """Extract text from Word document."""
+        try:
+            uploaded_file.seek(0)
+            doc = Document(uploaded_file)
+            
+            # Extract text from paragraphs
+            text_content = []
+            for paragraph in doc.paragraphs:
+                if paragraph.text.strip():
+                    text_content.append(paragraph.text)
+            
+            # Extract text from tables
+            for table in doc.tables:
+                for row in table.rows:
+                    row_text = []
+                    for cell in row.cells:
+                        if cell.text.strip():
+                            row_text.append(cell.text.strip())
+                    if row_text:
+                        text_content.append(' | '.join(row_text))
+            
+            return '\n'.join(text_content)
+        except Exception as e:
+            raise Exception(f"Error reading Word document: {str(e)}")
+    
     def extract_test_data(self, text: str) -> Dict[str, Any]:
         """Extract test data from text content."""
         if not text.strip():
@@ -384,31 +424,80 @@ class FileParser:
         return text.strip()
     
     def _extract_patient_name(self, text: str) -> str:
-        """Extract patient name from text."""
+        """Extract patient name from text, prioritizing top of document."""
+        # Focus on first 500 characters for patient name (document top)
+        top_text = text[:500]
+        
         for pattern in self.patient_patterns:
-            match = re.search(pattern, text, re.IGNORECASE | re.MULTILINE)
+            match = re.search(pattern, top_text, re.IGNORECASE | re.MULTILINE)
             if match:
                 name = match.group(1).strip()
                 # Clean up the name
                 name = re.sub(r'\s+', ' ', name)
+                # Remove common prefixes that might be captured
+                name = re.sub(r'^(mr|mrs|ms|dr)\.?\s+', '', name, flags=re.IGNORECASE)
                 # Only return if it looks like a real name (2+ words, reasonable length)
+                if len(name.split()) >= 2 and len(name) <= 50:
+                    return name.title()  # Convert to title case
+        
+        # If not found in top, check full text
+        for pattern in self.patient_patterns:
+            match = re.search(pattern, text, re.IGNORECASE | re.MULTILINE)
+            if match:
+                name = match.group(1).strip()
+                name = re.sub(r'\s+', ' ', name)
+                name = re.sub(r'^(mr|mrs|ms|dr)\.?\s+', '', name, flags=re.IGNORECASE)
                 if len(name.split()) >= 2 and len(name) <= 50:
                     return name.title()  # Convert to title case
         
         return ""
     
     def _extract_test_date(self, text: str) -> Optional[date]:
-        """Extract test date from text."""
+        """Extract test date from text, prioritizing DD-MM-YY format at document top."""
+        # Focus on first 500 characters for test date (document top)
+        top_text = text[:500]
+        
+        # Try top text first
+        for pattern in self.date_patterns:
+            match = re.search(pattern, top_text, re.IGNORECASE)
+            if match:
+                date_str = match.group(1)
+                try:
+                    # Try DD-MM-YY formats first (user preference)
+                    date_formats = [
+                        '%d-%m-%y', '%d/%m/%y',   # DD-MM-YY, DD/MM/YY
+                        '%d-%m-%Y', '%d/%m/%Y',   # DD-MM-YYYY, DD/MM/YYYY
+                        '%m-%d-%Y', '%m/%d/%Y',   # MM-DD-YYYY, MM/DD/YYYY
+                        '%Y-%m-%d', '%Y/%m/%d'    # YYYY-MM-DD, YYYY/MM/DD
+                    ]
+                    
+                    for date_format in date_formats:
+                        try:
+                            parsed_date = datetime.strptime(date_str, date_format).date()
+                            # Validate that the date is reasonable
+                            if parsed_date <= date.today() and parsed_date.year >= 1900:
+                                return parsed_date
+                        except ValueError:
+                            continue
+                except:
+                    continue
+        
+        # If not found in top, check full text
         for pattern in self.date_patterns:
             match = re.search(pattern, text, re.IGNORECASE)
             if match:
                 date_str = match.group(1)
                 try:
-                    # Try different date formats
-                    for date_format in ['%m/%d/%Y', '%d/%m/%Y', '%Y/%m/%d', '%m-%d-%Y', '%d-%m-%Y', '%Y-%m-%d']:
+                    date_formats = [
+                        '%d-%m-%y', '%d/%m/%y',   # DD-MM-YY, DD/MM/YY
+                        '%d-%m-%Y', '%d/%m/%Y',   # DD-MM-YYYY, DD/MM/YYYY  
+                        '%m-%d-%Y', '%m/%d/%Y',   # MM-DD-YYYY, MM/DD/YYYY
+                        '%Y-%m-%d', '%Y/%m/%d'    # YYYY-MM-DD, YYYY/MM/DD
+                    ]
+                    
+                    for date_format in date_formats:
                         try:
                             parsed_date = datetime.strptime(date_str, date_format).date()
-                            # Validate that the date is reasonable (not in the future, not too old)
                             if parsed_date <= date.today() and parsed_date.year >= 1900:
                                 return parsed_date
                         except ValueError:
@@ -467,6 +556,10 @@ class FileParser:
         results.sort(key=lambda x: source_priority.get(x.get('source', 'regex'), 5))
         
         for result in results:
+            # Validate against medical terminology first
+            if not self._is_medical_terminology(result['test_type']):
+                continue  # Skip non-medical terms
+                
             test_name = result['test_type'].lower().strip()
             test_value = round(result['value'], 2)
             
@@ -499,6 +592,39 @@ class FileParser:
                 unique_results.append(result)
         
         return unique_results
+    
+    def _is_medical_terminology(self, test_name: str) -> bool:
+        """Check if test name is a valid medical terminology."""
+        # Normalize test name for comparison
+        normalized_name = test_name.lower().strip()
+        normalized_name = re.sub(r'[^\w\s]', '', normalized_name)  # Remove special chars
+        normalized_name = re.sub(r'\s+', '_', normalized_name)     # Replace spaces with underscore
+        
+        # Check direct match
+        if normalized_name in self.medical_terms:
+            return True
+        
+        # Check partial matches for common medical terms
+        medical_keywords = {
+            'glucose', 'cholesterol', 'hemoglobin', 'hematocrit', 'platelet', 'creatinine',
+            'bilirubin', 'albumin', 'protein', 'sodium', 'potassium', 'calcium', 'iron',
+            'vitamin', 'thyroid', 'liver', 'kidney', 'blood', 'serum', 'plasma'
+        }
+        
+        for keyword in medical_keywords:
+            if keyword in normalized_name:
+                return True
+        
+        # Check for common medical abbreviations
+        medical_abbrevs = {
+            'hba1c', 'hdl', 'ldl', 'rbc', 'wbc', 'plt', 'alt', 'ast', 'bun', 'egfr',
+            'tsh', 't3', 't4', 'psa', 'esr', 'crp', 'cpk', 'ggt'
+        }
+        
+        if normalized_name in medical_abbrevs:
+            return True
+        
+        return False
     
     def _get_display_name(self, test_key: str) -> str:
         """Convert test key to display name."""

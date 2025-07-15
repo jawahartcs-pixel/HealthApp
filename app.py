@@ -63,9 +63,9 @@ def upload_results_page(file_parser, data_processor):
     # File upload
     uploaded_files = st.file_uploader(
         "Choose blood test result files",
-        type=['pdf', 'txt'],
+        type=['pdf', 'txt', 'docx'],
         accept_multiple_files=True,
-        help="Upload PDF or text files containing blood test results"
+        help="Upload PDF, Word (.docx), or text files containing blood test results"
     )
     
     # Option to force OCR for difficult PDFs
