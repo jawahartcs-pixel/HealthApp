@@ -801,6 +801,22 @@ def manage_data_page(db):
                 # Add sorting and filtering controls
                 st.write("**Table Controls:**")
                 
+                # Convert date strings to datetime for filtering
+                edit_df['Date_dt'] = pd.to_datetime(edit_df['Date'])
+                min_date = edit_df['Date_dt'].min().date()
+                max_date = edit_df['Date_dt'].max().date()
+                min_value = edit_df['Value'].min()
+                max_value = edit_df['Value'].max()
+                
+                # Reset filters button
+                if st.button("🔄 Reset All Filters"):
+                    # Clear all filter-related session state keys
+                    keys_to_clear = ['sort_column', 'sort_order', 'filter_test_type', 'start_date', 'end_date', 'value_range', 'search_term']
+                    for key in keys_to_clear:
+                        if key in st.session_state:
+                            del st.session_state[key]
+                    st.rerun()
+                
                 # Row 1: Sort and Test Type Filter
                 col1, col2, col3 = st.columns(3)
                 
@@ -808,37 +824,36 @@ def manage_data_page(db):
                     sort_column = st.selectbox(
                         "Sort by:",
                         options=['Date', 'Test Type', 'Value', 'Unit'],
-                        index=0
+                        index=0,
+                        key='sort_column'
                     )
                 
                 with col2:
                     sort_order = st.selectbox(
                         "Sort order:",
                         options=['Ascending', 'Descending'],
-                        index=1
+                        index=1,
+                        key='sort_order'
                     )
                 
                 with col3:
                     filter_test_type = st.selectbox(
                         "Filter by Test Type:",
                         options=['All'] + sorted(edit_df['Test Type'].unique().tolist()),
-                        index=0
+                        index=0,
+                        key='filter_test_type'
                     )
                 
                 # Row 2: Date Range Filter
                 col1, col2, col3 = st.columns(3)
                 
                 with col1:
-                    # Convert date strings to datetime for filtering
-                    edit_df['Date_dt'] = pd.to_datetime(edit_df['Date'])
-                    min_date = edit_df['Date_dt'].min().date()
-                    max_date = edit_df['Date_dt'].max().date()
-                    
                     start_date = st.date_input(
                         "Start Date:",
                         value=min_date,
                         min_value=min_date,
-                        max_value=max_date
+                        max_value=max_date,
+                        key='start_date'
                     )
                 
                 with col2:
@@ -846,28 +861,27 @@ def manage_data_page(db):
                         "End Date:",
                         value=max_date,
                         min_value=min_date,
-                        max_value=max_date
+                        max_value=max_date,
+                        key='end_date'
                     )
                 
                 with col3:
                     # Value range filter
-                    min_value = edit_df['Value'].min()
-                    max_value = edit_df['Value'].max()
-                    
                     value_range = st.slider(
                         "Value Range:",
                         min_value=float(min_value),
                         max_value=float(max_value),
                         value=(float(min_value), float(max_value)),
-                        step=0.1
+                        step=0.1,
+                        key='value_range'
                     )
                 
                 # Search functionality
-                search_term = st.text_input("🔍 Search in table:", placeholder="Search test type, unit, or reference range...")
-                
-                # Reset filters button
-                if st.button("🔄 Reset All Filters"):
-                    st.rerun()
+                search_term = st.text_input(
+                    "🔍 Search in table:", 
+                    placeholder="Search test type, unit, or reference range...",
+                    key='search_term'
+                )
                 
                 # Apply filters and sorting
                 filtered_df = edit_df.copy()
