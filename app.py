@@ -88,8 +88,11 @@ def upload_results_page(file_parser, data_processor):
                     # Extract test data
                     test_data = file_parser.extract_test_data(extracted_text)
                     
-                    if not test_data:
+                    if not test_data or not test_data.get('results'):
                         st.error("No valid blood test data found in the file")
+                        # Show extracted text for debugging
+                        with st.expander("Debug: Show extracted text"):
+                            st.text_area("Extracted text", extracted_text[:1000] + "..." if len(extracted_text) > 1000 else extracted_text, height=200)
                         continue
                     
                     status_text.text("Processing patient information...")
@@ -131,9 +134,20 @@ def upload_results_page(file_parser, data_processor):
                             
                             # Display extracted data
                             if test_data['results']:
-                                st.subheader("Extracted Test Results")
+                                st.subheader(f"Extracted Test Results ({len(test_data['results'])} tests found)")
                                 df = pd.DataFrame(test_data['results'])
                                 st.dataframe(df, use_container_width=True)
+                                
+                                # Show extraction method breakdown
+                                with st.expander("Debug: Extraction details"):
+                                    extraction_methods = {}
+                                    for result in test_data['results']:
+                                        method = result.get('source', 'regex')
+                                        extraction_methods[method] = extraction_methods.get(method, 0) + 1
+                                    
+                                    st.write("Tests extracted by method:")
+                                    for method, count in extraction_methods.items():
+                                        st.write(f"- {method.title()}: {count} tests")
                         else:
                             status_text.text("❌ Failed to save")
                             st.error("Failed to save test results to database")
