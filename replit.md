@@ -121,26 +121,25 @@ Preferred communication style: Simple, everyday language.
 
 ## Recent Changes
 
-### July 15, 2025 - Optimized Patient Dashboard with Individual Investigation Graphs
-- **Individual Investigation Visualizations**: Removed recent test results table and created separate graphs for each investigation type
-  - Automatic graph generation for each unique test type in patient's data
+### July 15, 2025 - Separated Data Management & Streamlined Dashboard
+- **Dedicated Data Management Page**: Moved comprehensive editing features to separate "Manage Data" page
+  - "View & Edit Patient Data" section with complete editable interface
+  - Individual result editing with form-based interface
+  - Multiple result deletion with checkbox selection
+  - Date-grouped editing for batch operations
+  - Complete database records table with all test results
+- **Streamlined Patient Dashboard**: Focused on visualization and quick insights
+  - Individual investigation graphs for each test type
   - Dates from database only on x-axis with proper date formatting
   - Value ranges on y-axis with appropriate units
-  - Trend lines and reference ranges where applicable
+  - Link to data management page for editing
+  - Quick summary statistics for total records, test dates, and test types
 - **Enhanced Data Visualization**: Improved chart layout and functionality
   - Proper date handling without random dates
   - Auto-adjusted date ranges based on actual test dates
   - Clean graph styling with grid lines and hover information
   - Individual color coding for different investigation types
-- **Complete Data Display**: Added comprehensive view of all patient data at dashboard bottom
-  - Full database records table with all test results
-  - Real-time statistics showing total records, test dates, and test types
-  - Complete patient history in chronological order
-- **Multi-Mode Editing Interface**: Three editing modes for different use cases
-  - Individual result editing with form-based interface
-  - Multiple result deletion with checkbox selection
-  - Date-grouped editing for batch operations
-- **Direct Database Integration**: Real-time database updates
+- **Direct Database Integration**: Real-time database updates in management page
   - Update test type, value, unit, date, and reference range
   - Immediate deletion of individual or multiple results
   - Bulk operations for date-specific result management

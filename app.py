@@ -433,168 +433,14 @@ def patient_dashboard_page(db, visualization):
         else:
             st.info("No test results available for visualization.")
         
-        # Complete editable data display at the bottom
-        st.subheader("📊 All Collected Data - Editable")
-        st.write(f"Complete database records for {selected_patient} - Click to edit any value")
+        # Link to data management page
+        st.subheader("📊 Data Management")
+        st.info(f"View and edit all test results for {selected_patient} in the 'Manage Data' page")
         
-        # Get all test results with IDs for editing
+        # Quick summary of patient data
         all_test_data = db.get_patient_test_results_with_ids(selected_patient)
-        
         if all_test_data:
-            # Convert to DataFrame with IDs
             edit_df = pd.DataFrame(all_test_data, columns=['ID', 'Date', 'Test Type', 'Value', 'Unit', 'Reference Range'])
-            edit_df['Date'] = pd.to_datetime(edit_df['Date']).dt.strftime('%Y-%m-%d')
-            edit_df['Value'] = pd.to_numeric(edit_df['Value'], errors='coerce')
-            
-            # Show total count
-            st.info(f"Total records: {len(edit_df)} test results")
-            
-            # Create editable interface
-            with st.expander("🔧 Edit Test Results", expanded=False):
-                st.warning("⚠️ Caution: Changes will be saved directly to the database")
-                
-                # Selection for editing
-                edit_mode = st.radio(
-                    "Choose editing mode:",
-                    ["Edit individual results", "Delete multiple results", "Edit by date groups"],
-                    key="edit_mode"
-                )
-                
-                if edit_mode == "Edit individual results":
-                    # Individual result editing
-                    st.write("**Edit Individual Test Results:**")
-                    
-                    # Select result to edit
-                    result_options = []
-                    for _, row in edit_df.iterrows():
-                        result_options.append(f"ID {row['ID']}: {row['Date']} - {row['Test Type']} = {row['Value']} {row['Unit']}")
-                    
-                    selected_result = st.selectbox(
-                        "Select a test result to edit:",
-                        options=result_options,
-                        index=None,
-                        placeholder="Choose a result to edit..."
-                    )
-                    
-                    if selected_result:
-                        # Extract ID from selection
-                        result_id = int(selected_result.split(':')[0].replace('ID ', ''))
-                        result_row = edit_df[edit_df['ID'] == result_id].iloc[0]
-                        
-                        # Edit form
-                        with st.form(key=f"edit_result_{result_id}"):
-                            col1, col2 = st.columns(2)
-                            
-                            with col1:
-                                new_test_type = st.text_input("Test Type", value=result_row['Test Type'])
-                                new_value = st.number_input("Value", value=float(result_row['Value']), format="%.2f")
-                                new_unit = st.text_input("Unit", value=result_row['Unit'])
-                            
-                            with col2:
-                                new_date = st.date_input("Date", value=pd.to_datetime(result_row['Date']).date())
-                                new_ref_range = st.text_input("Reference Range", value=result_row['Reference Range'])
-                            
-                            col1, col2 = st.columns(2)
-                            with col1:
-                                update_clicked = st.form_submit_button("✅ Update Result", type="primary")
-                            with col2:
-                                delete_clicked = st.form_submit_button("🗑️ Delete Result", type="secondary")
-                        
-                        # Handle update
-                        if update_clicked:
-                            try:
-                                # Update in database
-                                success = db.update_test_result(
-                                    result_id=result_id,
-                                    test_type=new_test_type,
-                                    value=new_value,
-                                    unit=new_unit,
-                                    test_date=new_date,
-                                    reference_range=new_ref_range
-                                )
-                                
-                                if success:
-                                    st.success("✅ Test result updated successfully!")
-                                    st.rerun()
-                                else:
-                                    st.error("❌ Failed to update test result")
-                            except Exception as e:
-                                st.error(f"❌ Error updating result: {str(e)}")
-                        
-                        # Handle delete
-                        if delete_clicked:
-                            try:
-                                success = db.delete_test_result(result_id)
-                                if success:
-                                    st.success("✅ Test result deleted successfully!")
-                                    st.rerun()
-                                else:
-                                    st.error("❌ Failed to delete test result")
-                            except Exception as e:
-                                st.error(f"❌ Error deleting result: {str(e)}")
-                
-                elif edit_mode == "Delete multiple results":
-                    # Multiple deletion interface
-                    st.write("**Select Multiple Results to Delete:**")
-                    
-                    # Create checkboxes for each result
-                    results_to_delete = []
-                    for _, row in edit_df.iterrows():
-                        result_label = f"{row['Date']} - {row['Test Type']} = {row['Value']} {row['Unit']}"
-                        if st.checkbox(result_label, key=f"delete_check_{row['ID']}"):
-                            results_to_delete.append(row['ID'])
-                    
-                    if results_to_delete:
-                        st.warning(f"⚠️ {len(results_to_delete)} results selected for deletion")
-                        
-                        if st.button("🗑️ Delete Selected Results", type="secondary"):
-                            deleted_count = 0
-                            for result_id in results_to_delete:
-                                if db.delete_test_result(result_id):
-                                    deleted_count += 1
-                            
-                            if deleted_count == len(results_to_delete):
-                                st.success(f"✅ Successfully deleted {deleted_count} test results!")
-                                st.rerun()
-                            else:
-                                st.error(f"❌ Only {deleted_count} of {len(results_to_delete)} results were deleted")
-                
-                elif edit_mode == "Edit by date groups":
-                    # Group by date editing
-                    st.write("**Edit All Results by Date:**")
-                    
-                    # Group results by date
-                    date_groups = edit_df.groupby('Date')
-                    
-                    for test_date, group in date_groups:
-                        with st.expander(f"📅 {test_date} ({len(group)} tests)"):
-                            st.write(f"**Tests on {test_date}:**")
-                            
-                            # Show tests for this date
-                            for _, row in group.iterrows():
-                                col1, col2, col3 = st.columns([2, 1, 1])
-                                with col1:
-                                    st.write(f"• {row['Test Type']}: {row['Value']} {row['Unit']}")
-                                with col2:
-                                    if st.button(f"Edit", key=f"edit_date_{row['ID']}"):
-                                        st.session_state[f"editing_result_{row['ID']}"] = True
-                                with col3:
-                                    if st.button(f"Delete", key=f"delete_date_{row['ID']}"):
-                                        if db.delete_test_result(row['ID']):
-                                            st.success("Deleted!")
-                                            st.rerun()
-                            
-                            # Option to delete all results for this date
-                            if st.button(f"🗑️ Delete All Results for {test_date}", key=f"delete_all_{test_date}"):
-                                if db.delete_test_results_by_date(selected_patient, pd.to_datetime(test_date).date()):
-                                    st.success(f"✅ All results for {test_date} deleted!")
-                                    st.rerun()
-                                else:
-                                    st.error("❌ Failed to delete results")
-            
-            # Always show the complete data table at the bottom
-            st.subheader("📋 Complete Database Records")
-            st.dataframe(edit_df.drop('ID', axis=1), use_container_width=True, hide_index=True)
             
             # Add quick stats
             col1, col2, col3 = st.columns(3)
@@ -771,12 +617,252 @@ def manage_data_page(db):
     
     st.divider()
     
-    # Deletion options
-    deletion_type = st.selectbox(
-        "Choose deletion type",
-        ["Select an option", "Delete Individual Test Results", "Delete Report by Date", "Delete by Test Type", "Delete Patient Data", "Delete All Data"],
+    # Management options
+    management_type = st.selectbox(
+        "Choose management type",
+        ["Select an option", "View & Edit Patient Data", "Delete Individual Test Results", "Delete Report by Date", "Delete by Test Type", "Delete Patient Data", "Delete All Data"],
         index=0
     )
+    
+    if management_type == "View & Edit Patient Data":
+        st.subheader("📊 View & Edit Patient Data")
+        
+        # Patient selection
+        patients = db.get_all_patients()
+        if not patients:
+            st.info("No patients found.")
+            return
+        
+        patient_names = [patient[1] for patient in patients]
+        selected_patient = st.selectbox("Select Patient", patient_names, index=None, placeholder="Choose a patient...")
+        
+        if selected_patient:
+            st.subheader(f"📊 All Collected Data for {selected_patient} - Editable")
+            st.write(f"Complete database records for {selected_patient} - Click to edit any value")
+            
+            # Get all test results with IDs for editing
+            all_test_data = db.get_patient_test_results_with_ids(selected_patient)
+            
+            if all_test_data:
+                # Convert to DataFrame with IDs
+                edit_df = pd.DataFrame(all_test_data, columns=['ID', 'Date', 'Test Type', 'Value', 'Unit', 'Reference Range'])
+                edit_df['Date'] = pd.to_datetime(edit_df['Date']).dt.strftime('%Y-%m-%d')
+                edit_df['Value'] = pd.to_numeric(edit_df['Value'], errors='coerce')
+                
+                # Show total count
+                st.info(f"Total records: {len(edit_df)} test results")
+                
+                # Create editable interface
+                with st.expander("🔧 Edit Test Results", expanded=True):
+                    st.warning("⚠️ Caution: Changes will be saved directly to the database")
+                    
+                    # Selection for editing
+                    edit_mode = st.radio(
+                        "Choose editing mode:",
+                        ["Edit individual results", "Delete multiple results", "Edit by date groups"],
+                        key="edit_mode"
+                    )
+                    
+                    if edit_mode == "Edit individual results":
+                        # Individual result editing
+                        st.write("**Edit Individual Test Results:**")
+                        
+                        # Select result to edit
+                        result_options = []
+                        for _, row in edit_df.iterrows():
+                            result_options.append(f"ID {row['ID']}: {row['Date']} - {row['Test Type']} = {row['Value']} {row['Unit']}")
+                        
+                        selected_result = st.selectbox(
+                            "Select a test result to edit:",
+                            options=result_options,
+                            index=None,
+                            placeholder="Choose a result to edit..."
+                        )
+                        
+                        if selected_result:
+                            # Extract ID from selection
+                            result_id = int(selected_result.split(':')[0].replace('ID ', ''))
+                            result_row = edit_df[edit_df['ID'] == result_id].iloc[0]
+                            
+                            # Edit form
+                            with st.form(key=f"edit_result_{result_id}"):
+                                col1, col2 = st.columns(2)
+                                
+                                with col1:
+                                    new_test_type = st.text_input("Test Type", value=result_row['Test Type'])
+                                    new_value = st.number_input("Value", value=float(result_row['Value']), format="%.2f")
+                                    new_unit = st.text_input("Unit", value=result_row['Unit'])
+                                
+                                with col2:
+                                    new_date = st.date_input("Date", value=pd.to_datetime(result_row['Date']).date())
+                                    new_ref_range = st.text_input("Reference Range", value=result_row['Reference Range'])
+                                
+                                col1, col2 = st.columns(2)
+                                with col1:
+                                    update_clicked = st.form_submit_button("✅ Update Result", type="primary")
+                                with col2:
+                                    delete_clicked = st.form_submit_button("🗑️ Delete Result", type="secondary")
+                            
+                            # Handle update
+                            if update_clicked:
+                                try:
+                                    # Update in database
+                                    success = db.update_test_result(
+                                        result_id=result_id,
+                                        test_type=new_test_type,
+                                        value=new_value,
+                                        unit=new_unit,
+                                        test_date=new_date,
+                                        reference_range=new_ref_range
+                                    )
+                                    
+                                    if success:
+                                        st.success("✅ Test result updated successfully!")
+                                        st.rerun()
+                                    else:
+                                        st.error("❌ Failed to update test result")
+                                except Exception as e:
+                                    st.error(f"❌ Error updating result: {str(e)}")
+                            
+                            # Handle delete
+                            if delete_clicked:
+                                try:
+                                    success = db.delete_test_result(result_id)
+                                    if success:
+                                        st.success("✅ Test result deleted successfully!")
+                                        st.rerun()
+                                    else:
+                                        st.error("❌ Failed to delete test result")
+                                except Exception as e:
+                                    st.error(f"❌ Error deleting result: {str(e)}")
+                    
+                    elif edit_mode == "Delete multiple results":
+                        # Multiple deletion interface
+                        st.write("**Select Multiple Results to Delete:**")
+                        
+                        # Create checkboxes for each result
+                        results_to_delete = []
+                        for _, row in edit_df.iterrows():
+                            result_label = f"{row['Date']} - {row['Test Type']} = {row['Value']} {row['Unit']}"
+                            if st.checkbox(result_label, key=f"delete_check_{row['ID']}"):
+                                results_to_delete.append(row['ID'])
+                        
+                        if results_to_delete:
+                            st.warning(f"⚠️ {len(results_to_delete)} results selected for deletion")
+                            
+                            if st.button("🗑️ Delete Selected Results", type="secondary"):
+                                deleted_count = 0
+                                for result_id in results_to_delete:
+                                    if db.delete_test_result(result_id):
+                                        deleted_count += 1
+                                
+                                if deleted_count == len(results_to_delete):
+                                    st.success(f"✅ Successfully deleted {deleted_count} test results!")
+                                    st.rerun()
+                                else:
+                                    st.error(f"❌ Only {deleted_count} of {len(results_to_delete)} results were deleted")
+                    
+                    elif edit_mode == "Edit by date groups":
+                        # Group by date editing
+                        st.write("**Edit All Results by Date:**")
+                        
+                        # Group results by date
+                        date_groups = edit_df.groupby('Date')
+                        
+                        for test_date, group in date_groups:
+                            with st.expander(f"📅 {test_date} ({len(group)} tests)"):
+                                st.write(f"**Tests on {test_date}:**")
+                                
+                                # Show tests for this date
+                                for _, row in group.iterrows():
+                                    col1, col2, col3 = st.columns([2, 1, 1])
+                                    with col1:
+                                        st.write(f"• {row['Test Type']}: {row['Value']} {row['Unit']}")
+                                    with col2:
+                                        if st.button(f"Edit", key=f"edit_date_{row['ID']}"):
+                                            st.session_state[f"editing_result_{row['ID']}"] = True
+                                    with col3:
+                                        if st.button(f"Delete", key=f"delete_date_{row['ID']}"):
+                                            if db.delete_test_result(row['ID']):
+                                                st.success("Deleted!")
+                                                st.rerun()
+                                
+                                # Option to delete all results for this date
+                                if st.button(f"🗑️ Delete All Results for {test_date}", key=f"delete_all_{test_date}"):
+                                    if db.delete_test_results_by_date(selected_patient, pd.to_datetime(test_date).date()):
+                                        st.success(f"✅ All results for {test_date} deleted!")
+                                        st.rerun()
+                                    else:
+                                        st.error("❌ Failed to delete results")
+                
+                # Always show the complete data table at the bottom
+                st.subheader("📋 Complete Database Records")
+                st.dataframe(edit_df.drop('ID', axis=1), use_container_width=True, hide_index=True)
+                
+                # Add quick stats
+                col1, col2, col3 = st.columns(3)
+                with col1:
+                    st.metric("Total Records", len(edit_df))
+                with col2:
+                    unique_dates = edit_df['Date'].nunique()
+                    st.metric("Test Dates", unique_dates)
+                with col3:
+                    unique_types = edit_df['Test Type'].nunique()
+                    st.metric("Test Types", unique_types)
+            else:
+                st.info("No test results found for this patient.")
+    
+    elif management_type == "Delete Individual Test Results":
+        st.subheader("🎯 Delete Individual Test Results")
+        
+        # Patient selection
+        patients = db.get_all_patients()
+        if not patients:
+            st.info("No patients found.")
+            return
+        
+        patient_names = [patient[1] for patient in patients]
+        selected_patient = st.selectbox("Select Patient", patient_names, index=None, placeholder="Choose a patient...")
+        
+        if selected_patient:
+            # Get test results with IDs
+            test_results = db.get_patient_test_results_with_ids(selected_patient)
+            
+            if not test_results:
+                st.info("No test results found for this patient.")
+                return
+            
+            st.write(f"**Test Results for {selected_patient}**")
+            
+            # Create DataFrame for display
+            df = pd.DataFrame(test_results, columns=['ID', 'Date', 'Test Type', 'Value', 'Unit', 'Reference Range'])
+            
+            # Multi-select for deletion
+            selected_indices = st.multiselect(
+                "Select test results to delete",
+                options=range(len(df)),
+                format_func=lambda x: f"{df.iloc[x]['Date']} - {df.iloc[x]['Test Type']}: {df.iloc[x]['Value']} {df.iloc[x]['Unit']}"
+            )
+            
+            if selected_indices:
+                st.dataframe(df.iloc[selected_indices], use_container_width=True, hide_index=True)
+                
+                col1, col2 = st.columns([1, 3])
+                with col1:
+                    if st.button("🗑️ Delete Selected", type="primary"):
+                        deleted_count = 0
+                        for idx in selected_indices:
+                            result_id = df.iloc[idx]['ID']
+                            if db.delete_test_result(result_id):
+                                deleted_count += 1
+                        
+                        if deleted_count > 0:
+                            st.success(f"Successfully deleted {deleted_count} test results!")
+                            st.rerun()
+                        else:
+                            st.error("Failed to delete test results.")
+            else:
+                st.dataframe(df.drop('ID', axis=1), use_container_width=True, hide_index=True)
     
     if deletion_type == "Delete Individual Test Results":
         st.subheader("🎯 Delete Individual Test Results")
