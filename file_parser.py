@@ -136,13 +136,15 @@ class FileParser:
             r'(\d{2,4}[\/\-]\d{1,2}[\/\-]\d{1,2})'
         ]
         
-        # Patient name patterns
+        # Patient name patterns - prioritize text near "Name"
         self.patient_patterns = [
-            r'(?:patient|name|patient\s+name)[:\-]?\s*([A-Za-z\s]+?)(?:\n|$|,)',
+            r'Name\s*[:\-]?\s*([A-Za-z\s]{2,50})',
+            r'name\s*[:\-]?\s*([A-Za-z\s]{2,50})',
+            r'NAME\s*[:\-]?\s*([A-Za-z\s]{2,50})',
+            r'(?:patient|patient\s+name)[:\-]?\s*([A-Za-z\s]+?)(?:\n|$|,)',
+            r'Patient\s*[:\-]?\s*([A-Za-z\s]{2,50})',
             r'(?:mr|mrs|ms|dr)\.?\s+([A-Za-z\s]+?)(?:\n|$|,)',
             r'^([A-Z][a-z]+\s+[A-Z][a-z]+)',
-            r'Name\s*[:\-]?\s*([A-Za-z\s]{2,50})',
-            r'Patient\s*[:\-]?\s*([A-Za-z\s]{2,50})',
             r'([A-Z][a-z]+\s+[A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)\s*(?:\n|$)',
             r'^\s*([A-Z][a-z]+\s+[A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)\s*$',
             r'([A-Z][a-z]+\s+[A-Z][a-z]+)',
