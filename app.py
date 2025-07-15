@@ -9,6 +9,8 @@ from file_parser import FileParser
 from data_processor import DataProcessor
 from visualization import Visualization
 from alert_system import AlertSystem
+from auth_system import AuthSystem
+from auth_ui import AuthUI
 from utils import validate_date, format_test_value
 
 # Initialize database and components
@@ -23,7 +25,9 @@ def init_components():
     data_processor = DataProcessor(db)
     visualization = Visualization(db)
     alert_system = AlertSystem(db)
-    return db, file_parser, data_processor, visualization, alert_system
+    auth_system = AuthSystem()
+    auth_ui = AuthUI(auth_system)
+    return db, file_parser, data_processor, visualization, alert_system, auth_system, auth_ui
 
 def main():
     st.set_page_config(
@@ -37,31 +41,49 @@ def main():
     st.markdown("Upload, manage, and visualize patient blood test results")
     
     # Initialize components
-    db, file_parser, data_processor, visualization, alert_system = init_components()
+    db, file_parser, data_processor, visualization, alert_system, auth_system, auth_ui = init_components()
+    
+    # Check authentication
+    if not auth_ui.check_authentication():
+        auth_ui.login_page()
+        return
     
     # Sidebar navigation
     st.sidebar.title("Navigation")
-    page = st.sidebar.selectbox(
-        "Select Page",
-        ["Upload Results", "View Patients", "Patient Dashboard", "Search & Filter", "Export Data", "Manage Data", "Alert Dashboard"]
-    )
+    
+    # Display user info in sidebar
+    auth_ui.sidebar_user_info()
+    
+    # Page selection
+    pages = ["Upload Results", "View Patients", "Patient Dashboard", "Search & Filter", "Export Data", "Manage Data", "Alert Dashboard"]
+    
+    # Add profile page for logged-in users
+    if st.session_state.get('user_id'):
+        pages.append("Profile")
+    
+    page = st.sidebar.selectbox("Select Page", pages)
+    
+    # Get current user ID
+    current_user_id = st.session_state.get('user_id')
     
     if page == "Upload Results":
-        upload_results_page(file_parser, data_processor)
+        upload_results_page(file_parser, data_processor, current_user_id)
     elif page == "View Patients":
-        view_patients_page(db, alert_system)
+        view_patients_page(db, alert_system, current_user_id)
     elif page == "Patient Dashboard":
-        patient_dashboard_page(db, visualization, alert_system)
+        patient_dashboard_page(db, visualization, alert_system, current_user_id)
     elif page == "Search & Filter":
-        search_filter_page(db, visualization)
+        search_filter_page(db, visualization, current_user_id)
     elif page == "Export Data":
-        export_data_page(db)
+        export_data_page(db, current_user_id)
     elif page == "Manage Data":
-        manage_data_page(db)
+        manage_data_page(db, current_user_id)
     elif page == "Alert Dashboard":
-        alert_dashboard_page(alert_system)
+        alert_dashboard_page(alert_system, current_user_id)
+    elif page == "Profile":
+        auth_ui.user_profile_page()
 
-def upload_results_page(file_parser, data_processor):
+def upload_results_page(file_parser, data_processor, user_id):
     st.header("📁 Upload Blood Test Results")
     
     # File upload
@@ -281,7 +303,8 @@ def upload_results_page(file_parser, data_processor):
                                 success = data_processor.save_test_results(
                                     patient_name=patient_name,
                                     test_date=test_date,
-                                    test_results=final_results
+                                    test_results=final_results,
+                                    user_id=user_id
                                 )
                                 
                                 progress_bar.progress(100)
@@ -328,10 +351,10 @@ def upload_results_page(file_parser, data_processor):
                 except Exception as e:
                     st.error(f"Error processing file {uploaded_file.name}: {str(e)}")
 
-def view_patients_page(db, alert_system):
+def view_patients_page(db, alert_system, user_id):
     st.header("👥 View Patients")
     
-    patients = db.get_all_patients()
+    patients = db.get_all_patients(user_id)
     
     if not patients:
         st.info("No patients found. Please upload some blood test results first.")
@@ -360,7 +383,7 @@ def view_patients_page(db, alert_system):
         )
         
         if selected_patient:
-            patient_tests = db.get_patient_tests(selected_patient)
+            patient_tests = db.get_patient_tests(selected_patient, user_id)
             patient_alerts = alert_system.get_patient_alerts(selected_patient)
             
             if patient_tests:
@@ -394,10 +417,10 @@ def view_patients_page(db, alert_system):
     else:
         st.info("No patients found matching your search.")
 
-def patient_dashboard_page(db, visualization, alert_system):
+def patient_dashboard_page(db, visualization, alert_system, user_id):
     st.header("📊 Patient Dashboard")
     
-    patients = db.get_all_patients()
+    patients = db.get_all_patients(user_id)
     
     if not patients:
         st.info("No patients found. Please upload some blood test results first.")
@@ -414,7 +437,7 @@ def patient_dashboard_page(db, visualization, alert_system):
     
     if selected_patient:
         # Get patient data
-        patient_tests = db.get_patient_tests(selected_patient)
+        patient_tests = db.get_patient_tests(selected_patient, user_id)
         
         if not patient_tests:
             st.warning(f"No test results found for {selected_patient}")
@@ -514,7 +537,7 @@ def patient_dashboard_page(db, visualization, alert_system):
         else:
             st.info("No test results found for this patient.")
 
-def search_filter_page(db, visualization):
+def search_filter_page(db, visualization, user_id):
     st.header("🔍 Search & Filter Results")
     
     # Filter controls
@@ -583,7 +606,7 @@ def search_filter_page(db, visualization):
         else:
             st.info("No results found matching your criteria.")
 
-def export_data_page(db):
+def export_data_page(db, user_id):
     st.header("📤 Export Data")
     
     # Export options
@@ -657,7 +680,7 @@ def export_data_page(db):
                     mime="text/csv"
                 )
 
-def manage_data_page(db):
+def manage_data_page(db, user_id):
     st.header("🗂️ Manage Data")
     
     # Database statistics
@@ -1246,7 +1269,7 @@ def manage_data_page(db):
         else:
             st.info("Database is already empty.")
 
-def alert_dashboard_page(alert_system):
+def alert_dashboard_page(alert_system, user_id):
     st.header("🚨 Alert Dashboard")
     
     # Get alert summary

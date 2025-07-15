@@ -8,7 +8,7 @@ class DataProcessor:
         """Initialize data processor with database connection."""
         self.db = database
     
-    def save_test_results(self, patient_name: str, test_date: date, test_results: List[Dict[str, Any]]) -> bool:
+    def save_test_results(self, patient_name: str, test_date: date, test_results: List[Dict[str, Any]], user_id: int = None) -> bool:
         """Save test results for a patient."""
         try:
             if not patient_name or not test_results:
@@ -26,7 +26,7 @@ class DataProcessor:
                 return False
             
             # Add or get patient
-            patient_id = self.db.add_patient(patient_name.strip())
+            patient_id = self.db.add_patient(patient_name.strip(), user_id)
             
             # Save each test result
             saved_count = 0
@@ -38,7 +38,8 @@ class DataProcessor:
                         test_type=result['test_type'],
                         test_value=result['value'],
                         unit=result.get('unit', ''),
-                        reference_range=result.get('reference_range', '')
+                        reference_range=result.get('reference_range', ''),
+                        user_id=user_id
                     )
                     if success:
                         saved_count += 1

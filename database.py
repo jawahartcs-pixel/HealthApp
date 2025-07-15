@@ -19,8 +19,10 @@ class Database:
             cursor.execute('''
                 CREATE TABLE IF NOT EXISTS patients (
                     patient_id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    patient_name TEXT NOT NULL UNIQUE,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                    patient_name TEXT NOT NULL,
+                    user_id INTEGER,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    UNIQUE(patient_name, user_id)
                 )
             ''')
             
@@ -34,6 +36,7 @@ class Database:
                     test_value REAL NOT NULL,
                     unit TEXT,
                     reference_range TEXT,
+                    user_id INTEGER,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     FOREIGN KEY (patient_id) REFERENCES patients (patient_id)
                 )
@@ -52,75 +55,133 @@ class Database:
                 CREATE INDEX IF NOT EXISTS idx_test_type ON test_results(test_type)
             ''')
             
+            # Handle migration - add user_id columns if they don't exist
+            try:
+                cursor.execute('ALTER TABLE patients ADD COLUMN user_id INTEGER')
+            except sqlite3.OperationalError:
+                pass  # Column already exists
+            
+            try:
+                cursor.execute('ALTER TABLE test_results ADD COLUMN user_id INTEGER')
+            except sqlite3.OperationalError:
+                pass  # Column already exists
+            
+            # Create indexes after columns are added
+            cursor.execute('''
+                CREATE INDEX IF NOT EXISTS idx_user_id ON patients(user_id)
+            ''')
+            
+            cursor.execute('''
+                CREATE INDEX IF NOT EXISTS idx_test_user_id ON test_results(user_id)
+            ''')
+            
             conn.commit()
     
-    def add_patient(self, patient_name: str) -> int:
+    def add_patient(self, patient_name: str, user_id: int = None) -> int:
         """Add a new patient or get existing patient ID."""
         with sqlite3.connect(self.db_path) as conn:
             cursor = conn.cursor()
             
-            # Try to get existing patient
-            cursor.execute('SELECT patient_id FROM patients WHERE patient_name = ?', (patient_name,))
+            # Try to get existing patient for this user
+            if user_id:
+                cursor.execute('SELECT patient_id FROM patients WHERE patient_name = ? AND user_id = ?', (patient_name, user_id))
+            else:
+                cursor.execute('SELECT patient_id FROM patients WHERE patient_name = ? AND user_id IS NULL', (patient_name,))
+            
             result = cursor.fetchone()
             
             if result:
                 return result[0]
             
             # Add new patient
-            cursor.execute('INSERT INTO patients (patient_name) VALUES (?)', (patient_name,))
+            cursor.execute('INSERT INTO patients (patient_name, user_id) VALUES (?, ?)', (patient_name, user_id))
             conn.commit()
             return cursor.lastrowid
     
     def add_test_result(self, patient_id: int, test_date: date, test_type: str, 
-                       test_value: float, unit: str = None, reference_range: str = None) -> bool:
+                       test_value: float, unit: str = None, reference_range: str = None, user_id: int = None) -> bool:
         """Add a test result to the database."""
         try:
             with sqlite3.connect(self.db_path) as conn:
                 cursor = conn.cursor()
                 cursor.execute('''
-                    INSERT INTO test_results (patient_id, test_date, test_type, test_value, unit, reference_range)
-                    VALUES (?, ?, ?, ?, ?, ?)
-                ''', (patient_id, test_date, test_type, test_value, unit, reference_range))
+                    INSERT INTO test_results (patient_id, test_date, test_type, test_value, unit, reference_range, user_id)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                ''', (patient_id, test_date, test_type, test_value, unit, reference_range, user_id))
                 conn.commit()
                 return True
         except Exception as e:
             print(f"Error adding test result: {e}")
             return False
     
-    def get_all_patients(self) -> List[Tuple]:
+    def get_all_patients(self, user_id: int = None) -> List[Tuple]:
         """Get all patients with summary information."""
         with sqlite3.connect(self.db_path) as conn:
             cursor = conn.cursor()
-            cursor.execute('''
-                SELECT 
-                    p.patient_id,
-                    p.patient_name,
-                    MIN(tr.test_date) as first_test,
-                    MAX(tr.test_date) as last_test,
-                    COUNT(tr.result_id) as total_tests
-                FROM patients p
-                LEFT JOIN test_results tr ON p.patient_id = tr.patient_id
-                GROUP BY p.patient_id, p.patient_name
-                ORDER BY p.patient_name
-            ''')
+            
+            if user_id:
+                cursor.execute('''
+                    SELECT 
+                        p.patient_id,
+                        p.patient_name,
+                        MIN(tr.test_date) as first_test,
+                        MAX(tr.test_date) as last_test,
+                        COUNT(tr.result_id) as total_tests
+                    FROM patients p
+                    LEFT JOIN test_results tr ON p.patient_id = tr.patient_id
+                    WHERE p.user_id = ?
+                    GROUP BY p.patient_id, p.patient_name
+                    ORDER BY p.patient_name
+                ''', (user_id,))
+            else:
+                cursor.execute('''
+                    SELECT 
+                        p.patient_id,
+                        p.patient_name,
+                        MIN(tr.test_date) as first_test,
+                        MAX(tr.test_date) as last_test,
+                        COUNT(tr.result_id) as total_tests
+                    FROM patients p
+                    LEFT JOIN test_results tr ON p.patient_id = tr.patient_id
+                    WHERE p.user_id IS NULL
+                    GROUP BY p.patient_id, p.patient_name
+                    ORDER BY p.patient_name
+                ''')
+            
             return cursor.fetchall()
     
-    def get_patient_tests(self, patient_name: str) -> List[Tuple]:
+    def get_patient_tests(self, patient_name: str, user_id: int = None) -> List[Tuple]:
         """Get all test results for a specific patient."""
         with sqlite3.connect(self.db_path) as conn:
             cursor = conn.cursor()
-            cursor.execute('''
-                SELECT 
-                    tr.test_date,
-                    tr.test_type,
-                    tr.test_value,
-                    tr.unit,
-                    tr.reference_range
-                FROM test_results tr
-                JOIN patients p ON tr.patient_id = p.patient_id
-                WHERE p.patient_name = ?
-                ORDER BY tr.test_date DESC, tr.test_type
-            ''', (patient_name,))
+            
+            if user_id:
+                cursor.execute('''
+                    SELECT 
+                        tr.test_date,
+                        tr.test_type,
+                        tr.test_value,
+                        tr.unit,
+                        tr.reference_range
+                    FROM test_results tr
+                    JOIN patients p ON tr.patient_id = p.patient_id
+                    WHERE p.patient_name = ? AND p.user_id = ?
+                    ORDER BY tr.test_date DESC, tr.test_type
+                ''', (patient_name, user_id))
+            else:
+                cursor.execute('''
+                    SELECT 
+                        tr.test_date,
+                        tr.test_type,
+                        tr.test_value,
+                        tr.unit,
+                        tr.reference_range
+                    FROM test_results tr
+                    JOIN patients p ON tr.patient_id = p.patient_id
+                    WHERE p.patient_name = ? AND p.user_id IS NULL
+                    ORDER BY tr.test_date DESC, tr.test_type
+                ''', (patient_name,))
+            
             return cursor.fetchall()
     
     def get_all_test_types(self) -> List[str]:
