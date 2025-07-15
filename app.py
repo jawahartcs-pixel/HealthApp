@@ -90,6 +90,51 @@ def main():
 def upload_results_page(file_parser, data_processor, user_id):
     st.header("📁 Upload Blood Test Results")
     
+    def _get_test_context(full_text, result):
+        """Get surrounding context for a specific test result from the document."""
+        test_name = result['test_type'].lower()
+        test_value = str(result['value'])
+        text_lower = full_text.lower()
+        
+        # Try to find the test name in the text
+        name_pos = text_lower.find(test_name)
+        if name_pos == -1:
+            # Try partial matches or common variations
+            name_parts = test_name.split()
+            for part in name_parts:
+                if len(part) > 3:  # Only search for meaningful parts
+                    name_pos = text_lower.find(part)
+                    if name_pos != -1:
+                        break
+        
+        # If we found the test name, get surrounding context
+        if name_pos != -1:
+            # Get 100 characters before and after the test name
+            start = max(0, name_pos - 100)
+            end = min(len(full_text), name_pos + len(test_name) + 100)
+            context = full_text[start:end].strip()
+            
+            # Clean up the context
+            context = ' '.join(context.split())  # Remove extra whitespace
+            
+            # Highlight the test name and value if found
+            if test_value in context:
+                context = context.replace(test_value, f"➤ {test_value} ⬅")
+            
+            return context[:300] + "..." if len(context) > 300 else context
+        
+        # If test name not found, try to find the value
+        value_pos = full_text.find(test_value)
+        if value_pos != -1:
+            start = max(0, value_pos - 50)
+            end = min(len(full_text), value_pos + len(test_value) + 50)
+            context = full_text[start:end].strip()
+            context = ' '.join(context.split())
+            context = context.replace(test_value, f"➤ {test_value} ⬅")
+            return context[:200] + "..." if len(context) > 200 else context
+        
+        return f"Could not locate '{test_name}' in document text"
+    
     # File upload
     uploaded_files = st.file_uploader(
         "Choose blood test result files",
@@ -249,13 +294,16 @@ def upload_results_page(file_parser, data_processor, user_id):
                             for i, result in enumerate(test_data['results']):
                                 col1, col2, col3, col4, col5 = st.columns([3, 2, 2, 1, 1])
                                 
+                                # Get context text for this specific test
+                                test_context = _get_test_context(extracted_text, result)
+                                
                                 with col1:
                                     st.text_input(
                                         f"Test {i+1}",
                                         value=result['test_type'],
                                         key=f"test_name_{uploaded_file.name}_{i}",
                                         label_visibility="collapsed",
-                                        help=f"Original extracted: {result['test_type']}"
+                                        help=f"📄 Context from document:\n{test_context}\n\n🔍 Original extracted: {result['test_type']}"
                                     )
                                 
                                 with col2:
@@ -265,7 +313,7 @@ def upload_results_page(file_parser, data_processor, user_id):
                                         key=f"test_value_{uploaded_file.name}_{i}",
                                         label_visibility="collapsed",
                                         format="%.2f",
-                                        help=f"Original extracted: {result['value']}"
+                                        help=f"📄 Context from document:\n{test_context}\n\n🔍 Original extracted: {result['value']}"
                                     )
                                 
                                 with col3:
@@ -274,7 +322,7 @@ def upload_results_page(file_parser, data_processor, user_id):
                                         value=result.get('unit', ''),
                                         key=f"test_unit_{uploaded_file.name}_{i}",
                                         label_visibility="collapsed",
-                                        help=f"Original extracted: {result.get('unit', 'No unit found')}"
+                                        help=f"📄 Context from document:\n{test_context}\n\n🔍 Original extracted: {result.get('unit', 'No unit found')}"
                                     )
                                 
                                 with col4:
@@ -286,7 +334,7 @@ def upload_results_page(file_parser, data_processor, user_id):
                                     )
                                 
                                 with col5:
-                                    # Show extraction source info instead of button (since buttons can't be in forms)
+                                    # Show extraction source info
                                     source = result.get('source', 'unknown')
                                     st.caption(f"📄 {source}")
                             
