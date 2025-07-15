@@ -787,56 +787,81 @@ class FileParser:
             test_name = result['test_type'].lower().strip()
             test_value = round(result['value'], 2)
             
-            # Create key based on test name similarity
-            test_key = re.sub(r'[^a-z0-9]', '', test_name)
+            # Create normalized key for duplicate detection
+            normalized_key = self._normalize_test_name_for_comparison(test_name)
             
-            # Check for duplicates with similar test names
+            # Check for duplicates
             is_duplicate = False
+            best_match_key = None
+            
             for existing_key, existing_result in list(seen.items()):
-                existing_name = re.sub(r'[^a-z0-9]', '', existing_key)
+                existing_normalized = self._normalize_test_name_for_comparison(existing_key)
+                existing_value = round(existing_result['value'], 2)
                 
-                # Enhanced duplicate detection for scanned documents
-                # Check if test names are similar
-                name_similarity = self._calculate_name_similarity(test_key, existing_name)
+                # 1. Check for exact normalized name match (strongest indicator)
+                if normalized_key == existing_normalized:
+                    is_duplicate = True
+                    best_match_key = existing_key
+                    break
                 
-                if name_similarity > 0.7 and len(test_key) > 2:  # Similar test names
-                    value_diff = abs(test_value - round(existing_result['value'], 2))
+                # 2. Check for high similarity in test names
+                name_similarity = self._calculate_name_similarity(normalized_key, existing_normalized)
+                
+                if name_similarity > 0.85:  # High similarity threshold
+                    value_diff = abs(test_value - existing_value)
                     
-                    # For scanned documents, be more lenient with value differences
-                    # due to OCR errors that might cause slight variations
-                    threshold = 0.5 if 'ocr' in result.get('source', '') else 0.1
+                    # For high similarity names, allow some value difference for OCR errors
+                    threshold = 1.0 if 'ocr' in result.get('source', '') else 0.5
                     
-                    if value_diff < threshold:  # Values are close enough
-                        # Choose the result with better source priority
-                        current_priority = source_priority.get(result.get('source', 'regex'), 5)
-                        existing_priority = source_priority.get(existing_result.get('source', 'regex'), 5)
-                        
-                        if current_priority < existing_priority:
-                            # Current result has better source, replace existing
-                            seen[existing_key] = result
-                            unique_results = [r for r in unique_results if r != existing_result]
-                            unique_results.append(result)
-                        
+                    if value_diff < threshold:
                         is_duplicate = True
+                        best_match_key = existing_key
                         break
                 
-                # Also check for exact value matches with different test names (common OCR issue)
-                elif abs(test_value - round(existing_result['value'], 2)) < 0.01:
-                    # Same value, check if test names could be OCR variations
-                    if self._could_be_ocr_variation(test_key, existing_name):
-                        # Choose the result with better source or more complete name
-                        current_priority = source_priority.get(result.get('source', 'regex'), 5)
-                        existing_priority = source_priority.get(existing_result.get('source', 'regex'), 5)
-                        
-                        if current_priority < existing_priority or len(test_name) > len(existing_key):
-                            seen[existing_key] = result
-                            unique_results = [r for r in unique_results if r != existing_result]
-                            unique_results.append(result)
-                        
+                # 3. Check for same values with potentially similar test names
+                elif abs(test_value - existing_value) < 0.01 and name_similarity > 0.7:
+                    # Same value with reasonably similar names - likely duplicate
+                    is_duplicate = True
+                    best_match_key = existing_key
+                    break
+                
+                # 4. Check for common OCR variations with exact values
+                elif abs(test_value - existing_value) < 0.01:
+                    if self._could_be_ocr_variation(normalized_key, existing_normalized):
                         is_duplicate = True
+                        best_match_key = existing_key
                         break
             
-            if not is_duplicate:
+            if is_duplicate and best_match_key:
+                # Choose the better result based on source priority and completeness
+                existing_result = seen[best_match_key]
+                current_priority = source_priority.get(result.get('source', 'regex'), 5)
+                existing_priority = source_priority.get(existing_result.get('source', 'regex'), 5)
+                
+                should_replace = False
+                
+                # Replace if current has better source priority
+                if current_priority < existing_priority:
+                    should_replace = True
+                # If same priority, prefer longer/more complete test name
+                elif current_priority == existing_priority and len(test_name) > len(best_match_key):
+                    should_replace = True
+                # If same priority and length, prefer result with unit information
+                elif (current_priority == existing_priority and 
+                      len(test_name) == len(best_match_key) and
+                      result.get('unit') and not existing_result.get('unit')):
+                    should_replace = True
+                
+                if should_replace:
+                    # Replace the existing result
+                    del seen[best_match_key]
+                    unique_results = [r for r in unique_results if r != existing_result]
+                    seen[test_name] = result
+                    unique_results.append(result)
+                # Otherwise keep the existing result (don't add current)
+                
+            else:
+                # No duplicate found, add this result
                 seen[test_name] = result
                 unique_results.append(result)
         
@@ -874,6 +899,61 @@ class FileParser:
             return True
         
         return False
+    
+    def _normalize_test_name_for_comparison(self, test_name: str) -> str:
+        """Normalize test name for better duplicate detection."""
+        # Convert to lowercase and remove special characters
+        normalized = test_name.lower().strip()
+        normalized = re.sub(r'[^\w\s]', '', normalized)  # Remove punctuation
+        normalized = re.sub(r'\s+', '_', normalized)     # Replace spaces with underscores
+        normalized = re.sub(r'_+', '_', normalized)      # Remove multiple underscores
+        normalized = normalized.strip('_')               # Remove leading/trailing underscores
+        
+        # Handle common medical term variations
+        medical_normalizations = {
+            'glucose': 'glucose',
+            'glu': 'glucose',
+            'sugar': 'glucose',
+            'blood_sugar': 'glucose',
+            'cholesterol': 'cholesterol',
+            'chol': 'cholesterol',
+            'total_cholesterol': 'cholesterol',
+            'hemoglobin': 'hemoglobin',
+            'hgb': 'hemoglobin',
+            'hb': 'hemoglobin',
+            'hematocrit': 'hematocrit',
+            'hct': 'hematocrit',
+            'pcv': 'hematocrit',
+            'platelets': 'platelets',
+            'plt': 'platelets',
+            'platelet_count': 'platelets',
+            'creatinine': 'creatinine',
+            'creat': 'creatinine',
+            'crea': 'creatinine',
+            'triglycerides': 'triglycerides',
+            'tg': 'triglycerides',
+            'trig': 'triglycerides',
+            'bilirubin': 'bilirubin',
+            'bili': 'bilirubin',
+            'total_bilirubin': 'bilirubin',
+            'albumin': 'albumin',
+            'alb': 'albumin',
+            'protein': 'protein',
+            'prot': 'protein',
+            'total_protein': 'protein',
+            'hdl_cholesterol': 'hdl',
+            'ldl_cholesterol': 'ldl',
+            'white_blood_cell': 'wbc',
+            'white_blood_cells': 'wbc',
+            'red_blood_cell': 'rbc',
+            'red_blood_cells': 'rbc'
+        }
+        
+        # Apply normalization if found
+        if normalized in medical_normalizations:
+            return medical_normalizations[normalized]
+        
+        return normalized
     
     def _calculate_name_similarity(self, name1: str, name2: str) -> float:
         """Calculate similarity between two test names for duplicate detection."""
