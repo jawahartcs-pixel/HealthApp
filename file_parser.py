@@ -8,12 +8,10 @@ import pytesseract
 from pdf2image import convert_from_bytes
 from PIL import Image
 from docx import Document
-from learning_system import LearningSystem
 
 class FileParser:
     def __init__(self):
         """Initialize the file parser with common blood test patterns."""
-        self.learning_system = LearningSystem()
         # Common blood test parameters and their patterns
         self.test_patterns = {
             # Glucose tests
@@ -549,30 +547,60 @@ class FileParser:
         ocr_results = self._extract_ocr_specific_patterns(text)
         results.extend(ocr_results)
         
-        # Apply medical terminology validation first
-        validated_results = []
-        for result in results:
-            if self._is_medical_terminology(result['test_type']):
-                validated_results.append(result)
+        # Remove duplicates with improved matching, keeping source info for debugging
+        unique_results = []
+        seen = {}
         
-        # Use learning system for smart duplicate removal
-        unique_results = self.learning_system.smart_duplicate_removal(validated_results)
+        # Sort by source priority (tabular and line_analysis preferred over regex/generic)
+        source_priority = {'tabular': 0, 'line_analysis': 1, 'ocr_pattern': 2, 'regex': 3, 'generic': 4}
+        results.sort(key=lambda x: source_priority.get(x.get('source', 'regex'), 5))
+        
+        for result in results:
+            # Validate against medical terminology first
+            if not self._is_medical_terminology(result['test_type']):
+                continue  # Skip non-medical terms
+                
+            test_name = result['test_type'].lower().strip()
+            test_value = round(result['value'], 2)
+            
+            # Create key based on test name similarity
+            test_key = re.sub(r'[^a-z0-9]', '', test_name)
+            
+            # Check for duplicates with similar test names
+            is_duplicate = False
+            for existing_key, existing_result in list(seen.items()):
+                existing_name = re.sub(r'[^a-z0-9]', '', existing_key)
+                
+                # Check if test names are similar and values are close
+                if (test_key in existing_name or existing_name in test_key) and len(test_key) > 2:
+                    value_diff = abs(test_value - round(existing_result['value'], 2))
+                    if value_diff < 0.1:  # Values are very close
+                        current_priority = source_priority.get(result.get('source', 'regex'), 4)
+                        existing_priority = source_priority.get(existing_result.get('source', 'regex'), 4)
+                        
+                        if current_priority <= existing_priority:
+                            # Replace with better source
+                            unique_results = [r for r in unique_results if r != existing_result]
+                            del seen[existing_key]
+                            break
+                        else:
+                            is_duplicate = True
+                            break
+            
+            if not is_duplicate:
+                seen[test_name] = result
+                unique_results.append(result)
         
         return unique_results
     
     def _is_medical_terminology(self, test_name: str) -> bool:
-        """Check if test name is a valid medical terminology using learning system."""
+        """Check if test name is a valid medical terminology."""
         # Normalize test name for comparison
         normalized_name = test_name.lower().strip()
         normalized_name = re.sub(r'[^\w\s]', '', normalized_name)  # Remove special chars
         normalized_name = re.sub(r'\s+', '_', normalized_name)     # Replace spaces with underscore
         
-        # Check learned medical terms first
-        learned_terms = self.learning_system.get_learned_medical_terms()
-        if normalized_name in learned_terms:
-            return True
-        
-        # Check direct match in predefined terms
+        # Check direct match
         if normalized_name in self.medical_terms:
             return True
         
