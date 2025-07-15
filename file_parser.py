@@ -275,9 +275,26 @@ class FileParser:
             # Convert PDF to images with high DPI for better OCR accuracy
             images = convert_from_bytes(pdf_bytes, dpi=300, fmt='PNG')
             
+            # Store images for snippet extraction
+            self.ocr_images = images
+            
             ocr_text = ""
+            # Store OCR data with positions for snippet extraction
+            self.ocr_data = []
+            
             for i, image in enumerate(images):
-                # Use OCR to extract text from each page
+                # Use OCR to extract text with position data
+                ocr_data = pytesseract.image_to_data(image, config=custom_config, output_type=pytesseract.Output.DICT)
+                
+                # Store OCR data for this page
+                page_ocr_data = {
+                    'page_num': i,
+                    'image': image,
+                    'text_data': ocr_data
+                }
+                self.ocr_data.append(page_ocr_data)
+                
+                # Extract text for the page
                 page_text = pytesseract.image_to_string(image, config=custom_config)
                 if page_text.strip():
                     ocr_text += f"\n--- PAGE {i + 1} OCR ---\n"
