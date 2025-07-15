@@ -68,6 +68,12 @@ def upload_results_page(file_parser, data_processor):
         help="Upload PDF or text files containing blood test results"
     )
     
+    # Option to force OCR for difficult PDFs
+    force_ocr = st.checkbox(
+        "Force OCR extraction",
+        help="Use OCR (Optical Character Recognition) for image-based or problematic PDFs. This can help extract text from scanned documents."
+    )
+    
     if uploaded_files:
         st.subheader("Processing Files")
         
@@ -82,7 +88,7 @@ def upload_results_page(file_parser, data_processor):
                     progress_bar.progress(25)
                     
                     # Parse file
-                    extracted_text = file_parser.parse_file(uploaded_file)
+                    extracted_text = file_parser.parse_file(uploaded_file, force_ocr)
                     
                     status_text.text("Extracting test data...")
                     progress_bar.progress(50)
@@ -163,8 +169,8 @@ def upload_results_page(file_parser, data_processor):
                                     
                                     # Add text preview for debugging
                                     with st.expander("Raw extracted text (first 2000 chars)"):
-                                        extracted_text = file_parser.parse_file(uploaded_file)
-                                        st.text(extracted_text[:2000] + "..." if len(extracted_text) > 2000 else extracted_text)
+                                        debug_text = file_parser.parse_file(uploaded_file, force_ocr)
+                                        st.text(debug_text[:2000] + "..." if len(debug_text) > 2000 else debug_text)
                         else:
                             status_text.text("❌ Failed to save")
                             st.error("Failed to save test results to database")

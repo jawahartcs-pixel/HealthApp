@@ -4,6 +4,9 @@ from datetime import datetime, date
 from typing import Dict, List, Any, Optional
 import pdfplumber
 import streamlit as st
+import pytesseract
+from pdf2image import convert_from_bytes
+from PIL import Image
 
 class FileParser:
     def __init__(self):
@@ -140,11 +143,11 @@ class FileParser:
             r'^([A-Z][a-z]+\s+[A-Z][a-z]+)'
         ]
     
-    def parse_file(self, uploaded_file) -> str:
+    def parse_file(self, uploaded_file, force_ocr: bool = False) -> str:
         """Parse uploaded file and extract text content."""
         try:
             if uploaded_file.type == "application/pdf":
-                return self._parse_pdf(uploaded_file)
+                return self._parse_pdf(uploaded_file, force_ocr)
             elif uploaded_file.type == "text/plain":
                 return self._parse_text(uploaded_file)
             else:
@@ -153,13 +156,27 @@ class FileParser:
             st.error(f"Error parsing file: {str(e)}")
             return ""
     
-    def _parse_pdf(self, uploaded_file) -> str:
-        """Extract text from PDF file."""
+    def _parse_pdf(self, uploaded_file, force_ocr: bool = False) -> str:
+        """Extract text from PDF file using both direct text extraction and OCR."""
+        uploaded_file.seek(0)  # Reset file pointer
+        pdf_bytes = uploaded_file.read()
+        
+        # If OCR is forced, skip regular extraction and go straight to OCR
+        if force_ocr:
+            st.info("Using OCR extraction as requested...")
+            try:
+                ocr_text = self._extract_text_with_ocr(pdf_bytes)
+                return "--- OCR EXTRACTED TEXT ---\n" + ocr_text
+            except Exception as ocr_error:
+                st.error(f"OCR extraction failed: {str(ocr_error)}")
+                st.info("Falling back to standard extraction...")
+        
         try:
-            with pdfplumber.open(io.BytesIO(uploaded_file.read())) as pdf:
-                text = ""
-                tables_text = ""
-                
+            text = ""
+            tables_text = ""
+            
+            # First, try regular text extraction
+            with pdfplumber.open(io.BytesIO(pdf_bytes)) as pdf:
                 for page in pdf.pages:
                     # Extract regular text
                     page_text = page.extract_text()
@@ -189,13 +206,88 @@ class FileParser:
                     except Exception as e:
                         # If table extraction fails, continue with text extraction
                         pass
-                
-                # Combine text and table content
-                combined_text = text + "\n\n" + tables_text
-                return combined_text
+            
+            # Combine regular text and table text
+            combined_text = text + "\n\n" + tables_text
+            
+            # If we got very little text, try OCR
+            if len(combined_text.strip()) < 200:
+                st.info("PDF has limited extractable text. Using OCR to read the document...")
+                try:
+                    ocr_text = self._extract_text_with_ocr(pdf_bytes)
+                    combined_text = combined_text + "\n--- OCR EXTRACTED TEXT ---\n" + ocr_text
+                except Exception as ocr_error:
+                    st.warning(f"OCR extraction failed: {str(ocr_error)}")
+            
+            return combined_text
                 
         except Exception as e:
-            raise Exception(f"Error reading PDF: {str(e)}")
+            # Try OCR as fallback
+            st.warning(f"Standard PDF extraction failed: {str(e)}")
+            try:
+                st.info("Attempting OCR as fallback...")
+                ocr_text = self._extract_text_with_ocr(pdf_bytes)
+                return "--- OCR EXTRACTED TEXT ---\n" + ocr_text
+            except Exception as ocr_error:
+                raise Exception(f"Both standard and OCR extraction failed. Standard: {str(e)}, OCR: {str(ocr_error)}")
+    
+    def _extract_text_with_ocr(self, pdf_bytes: bytes) -> str:
+        """Extract text from PDF using OCR."""
+        try:
+            # Configure tesseract for better accuracy with medical documents
+            custom_config = r'--oem 3 --psm 6 -c tessedit_char_whitelist=0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz.,:()/-% '
+            
+            # Convert PDF to images with high DPI for better OCR accuracy
+            images = convert_from_bytes(pdf_bytes, dpi=300, fmt='PNG')
+            
+            ocr_text = ""
+            for i, image in enumerate(images):
+                # Use OCR to extract text from each page
+                page_text = pytesseract.image_to_string(image, config=custom_config)
+                if page_text.strip():
+                    ocr_text += f"\n--- PAGE {i + 1} OCR ---\n"
+                    # Clean and enhance the OCR text
+                    cleaned_text = self._enhance_ocr_text(page_text)
+                    ocr_text += cleaned_text + "\n"
+            
+            return ocr_text
+            
+        except Exception as e:
+            raise Exception(f"OCR extraction failed: {str(e)}")
+    
+    def _enhance_ocr_text(self, text: str) -> str:
+        """Clean and enhance OCR extracted text."""
+        # Remove excessive whitespace
+        text = re.sub(r'\n\s*\n', '\n', text)
+        text = re.sub(r' +', ' ', text)
+        
+        # Fix common OCR errors for medical terms
+        replacements = {
+            'G1ucose': 'Glucose',
+            'HbA1c': 'HbA1c', 
+            'HbAlc': 'HbA1c',
+            'Cho1estero1': 'Cholesterol',
+            'Cholestero1': 'Cholesterol',
+            'Hemog1obin': 'Hemoglobin',
+            'Hemoglobin': 'Hemoglobin',
+            'P1ate1et': 'Platelet',
+            'Platelet': 'Platelet',
+            'Creatinine': 'Creatinine',
+            'mg/d1': 'mg/dl',
+            'mmo1/1': 'mmol/l',
+            'mmol/1': 'mmol/l',
+            'u/1': 'u/l',
+            'U/1': 'U/l',
+            'g/d1': 'g/dl',
+            'µg/d1': 'µg/dl',
+            'ng/m1': 'ng/ml',
+            'mIU/m1': 'mIU/ml'
+        }
+        
+        for wrong, correct in replacements.items():
+            text = text.replace(wrong, correct)
+        
+        return text
     
     def _parse_text(self, uploaded_file) -> str:
         """Extract text from text file."""
