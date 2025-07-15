@@ -787,13 +787,13 @@ class FileParser:
             test_name = result['test_type'].lower().strip()
             test_value = round(result['value'], 2)
             
-            # Create key based on test name similarity
-            test_key = re.sub(r'[^a-z0-9]', '', test_name)
+            # Create key based on test name similarity, preserving "#" symbol
+            test_key = re.sub(r'[^a-z0-9#]', '', test_name)  # Keep # symbol
             
             # Check for duplicates with similar test names
             is_duplicate = False
             for existing_key, existing_result in list(seen.items()):
-                existing_name = re.sub(r'[^a-z0-9]', '', existing_key)
+                existing_name = re.sub(r'[^a-z0-9#]', '', existing_key)  # Keep # symbol
                 
                 # Enhanced duplicate detection for scanned documents
                 # Check if test names are similar
@@ -844,12 +844,18 @@ class FileParser:
     
     def _is_medical_terminology(self, test_name: str) -> bool:
         """Check if test name is a valid medical terminology."""
-        # Normalize test name for comparison
+        # Normalize test name for comparison, preserving "#" symbol
         normalized_name = test_name.lower().strip()
-        normalized_name = re.sub(r'[^\w\s]', '', normalized_name)  # Remove special chars
+        
+        # Check if it has "#" symbol and handle it separately
+        has_hash = " #" in normalized_name
+        if has_hash:
+            normalized_name = normalized_name.replace(" #", "")
+        
+        normalized_name = re.sub(r'[^\w\s]', '', normalized_name)  # Remove special chars except #
         normalized_name = re.sub(r'\s+', '_', normalized_name)     # Replace spaces with underscore
         
-        # Check direct match
+        # Check direct match (both with and without # symbol should be valid)
         if normalized_name in self.medical_terms:
             return True
         
@@ -1054,8 +1060,25 @@ class FileParser:
                     unit = match.group(3).strip() if match.group(3) else ''
                     ref_range = match.group(4).strip() if match.group(4) else ''
                     
-                    # Clean up test name
+                    # Clean up test name but preserve "#" symbol
                     test_name = re.sub(r'\s+', ' ', test_name)
+                    
+                    # Check for "#" symbol near the test name and preserve it
+                    hash_symbol = ""
+                    if '#' in test_name:
+                        # Extract the "#" and clean the rest
+                        hash_symbol = " #"
+                        test_name = test_name.replace('#', '').strip()
+                    
+                    # Look for "#" symbol in the original line context
+                    original_line = match.group(0)
+                    if '#' in original_line and not hash_symbol:
+                        # Check if # appears after the test name within reasonable distance
+                        test_end_pos = original_line.find(test_name) + len(test_name)
+                        remaining_text = original_line[test_end_pos:test_end_pos+10]  # Check next 10 chars
+                        if '#' in remaining_text:
+                            hash_symbol = " #"
+                    
                     test_name = test_name.strip('.,()[]{}')
                     
                     # Skip if test name is too short or looks invalid
@@ -1074,7 +1097,7 @@ class FileParser:
                         continue
                     
                     result = {
-                        'test_type': test_name.title(),
+                        'test_type': (test_name + hash_symbol).title(),
                         'value': value,
                         'unit': unit,
                         'reference_range': ref_range,
@@ -1123,8 +1146,24 @@ class FileParser:
                         test_name = match.group(1).strip()
                         value_str = match.group(2).strip()
                         
-                        # Clean test name
+                        # Clean test name but preserve "#" symbol
                         test_name = re.sub(r'\s+', ' ', test_name)
+                        
+                        # Check for "#" symbol near the test name and preserve it
+                        hash_symbol = ""
+                        if '#' in test_name:
+                            hash_symbol = " #"
+                            test_name = test_name.replace('#', '').strip()
+                        
+                        # Look for "#" symbol in the original line context
+                        if '#' in line and not hash_symbol:
+                            # Check if # appears after the test name within reasonable distance
+                            test_pos = line.find(test_name)
+                            if test_pos >= 0:
+                                remaining_text = line[test_pos + len(test_name):test_pos + len(test_name) + 10]
+                                if '#' in remaining_text:
+                                    hash_symbol = " #"
+                        
                         test_name = test_name.strip('.,()[]{}')
                         
                         # Skip if looks like header or non-test
@@ -1144,7 +1183,7 @@ class FileParser:
                         unit = unit_match.group(2) if unit_match else ''
                         
                         result = {
-                            'test_type': test_name.title(),
+                            'test_type': (test_name + hash_symbol).title(),
                             'value': value,
                             'unit': unit,
                             'reference_range': '',
@@ -1189,8 +1228,24 @@ class FileParser:
                     value_str = match.group(2).strip()
                     unit = match.group(3).strip() if len(match.groups()) > 2 and match.group(3) else ''
                     
-                    # Clean up test name
+                    # Clean up test name but preserve "#" symbol
                     test_name = re.sub(r'\s+', ' ', test_name)
+                    
+                    # Check for "#" symbol near the test name and preserve it
+                    hash_symbol = ""
+                    if '#' in test_name:
+                        hash_symbol = " #"
+                        test_name = test_name.replace('#', '').strip()
+                    
+                    # Look for "#" symbol in the original match context
+                    original_match = match.group(0)
+                    if '#' in original_match and not hash_symbol:
+                        # Check if # appears after the test name within reasonable distance
+                        test_end_pos = original_match.find(test_name) + len(test_name)
+                        remaining_text = original_match[test_end_pos:test_end_pos+10]
+                        if '#' in remaining_text:
+                            hash_symbol = " #"
+                    
                     test_name = test_name.strip('.,()[]{}')
                     
                     # Skip if test name is too short or looks invalid
@@ -1209,7 +1264,7 @@ class FileParser:
                         continue
                     
                     result = {
-                        'test_type': test_name.title(),
+                        'test_type': (test_name + hash_symbol).title(),
                         'value': value,
                         'unit': unit,
                         'reference_range': '',
@@ -1259,8 +1314,24 @@ class FileParser:
                     value_str = match.group(2).strip()
                     unit = match.group(3).strip() if len(match.groups()) > 2 and match.group(3) else ''
                     
-                    # Clean up test name
+                    # Clean up test name but preserve "#" symbol
                     test_name = re.sub(r'\s+', ' ', test_name)
+                    
+                    # Check for "#" symbol near the test name and preserve it
+                    hash_symbol = ""
+                    if '#' in test_name:
+                        hash_symbol = " #"
+                        test_name = test_name.replace('#', '').strip()
+                    
+                    # Look for "#" symbol in the original match context
+                    original_match = match.group(0)
+                    if '#' in original_match and not hash_symbol:
+                        # Check if # appears after the test name within reasonable distance
+                        test_end_pos = original_match.find(test_name) + len(test_name)
+                        remaining_text = original_match[test_end_pos:test_end_pos+10]
+                        if '#' in remaining_text:
+                            hash_symbol = " #"
+                    
                     test_name = test_name.strip('.,()[]{}')
                     
                     # Only include if test name contains known test keywords
@@ -1278,7 +1349,7 @@ class FileParser:
                         continue
                     
                     result = {
-                        'test_type': test_name.title(),
+                        'test_type': (test_name + hash_symbol).title(),
                         'value': value,
                         'unit': unit,
                         'reference_range': '',
