@@ -130,29 +130,28 @@ def upload_results_page(file_parser, data_processor):
                     # Test results preview and editing
                     if test_data.get('results'):
                         st.subheader(f"Review Test Results ({len(test_data['results'])} tests found)")
-                        st.write("Review and edit the extracted test results before saving:")
-                        
-                        # Create editable interface
-                        edited_results = []
-                        
-                        # Header row
-                        col1, col2, col3, col4 = st.columns([3, 2, 2, 1])
-                        with col1:
-                            st.write("**Test Name**")
-                        with col2:
-                            st.write("**Value**") 
-                        with col3:
-                            st.write("**Unit**")
-                        with col4:
-                            st.write("**Include**")
+                        st.write("Review and edit the extracted test results, then add any missing tests:")
                         
                         # Create form for editing
                         with st.form(key=f"edit_results_{uploaded_file.name}"):
+                            # Header row
+                            col1, col2, col3, col4 = st.columns([3, 2, 2, 1])
+                            with col1:
+                                st.write("**Investigation Type**")
+                            with col2:
+                                st.write("**Value**") 
+                            with col3:
+                                st.write("**Unit**")
+                            with col4:
+                                st.write("**Include**")
+                            
+                            # Extracted test results
+                            st.write("**Extracted Tests:**")
                             for i, result in enumerate(test_data['results']):
                                 col1, col2, col3, col4 = st.columns([3, 2, 2, 1])
                                 
                                 with col1:
-                                    test_name = st.text_input(
+                                    st.text_input(
                                         f"Test {i+1}",
                                         value=result['test_type'],
                                         key=f"test_name_{uploaded_file.name}_{i}",
@@ -160,7 +159,7 @@ def upload_results_page(file_parser, data_processor):
                                     )
                                 
                                 with col2:
-                                    test_value = st.number_input(
+                                    st.number_input(
                                         f"Value {i+1}",
                                         value=float(result['value']),
                                         key=f"test_value_{uploaded_file.name}_{i}",
@@ -169,7 +168,7 @@ def upload_results_page(file_parser, data_processor):
                                     )
                                 
                                 with col3:
-                                    test_unit = st.text_input(
+                                    st.text_input(
                                         f"Unit {i+1}",
                                         value=result.get('unit', ''),
                                         key=f"test_unit_{uploaded_file.name}_{i}",
@@ -177,21 +176,62 @@ def upload_results_page(file_parser, data_processor):
                                     )
                                 
                                 with col4:
-                                    include_test = st.checkbox(
+                                    st.checkbox(
                                         f"Include {i+1}",
                                         value=True,
                                         key=f"include_{uploaded_file.name}_{i}",
                                         label_visibility="collapsed"
                                     )
-                                
-                                # Collect edited results
-                                if include_test:
-                                    edited_results.append({
-                                        'test_type': test_name,
-                                        'value': test_value,
-                                        'unit': test_unit,
-                                        'reference_range': result.get('reference_range', '')
-                                    })
+                            
+                            # Additional manual tests section
+                            st.write("**Add Additional Tests (not scanned):**")
+                            
+                            # Number of additional tests to add
+                            num_additional = st.number_input(
+                                "Number of additional tests to add",
+                                min_value=0,
+                                max_value=20,
+                                value=0,
+                                key=f"num_additional_{uploaded_file.name}"
+                            )
+                            
+                            # Additional test inputs
+                            if num_additional > 0:
+                                for i in range(num_additional):
+                                    col1, col2, col3, col4 = st.columns([3, 2, 2, 1])
+                                    
+                                    with col1:
+                                        st.text_input(
+                                            f"Additional Test {i+1}",
+                                            key=f"add_test_name_{uploaded_file.name}_{i}",
+                                            label_visibility="collapsed",
+                                            placeholder="Enter investigation type"
+                                        )
+                                    
+                                    with col2:
+                                        st.number_input(
+                                            f"Additional Value {i+1}",
+                                            value=0.0,
+                                            key=f"add_test_value_{uploaded_file.name}_{i}",
+                                            label_visibility="collapsed",
+                                            format="%.2f"
+                                        )
+                                    
+                                    with col3:
+                                        st.text_input(
+                                            f"Additional Unit {i+1}",
+                                            key=f"add_test_unit_{uploaded_file.name}_{i}",
+                                            label_visibility="collapsed",
+                                            placeholder="mg/dl, g/dl, etc."
+                                        )
+                                    
+                                    with col4:
+                                        st.checkbox(
+                                            f"Add {i+1}",
+                                            value=True,
+                                            key=f"add_include_{uploaded_file.name}_{i}",
+                                            label_visibility="collapsed"
+                                        )
                             
                             # Save button
                             save_clicked = st.form_submit_button("💾 Save Results", type="primary")
@@ -201,7 +241,7 @@ def upload_results_page(file_parser, data_processor):
                                 status_text.text("Saving to database...")
                                 progress_bar.progress(90)
                                 
-                                # Get final edited results (need to rebuild since form values reset)
+                                # Get final edited results from extracted tests
                                 final_results = []
                                 for i, result in enumerate(test_data['results']):
                                     if st.session_state.get(f"include_{uploaded_file.name}_{i}", True):
@@ -212,6 +252,28 @@ def upload_results_page(file_parser, data_processor):
                                             'reference_range': result.get('reference_range', '')
                                         })
                                 
+                                # Add additional manual tests
+                                num_additional = st.session_state.get(f"num_additional_{uploaded_file.name}", 0)
+                                additional_count = 0
+                                
+                                if num_additional > 0:
+                                    for i in range(num_additional):
+                                        if st.session_state.get(f"add_include_{uploaded_file.name}_{i}", True):
+                                            test_name = st.session_state.get(f"add_test_name_{uploaded_file.name}_{i}", "").strip()
+                                            test_value = st.session_state.get(f"add_test_value_{uploaded_file.name}_{i}", 0.0)
+                                            test_unit = st.session_state.get(f"add_test_unit_{uploaded_file.name}_{i}", "").strip()
+                                            
+                                            # Only add if test name is provided and value is not zero
+                                            if test_name and test_value != 0.0:
+                                                final_results.append({
+                                                    'test_type': test_name,
+                                                    'value': test_value,
+                                                    'unit': test_unit,
+                                                    'reference_range': ''
+                                                })
+                                                additional_count += 1
+                                
+                                # Save all results
                                 success = data_processor.save_test_results(
                                     patient_name=patient_name,
                                     test_date=test_date,
@@ -222,7 +284,9 @@ def upload_results_page(file_parser, data_processor):
                                 
                                 if success:
                                     status_text.text("✅ Successfully processed!")
+                                    extracted_count = len([r for i, r in enumerate(test_data['results']) if st.session_state.get(f"include_{uploaded_file.name}_{i}", True)])
                                     st.success(f"Successfully saved {len(final_results)} test results for {patient_name}")
+                                    st.info(f"Extracted: {extracted_count} tests, Additional: {additional_count} tests")
                                     
                                     # Show extraction debug info
                                     with st.expander("Debug: Extraction details"):
