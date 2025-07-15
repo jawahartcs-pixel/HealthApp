@@ -225,11 +225,26 @@ def upload_results_page(file_parser, data_processor, user_id):
                             with col4:
                                 st.write("**Include**")
                             with col5:
-                                st.write("**Search**")
+                                st.write("**Source**")
                             
                             # Extracted test results with comparison help
                             st.write("**Extracted Tests:**")
                             st.caption("💡 Tip: Use the document preview above to verify these extracted values are correct")
+                            
+                            # Quick search buttons for extracted tests (outside form)
+                            if test_data.get('results'):
+                                st.write("**Quick Search in Document:**")
+                                search_cols = st.columns(min(len(test_data['results']), 6))  # Max 6 buttons per row
+                                for i, result in enumerate(test_data['results'][:6]):  # Show first 6 tests
+                                    with search_cols[i]:
+                                        if st.button(f"🔍 {result['test_type'][:10]}{'...' if len(result['test_type']) > 10 else ''}", 
+                                                   key=f"quick_search_{uploaded_file.name}_{i}",
+                                                   help=f"Search for '{result['test_type']}' in document"):
+                                            st.session_state[f"search_{uploaded_file.name}"] = result['test_type']
+                                            st.rerun()
+                                
+                                if len(test_data['results']) > 6:
+                                    st.caption(f"Showing first 6 of {len(test_data['results'])} tests")
                             
                             for i, result in enumerate(test_data['results']):
                                 col1, col2, col3, col4, col5 = st.columns([3, 2, 2, 1, 1])
@@ -271,11 +286,9 @@ def upload_results_page(file_parser, data_processor, user_id):
                                     )
                                 
                                 with col5:
-                                    # Quick search button for this specific test
-                                    if st.button(f"🔍", key=f"search_btn_{uploaded_file.name}_{i}", 
-                                               help=f"Search for '{result['test_type']}' in document"):
-                                        st.session_state[f"search_{uploaded_file.name}"] = result['test_type']
-                                        st.rerun()
+                                    # Show extraction source info instead of button (since buttons can't be in forms)
+                                    source = result.get('source', 'unknown')
+                                    st.caption(f"📄 {source}")
                             
                             # Additional manual tests section
                             st.write("**Add Additional Tests (not scanned):**")
