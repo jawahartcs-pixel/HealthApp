@@ -11,6 +11,7 @@ from visualization import Visualization
 from alert_system import AlertSystem
 from auth_system import AuthSystem
 from auth_ui import AuthUI
+from anomaly_detection import AnomalyDetector
 from utils import validate_date, format_test_value
 
 # Initialize database and components
@@ -27,7 +28,8 @@ def init_components():
     alert_system = AlertSystem(db)
     auth_system = AuthSystem()
     auth_ui = AuthUI(auth_system)
-    return db, file_parser, data_processor, visualization, alert_system, auth_system, auth_ui
+    anomaly_detector = AnomalyDetector(db)
+    return db, file_parser, data_processor, visualization, alert_system, auth_system, auth_ui, anomaly_detector
 
 def main():
     st.set_page_config(
@@ -41,7 +43,7 @@ def main():
     st.markdown("Upload, manage, and visualize patient blood test results")
     
     # Initialize components
-    db, file_parser, data_processor, visualization, alert_system, auth_system, auth_ui = init_components()
+    db, file_parser, data_processor, visualization, alert_system, auth_system, auth_ui, anomaly_detector = init_components()
     
     # Check authentication
     if not auth_ui.check_authentication():
@@ -55,7 +57,7 @@ def main():
     auth_ui.sidebar_user_info()
     
     # Page selection
-    pages = ["Upload Results", "View Patients", "Patient Dashboard", "Search & Filter", "Export Data", "Manage Data", "Alert Dashboard"]
+    pages = ["Upload Results", "View Patients", "Patient Dashboard", "Search & Filter", "Export Data", "Manage Data", "Alert Dashboard", "AI Anomaly Detection"]
     
     # Add profile page for logged-in users
     if st.session_state.get('user_id'):
@@ -80,6 +82,8 @@ def main():
         manage_data_page(db, current_user_id)
     elif page == "Alert Dashboard":
         alert_dashboard_page(alert_system, current_user_id)
+    elif page == "AI Anomaly Detection":
+        ai_anomaly_detection_page(anomaly_detector, current_user_id)
     elif page == "Profile":
         auth_ui.user_profile_page()
 
@@ -1400,6 +1404,256 @@ def alert_dashboard_page(alert_system, user_id):
         st.dataframe(recent_df, use_container_width=True, hide_index=True)
     else:
         st.info("No alerts in the last 7 days.")
+
+def ai_anomaly_detection_page(anomaly_detector, user_id):
+    """AI-powered anomaly detection page."""
+    st.header("🤖 AI-Powered Anomaly Detection")
+    st.markdown("Advanced machine learning algorithms to detect unusual patterns in blood test results")
+    
+    # Analysis options
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        analysis_type = st.selectbox(
+            "Analysis Type",
+            ["All Patients", "Specific Patient", "Anomaly Trends"]
+        )
+    
+    with col2:
+        if analysis_type == "Specific Patient":
+            # Get list of patients for the current user
+            patients = anomaly_detector.database.get_all_patients(user_id)
+            if patients:
+                patient_names = [patient[1] for patient in patients]
+                selected_patient = st.selectbox("Select Patient", patient_names)
+            else:
+                st.warning("No patients found.")
+                return
+        else:
+            selected_patient = None
+    
+    # Analysis controls
+    st.subheader("Analysis Controls")
+    
+    col1, col2, col3 = st.columns(3)
+    
+    with col1:
+        if st.button("🔍 Run Analysis", type="primary"):
+            st.session_state['run_anomaly_analysis'] = True
+    
+    with col2:
+        if st.button("📊 View Trends"):
+            st.session_state['show_trends'] = True
+    
+    with col3:
+        if st.button("🔄 Refresh Data"):
+            st.session_state['refresh_anomaly_data'] = True
+            st.rerun()
+    
+    # Run analysis
+    if st.session_state.get('run_anomaly_analysis', False):
+        st.session_state['run_anomaly_analysis'] = False
+        
+        with st.spinner("🧠 AI is analyzing your data..."):
+            if analysis_type == "All Patients":
+                results = anomaly_detector.detect_anomalies(user_id=user_id)
+            elif analysis_type == "Specific Patient":
+                results = anomaly_detector.get_patient_anomaly_summary(selected_patient, user_id)
+            else:  # Anomaly Trends
+                results = anomaly_detector.get_anomaly_trends(user_id=user_id)
+        
+        if 'error' in results:
+            st.error(f"Analysis failed: {results['error']}")
+            return
+        
+        # Display results based on analysis type
+        if analysis_type == "All Patients":
+            display_all_patients_analysis(results)
+        elif analysis_type == "Specific Patient":
+            display_patient_analysis(results, selected_patient)
+        else:
+            display_trends_analysis(results)
+    
+    # Show trends if requested
+    if st.session_state.get('show_trends', False):
+        st.session_state['show_trends'] = False
+        
+        with st.spinner("Analyzing trends..."):
+            trends = anomaly_detector.get_anomaly_trends(user_id=user_id)
+        
+        if 'error' not in trends:
+            st.subheader("📈 Anomaly Trends")
+            display_trends_analysis(trends)
+
+def display_all_patients_analysis(results):
+    """Display analysis results for all patients."""
+    st.subheader("🔍 Analysis Results")
+    
+    # Summary metrics
+    col1, col2, col3, col4 = st.columns(4)
+    
+    with col1:
+        st.metric("Total Anomalies", results['total_anomalies'])
+    
+    with col2:
+        st.metric("High Severity", results['severity_distribution']['high'])
+    
+    with col3:
+        st.metric("Medium Severity", results['severity_distribution']['medium'])
+    
+    with col4:
+        st.metric("Patients Analyzed", results['data_summary']['total_patients'])
+    
+    # Severity distribution chart
+    if results['total_anomalies'] > 0:
+        severity_data = results['severity_distribution']
+        fig = px.pie(
+            values=list(severity_data.values()),
+            names=list(severity_data.keys()),
+            title="Anomaly Severity Distribution",
+            color_discrete_map={'high': '#ff4444', 'medium': '#ffaa00', 'low': '#44ff44'}
+        )
+        st.plotly_chart(fig, use_container_width=True)
+    
+    # Recommendations
+    if results['recommendations']:
+        st.subheader("🎯 AI Recommendations")
+        
+        for rec in results['recommendations']:
+            severity_color = {
+                'high': '#ff4444',
+                'medium': '#ffaa00',
+                'low': '#44ff44'
+            }.get(rec['priority'], '#888888')
+            
+            st.markdown(f"""
+            <div style="border-left: 4px solid {severity_color}; padding-left: 20px; margin: 10px 0;">
+                <h4>{rec['title']}</h4>
+                <p>{rec['description']}</p>
+                <ul>
+                    {''.join([f'<li>{item}</li>' for item in rec['action_items']])}
+                </ul>
+            </div>
+            """, unsafe_allow_html=True)
+    
+    # Detailed anomalies table
+    if results['anomalies']:
+        st.subheader("📋 Detailed Anomalies")
+        
+        anomaly_data = []
+        for anomaly in results['anomalies']:
+            anomaly_data.append({
+                'Patient': anomaly['patient_name'],
+                'Date': anomaly.get('test_date', 'N/A'),
+                'Method': anomaly.get('detection_method', 'N/A'),
+                'Severity': anomaly.get('severity', 'medium'),
+                'Type': anomaly.get('pattern_type', anomaly.get('test_type', 'N/A')),
+                'Description': anomaly.get('description', 'Anomaly detected')
+            })
+        
+        df = pd.DataFrame(anomaly_data)
+        
+        # Add color coding for severity
+        def highlight_severity(val):
+            if val == 'high':
+                return 'background-color: #ffebee'
+            elif val == 'medium':
+                return 'background-color: #fff3e0'
+            else:
+                return 'background-color: #e8f5e8'
+        
+        styled_df = df.style.applymap(highlight_severity, subset=['Severity'])
+        st.dataframe(styled_df, use_container_width=True, hide_index=True)
+
+def display_patient_analysis(results, patient_name):
+    """Display analysis results for a specific patient."""
+    st.subheader(f"🔍 Analysis Results for {patient_name}")
+    
+    # Summary metrics
+    col1, col2, col3 = st.columns(3)
+    
+    with col1:
+        st.metric("Total Anomalies", results['total_anomalies'])
+    
+    with col2:
+        st.metric("High Severity", results['severity_distribution']['high'])
+    
+    with col3:
+        st.metric("Medium Severity", results['severity_distribution']['medium'])
+    
+    # Patient-specific anomalies
+    if results['anomalies']:
+        st.subheader("📊 Anomaly Details")
+        
+        for anomaly in results['anomalies']:
+            with st.expander(f"{anomaly.get('detection_method', 'Unknown')} - {anomaly.get('severity', 'medium').title()} Severity"):
+                st.markdown(f"**Date:** {anomaly.get('test_date', 'N/A')}")
+                st.markdown(f"**Method:** {anomaly.get('detection_method', 'N/A')}")
+                
+                if 'description' in anomaly:
+                    st.markdown(f"**Description:** {anomaly['description']}")
+                
+                if 'value' in anomaly:
+                    st.markdown(f"**Value:** {anomaly['value']}")
+                
+                if 'tests_involved' in anomaly:
+                    st.markdown(f"**Tests Involved:** {', '.join(anomaly['tests_involved'])}")
+    
+    # Recommendations
+    if results['recommendations']:
+        st.subheader("🎯 Personalized Recommendations")
+        
+        for rec in results['recommendations']:
+            st.markdown(f"""
+            <div style="border-left: 4px solid #4CAF50; padding-left: 20px; margin: 10px 0;">
+                <h4>{rec['title']}</h4>
+                <p>{rec['description']}</p>
+                <ul>
+                    {''.join([f'<li>{item}</li>' for item in rec['action_items']])}
+                </ul>
+            </div>
+            """, unsafe_allow_html=True)
+
+def display_trends_analysis(results):
+    """Display anomaly trends analysis."""
+    st.subheader("📈 Anomaly Trends Analysis")
+    
+    if 'trend_data' in results and results['trend_data']:
+        # Create trend chart
+        trend_df = pd.DataFrame(results['trend_data'])
+        
+        fig = px.line(
+            trend_df,
+            x='week',
+            y='anomaly_count',
+            title=f"Anomaly Trends Over Last {results['period_days']} Days",
+            labels={'week': 'Week', 'anomaly_count': 'Number of Anomalies'}
+        )
+        
+        fig.update_layout(
+            xaxis_title="Week",
+            yaxis_title="Anomaly Count",
+            showlegend=False
+        )
+        
+        st.plotly_chart(fig, use_container_width=True)
+        
+        # Summary statistics
+        col1, col2, col3 = st.columns(3)
+        
+        with col1:
+            st.metric("Total Tests", results['total_tests'])
+        
+        with col2:
+            avg_anomalies = sum(item['anomaly_count'] for item in results['trend_data']) / len(results['trend_data'])
+            st.metric("Avg Anomalies/Week", f"{avg_anomalies:.1f}")
+        
+        with col3:
+            max_anomalies = max(item['anomaly_count'] for item in results['trend_data'])
+            st.metric("Peak Anomalies", max_anomalies)
+    
+    else:
+        st.info("No trend data available for the selected period.")
 
 if __name__ == "__main__":
     main()
