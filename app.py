@@ -412,27 +412,26 @@ def patient_dashboard_page(db, visualization):
             last_test = df['Date'].max().strftime('%Y-%m-%d')
             st.metric("Last Test", last_test)
         
-        # Test type selection for visualization
-        test_types = df['Test Type'].unique().tolist()
-        selected_tests = st.multiselect(
-            "Select test types to visualize",
-            options=test_types,
-            default=test_types[:3] if len(test_types) >= 3 else test_types
-        )
+        # Create individual graphs for each investigation type
+        st.subheader("📈 Investigation Trends")
         
-        if selected_tests:
-            # Create visualizations
-            for test_type in selected_tests:
+        # Get unique test types from database
+        test_types = df['Test Type'].unique().tolist()
+        
+        if test_types:
+            # Create a graph for each investigation type
+            for test_type in test_types:
                 test_data = df[df['Test Type'] == test_type].copy()
                 
                 if not test_data.empty:
+                    # Sort by date for proper trend visualization
+                    test_data = test_data.sort_values('Date')
+                    
+                    # Create trend chart for this investigation type
                     fig = visualization.create_trend_chart(test_data, test_type, selected_patient)
                     st.plotly_chart(fig, use_container_width=True)
-        
-        # Recent test results table
-        st.subheader("📋 Recent Test Results")
-        recent_tests = df.sort_values('Date', ascending=False).head(10)
-        st.dataframe(recent_tests, use_container_width=True, hide_index=True)
+        else:
+            st.info("No test results available for visualization.")
         
         # Complete editable data display at the bottom
         st.subheader("📊 All Collected Data - Editable")

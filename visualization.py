@@ -86,17 +86,33 @@ class Visualization:
             if len(filtered_data) >= 2:
                 self._add_trend_line(fig, filtered_data, color)
             
-            # Update layout
+            # Update layout with proper date handling
             unit = filtered_data['Unit'].iloc[0] if not filtered_data['Unit'].isna().all() else ''
             
             fig.update_layout(
                 title=f"{test_type} Trend for {patient_name}",
                 xaxis_title="Date",
-                yaxis_title=f"{test_type} ({unit})" if unit else test_type,
+                yaxis_title=f"Value ({unit})" if unit else "Value",
                 hovermode='x unified',
-                showlegend=True,
+                showlegend=False,
                 template='plotly_white',
-                height=400
+                height=400,
+                xaxis=dict(
+                    type='date',
+                    showgrid=True,
+                    gridwidth=1,
+                    gridcolor='lightgray',
+                    tickformat='%Y-%m-%d',
+                    # Auto-adjust ticks based on data range
+                    autorange=True,
+                    range=[filtered_data['Date'].min(), filtered_data['Date'].max()]
+                ),
+                yaxis=dict(
+                    showgrid=True,
+                    gridwidth=1,
+                    gridcolor='lightgray',
+                    zeroline=False
+                )
             )
             
             # Add annotations for latest value and trend

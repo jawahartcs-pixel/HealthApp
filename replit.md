@@ -121,7 +121,17 @@ Preferred communication style: Simple, everyday language.
 
 ## Recent Changes
 
-### July 15, 2025 - Comprehensive Editable Patient Dashboard
+### July 15, 2025 - Optimized Patient Dashboard with Individual Investigation Graphs
+- **Individual Investigation Visualizations**: Removed recent test results table and created separate graphs for each investigation type
+  - Automatic graph generation for each unique test type in patient's data
+  - Dates from database only on x-axis with proper date formatting
+  - Value ranges on y-axis with appropriate units
+  - Trend lines and reference ranges where applicable
+- **Enhanced Data Visualization**: Improved chart layout and functionality
+  - Proper date handling without random dates
+  - Auto-adjusted date ranges based on actual test dates
+  - Clean graph styling with grid lines and hover information
+  - Individual color coding for different investigation types
 - **Complete Data Display**: Added comprehensive view of all patient data at dashboard bottom
   - Full database records table with all test results
   - Real-time statistics showing total records, test dates, and test types
