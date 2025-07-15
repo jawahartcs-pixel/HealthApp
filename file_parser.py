@@ -642,8 +642,8 @@ class FileParser:
         # Remove extra whitespace
         text = re.sub(r'\s+', ' ', text)
         
-        # Remove special characters that might interfere with parsing, but preserve "#"
-        text = re.sub(r'[^\w\s\.\-\:\(\)/#]', ' ', text)
+        # Remove special characters that might interfere with parsing
+        text = re.sub(r'[^\w\s\.\-\:\(\)/]', ' ', text)
         
         return text.strip()
     
@@ -787,13 +787,13 @@ class FileParser:
             test_name = result['test_type'].lower().strip()
             test_value = round(result['value'], 2)
             
-            # Create key based on test name similarity, preserving "#" symbol
-            test_key = re.sub(r'[^a-z0-9#]', '', test_name)  # Keep # symbol
+            # Create key based on test name similarity
+            test_key = re.sub(r'[^a-z0-9]', '', test_name)
             
             # Check for duplicates with similar test names
             is_duplicate = False
             for existing_key, existing_result in list(seen.items()):
-                existing_name = re.sub(r'[^a-z0-9#]', '', existing_key)  # Keep # symbol
+                existing_name = re.sub(r'[^a-z0-9]', '', existing_key)
                 
                 # Enhanced duplicate detection for scanned documents
                 # Check if test names are similar
@@ -844,18 +844,12 @@ class FileParser:
     
     def _is_medical_terminology(self, test_name: str) -> bool:
         """Check if test name is a valid medical terminology."""
-        # Normalize test name for comparison, preserving "#" symbol
+        # Normalize test name for comparison
         normalized_name = test_name.lower().strip()
-        
-        # Check if it has "#" symbol and handle it separately
-        has_hash = " #" in normalized_name
-        if has_hash:
-            normalized_name = normalized_name.replace(" #", "")
-        
-        normalized_name = re.sub(r'[^\w\s]', '', normalized_name)  # Remove special chars except #
+        normalized_name = re.sub(r'[^\w\s]', '', normalized_name)  # Remove special chars
         normalized_name = re.sub(r'\s+', '_', normalized_name)     # Replace spaces with underscore
         
-        # Check direct match (both with and without # symbol should be valid)
+        # Check direct match
         if normalized_name in self.medical_terms:
             return True
         
@@ -1024,30 +1018,30 @@ class FileParser:
         """Extract test results from tabular format commonly found in lab reports."""
         results = []
         
-        # Enhanced tabular patterns to capture more variations including decimal numbers and # symbol
+        # Enhanced tabular patterns to capture more variations including decimal numbers
         tabular_patterns = [
             # Tab-separated values with decimal support
-            r'([a-zA-Z][a-zA-Z\s\(\)\/\-\.#]+?)\t+(\d+(?:\.\d+)?)\t*([a-zA-Z\/\%\^µμmM]*)\t*([^\n\r\t]*)',
+            r'([a-zA-Z][a-zA-Z\s\(\)\/\-\.]+?)\t+(\d+(?:\.\d+)?)\t*([a-zA-Z\/\%\^µμmM]*)\t*([^\n\r\t]*)',
             # Multiple spaces with flexible spacing and decimal support
-            r'([a-zA-Z][a-zA-Z\s\(\)\/\-\.#]+?)\s{3,}(\d+(?:\.\d+)?)\s*([a-zA-Z\/\%\^µμmM]*)\s*([^\n\r]*)',
+            r'([a-zA-Z][a-zA-Z\s\(\)\/\-\.]+?)\s{3,}(\d+(?:\.\d+)?)\s*([a-zA-Z\/\%\^µμmM]*)\s*([^\n\r]*)',
             # Values at end of line with decimal support
-            r'([a-zA-Z][a-zA-Z\s\(\)\/\-\.#]+?)\s+(\d+(?:\.\d+)?)\s*([a-zA-Z\/\%\^µμmM]*)\s*$',
+            r'([a-zA-Z][a-zA-Z\s\(\)\/\-\.]+?)\s+(\d+(?:\.\d+)?)\s*([a-zA-Z\/\%\^µμmM]*)\s*$',
             # Pattern with vertical bars, pipes, or dashes with decimal support
-            r'([a-zA-Z][a-zA-Z\s\(\)\/\-\.#]+?)\s*[\|\-]\s*(\d+(?:\.\d+)?)\s*[\|\-]?\s*([a-zA-Z\/\%\^µμmM]*)\s*[\|\-]?\s*([^\n\r]*)',
+            r'([a-zA-Z][a-zA-Z\s\(\)\/\-\.]+?)\s*[\|\-]\s*(\d+(?:\.\d+)?)\s*[\|\-]?\s*([a-zA-Z\/\%\^µμmM]*)\s*[\|\-]?\s*([^\n\r]*)',
             # Pattern with colons and decimal support
-            r'([a-zA-Z][a-zA-Z\s\(\)\/\-\.#]+?):\s*(\d+(?:\.\d+)?)\s*([a-zA-Z\/\%\^µμmM]*)\s*([^\n\r]*)',
+            r'([a-zA-Z][a-zA-Z\s\(\)\/\-\.]+?):\s*(\d+(?:\.\d+)?)\s*([a-zA-Z\/\%\^µμmM]*)\s*([^\n\r]*)',
             # Pattern with dots or dashes leading to values with decimal support
-            r'([a-zA-Z][a-zA-Z\s\(\)\/\-\.#]+?)[\.\-]{2,}\s*(\d+(?:\.\d+)?)\s*([a-zA-Z\/\%\^µμmM]*)\s*([^\n\r]*)',
+            r'([a-zA-Z][a-zA-Z\s\(\)\/\-\.]+?)[\.\-]{2,}\s*(\d+(?:\.\d+)?)\s*([a-zA-Z\/\%\^µμmM]*)\s*([^\n\r]*)',
             # Pattern for values in parentheses or brackets with decimal support
-            r'([a-zA-Z][a-zA-Z\s\(\)\/\-\.#]+?)\s*[\(\[]\s*(\d+(?:\.\d+)?)\s*[\)\]]\s*([a-zA-Z\/\%\^µμmM]*)',
+            r'([a-zA-Z][a-zA-Z\s\(\)\/\-\.]+?)\s*[\(\[]\s*(\d+(?:\.\d+)?)\s*[\)\]]\s*([a-zA-Z\/\%\^µμmM]*)',
             # Pattern for scientific notation values
-            r'([a-zA-Z][a-zA-Z\s\(\)\/\-\.#]+?)\s+(\d+(?:\.\d+)?(?:[eE][\+\-]?\d+)?)\s*([a-zA-Z\/\%\^µμmM]*)\s*([^\n\r]*)',
+            r'([a-zA-Z][a-zA-Z\s\(\)\/\-\.]+?)\s+(\d+(?:\.\d+)?(?:[eE][\+\-]?\d+)?)\s*([a-zA-Z\/\%\^µμmM]*)\s*([^\n\r]*)',
             # Pattern for ranges like "Test Name 10.5 - 15.2" (capture first value)
-            r'([a-zA-Z][a-zA-Z\s\(\)\/\-\.#]+?)\s+(\d+(?:\.\d+)?)\s*[\-\–]\s*\d+(?:\.\d+)?\s*([a-zA-Z\/\%\^µμmM]*)',
+            r'([a-zA-Z][a-zA-Z\s\(\)\/\-\.]+?)\s+(\d+(?:\.\d+)?)\s*[\-\–]\s*\d+(?:\.\d+)?\s*([a-zA-Z\/\%\^µμmM]*)',
             # Pattern for values followed by reference ranges in parentheses
-            r'([a-zA-Z][a-zA-Z\s\(\)\/\-\.#]+?)\s+(\d+(?:\.\d+)?)\s*([a-zA-Z\/\%\^µμmM]*)\s*\([^)]*\)',
+            r'([a-zA-Z][a-zA-Z\s\(\)\/\-\.]+?)\s+(\d+(?:\.\d+)?)\s*([a-zA-Z\/\%\^µμmM]*)\s*\([^)]*\)',
             # Simple pattern for test name followed by number anywhere in line
-            r'^([a-zA-Z][a-zA-Z\s\(\)\/\-\.#]{2,40}?)\s.*?(\d+(?:\.\d+))\s*([a-zA-Z\/\%\^µμmM]*)'
+            r'^([a-zA-Z][a-zA-Z\s\(\)\/\-\.]{2,40}?)\s.*?(\d+(?:\.\d+))\s*([a-zA-Z\/\%\^µμmM]*)'
         ]
         
         for pattern in tabular_patterns:
@@ -1060,19 +1054,8 @@ class FileParser:
                     unit = match.group(3).strip() if match.group(3) else ''
                     ref_range = match.group(4).strip() if match.group(4) else ''
                     
-                    # Clean up test name but preserve "#" symbol
+                    # Clean up test name
                     test_name = re.sub(r'\s+', ' ', test_name)
-                    
-                    # Remove specimen-related contamination from test name only if it's clearly specimen data
-                    specimen_patterns = [
-                        r'^(edta\s+w\.?\s*blood|serum|plasma|urine|whole\s+blood)\s+',
-                        r'\s+(edta\s+w\.?\s*blood|serum|plasma|urine|whole\s+blood)$'
-                    ]
-                    
-                    for pattern in specimen_patterns:
-                        test_name = re.sub(pattern, '', test_name, flags=re.IGNORECASE).strip()
-                    
-                    # Clean up punctuation but preserve "#" symbol naturally occurring in test names
                     test_name = test_name.strip('.,()[]{}')
                     
                     # Skip if test name is too short or looks invalid
@@ -1140,18 +1123,8 @@ class FileParser:
                         test_name = match.group(1).strip()
                         value_str = match.group(2).strip()
                         
-                        # Clean test name but preserve "#" symbol naturally occurring in test names
+                        # Clean test name
                         test_name = re.sub(r'\s+', ' ', test_name)
-                        
-                        # Remove specimen-related contamination from test name only if it's clearly specimen data
-                        specimen_patterns = [
-                            r'^(edta\s+w\.?\s*blood|serum|plasma|urine|whole\s+blood)\s+',
-                            r'\s+(edta\s+w\.?\s*blood|serum|plasma|urine|whole\s+blood)$'
-                        ]
-                        
-                        for pattern in specimen_patterns:
-                            test_name = re.sub(pattern, '', test_name, flags=re.IGNORECASE).strip()
-                        
                         test_name = test_name.strip('.,()[]{}')
                         
                         # Skip if looks like header or non-test
@@ -1216,18 +1189,8 @@ class FileParser:
                     value_str = match.group(2).strip()
                     unit = match.group(3).strip() if len(match.groups()) > 2 and match.group(3) else ''
                     
-                    # Clean up test name but preserve "#" symbol naturally occurring in test names
+                    # Clean up test name
                     test_name = re.sub(r'\s+', ' ', test_name)
-                    
-                    # Remove specimen-related contamination from test name only if it's clearly specimen data
-                    specimen_patterns = [
-                        r'^(edta\s+w\.?\s*blood|serum|plasma|urine|whole\s+blood)\s+',
-                        r'\s+(edta\s+w\.?\s*blood|serum|plasma|urine|whole\s+blood)$'
-                    ]
-                    
-                    for pattern in specimen_patterns:
-                        test_name = re.sub(pattern, '', test_name, flags=re.IGNORECASE).strip()
-                    
                     test_name = test_name.strip('.,()[]{}')
                     
                     # Skip if test name is too short or looks invalid
@@ -1296,18 +1259,8 @@ class FileParser:
                     value_str = match.group(2).strip()
                     unit = match.group(3).strip() if len(match.groups()) > 2 and match.group(3) else ''
                     
-                    # Clean up test name but preserve "#" symbol naturally occurring in test names
+                    # Clean up test name
                     test_name = re.sub(r'\s+', ' ', test_name)
-                    
-                    # Remove specimen-related contamination from test name only if it's clearly specimen data
-                    specimen_patterns = [
-                        r'^(edta\s+w\.?\s*blood|serum|plasma|urine|whole\s+blood)\s+',
-                        r'\s+(edta\s+w\.?\s*blood|serum|plasma|urine|whole\s+blood)$'
-                    ]
-                    
-                    for pattern in specimen_patterns:
-                        test_name = re.sub(pattern, '', test_name, flags=re.IGNORECASE).strip()
-                    
                     test_name = test_name.strip('.,()[]{}')
                     
                     # Only include if test name contains known test keywords
