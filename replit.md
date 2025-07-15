@@ -121,6 +121,22 @@ Preferred communication style: Simple, everyday language.
 
 ## Recent Changes
 
+### July 15, 2025 - OCR Implementation & Preview/Edit Interface
+- **OCR Integration**: Added Tesseract OCR support for image-based and scanned PDFs
+  - Automatic OCR fallback when standard extraction yields limited text
+  - Force OCR option with checkbox for problematic documents
+  - Enhanced medical term correction for common OCR errors
+  - High-quality 300 DPI processing for better accuracy
+- **Preview & Edit Interface**: Added comprehensive review system before saving results
+  - Interactive table for editing test names, values, and units
+  - Checkbox system to include/exclude individual tests
+  - Patient name editing with improved extraction patterns
+  - Form-based editing with real-time preview
+- **Enhanced Patient Name Recognition**: Prioritized patterns looking for text near "Name"
+- **Multi-Layer Extraction Strategy**: 5-tier approach with priority system
+  - Tabular extraction > Line analysis > OCR patterns > Regex > Generic
+- **Improved Debug Information**: Enhanced extraction method tracking and raw text preview
+
 ### July 15, 2025 - Enhanced PDF Parsing & Data Management
 - **Improved PDF Text Extraction**: Added table extraction capability to handle structured lab reports
 - **Multiple Pattern Matching**: Implemented tabular, regex, and generic pattern matching for comprehensive test result extraction

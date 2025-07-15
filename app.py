@@ -106,14 +106,18 @@ def upload_results_page(file_parser, data_processor):
                     status_text.text("Processing patient information...")
                     progress_bar.progress(75)
                     
-                    # Manual patient info input if not found
+                    # Preview and edit extracted data before saving
+                    st.subheader("Preview Extracted Data")
+                    
+                    # Patient information section
                     col1, col2 = st.columns(2)
                     
                     with col1:
                         patient_name = st.text_input(
                             f"Patient Name for {uploaded_file.name}",
                             value=test_data.get('patient_name', ''),
-                            key=f"name_{uploaded_file.name}"
+                            key=f"name_{uploaded_file.name}",
+                            help="Edit the patient name if needed"
                         )
                     
                     with col2:
@@ -123,59 +127,135 @@ def upload_results_page(file_parser, data_processor):
                             key=f"date_{uploaded_file.name}"
                         )
                     
-                    if patient_name:
-                        status_text.text("Saving to database...")
-                        progress_bar.progress(90)
+                    # Test results preview and editing
+                    if test_data.get('results'):
+                        st.subheader(f"Review Test Results ({len(test_data['results'])} tests found)")
+                        st.write("Review and edit the extracted test results before saving:")
                         
-                        # Save to database
-                        success = data_processor.save_test_results(
-                            patient_name=patient_name,
-                            test_date=test_date,
-                            test_results=test_data['results']
-                        )
+                        # Create editable interface
+                        edited_results = []
                         
-                        progress_bar.progress(100)
+                        # Header row
+                        col1, col2, col3, col4 = st.columns([3, 2, 2, 1])
+                        with col1:
+                            st.write("**Test Name**")
+                        with col2:
+                            st.write("**Value**") 
+                        with col3:
+                            st.write("**Unit**")
+                        with col4:
+                            st.write("**Include**")
                         
-                        if success:
-                            status_text.text("✅ Successfully processed!")
-                            st.success(f"Successfully saved {len(test_data['results'])} test results for {patient_name}")
-                            
-                            # Display extracted data
-                            if test_data['results']:
-                                st.subheader(f"Extracted Test Results ({len(test_data['results'])} tests found)")
-                                df = pd.DataFrame(test_data['results'])
-                                st.dataframe(df, use_container_width=True)
+                        # Create form for editing
+                        with st.form(key=f"edit_results_{uploaded_file.name}"):
+                            for i, result in enumerate(test_data['results']):
+                                col1, col2, col3, col4 = st.columns([3, 2, 2, 1])
                                 
-                                # Show extraction method breakdown
-                                with st.expander("Debug: Extraction details"):
-                                    extraction_methods = {}
-                                    for result in test_data['results']:
-                                        method = result.get('source', 'regex')
-                                        extraction_methods[method] = extraction_methods.get(method, 0) + 1
+                                with col1:
+                                    test_name = st.text_input(
+                                        f"Test {i+1}",
+                                        value=result['test_type'],
+                                        key=f"test_name_{uploaded_file.name}_{i}",
+                                        label_visibility="collapsed"
+                                    )
+                                
+                                with col2:
+                                    test_value = st.number_input(
+                                        f"Value {i+1}",
+                                        value=float(result['value']),
+                                        key=f"test_value_{uploaded_file.name}_{i}",
+                                        label_visibility="collapsed",
+                                        format="%.2f"
+                                    )
+                                
+                                with col3:
+                                    test_unit = st.text_input(
+                                        f"Unit {i+1}",
+                                        value=result.get('unit', ''),
+                                        key=f"test_unit_{uploaded_file.name}_{i}",
+                                        label_visibility="collapsed"
+                                    )
+                                
+                                with col4:
+                                    include_test = st.checkbox(
+                                        f"Include {i+1}",
+                                        value=True,
+                                        key=f"include_{uploaded_file.name}_{i}",
+                                        label_visibility="collapsed"
+                                    )
+                                
+                                # Collect edited results
+                                if include_test:
+                                    edited_results.append({
+                                        'test_type': test_name,
+                                        'value': test_value,
+                                        'unit': test_unit,
+                                        'reference_range': result.get('reference_range', '')
+                                    })
+                            
+                            # Save button
+                            save_clicked = st.form_submit_button("💾 Save Results", type="primary")
+                        
+                        if save_clicked and patient_name:
+                            with st.spinner("Saving results..."):
+                                status_text.text("Saving to database...")
+                                progress_bar.progress(90)
+                                
+                                # Get final edited results (need to rebuild since form values reset)
+                                final_results = []
+                                for i, result in enumerate(test_data['results']):
+                                    if st.session_state.get(f"include_{uploaded_file.name}_{i}", True):
+                                        final_results.append({
+                                            'test_type': st.session_state.get(f"test_name_{uploaded_file.name}_{i}", result['test_type']),
+                                            'value': st.session_state.get(f"test_value_{uploaded_file.name}_{i}", result['value']),
+                                            'unit': st.session_state.get(f"test_unit_{uploaded_file.name}_{i}", result.get('unit', '')),
+                                            'reference_range': result.get('reference_range', '')
+                                        })
+                                
+                                success = data_processor.save_test_results(
+                                    patient_name=patient_name,
+                                    test_date=test_date,
+                                    test_results=final_results
+                                )
+                                
+                                progress_bar.progress(100)
+                                
+                                if success:
+                                    status_text.text("✅ Successfully processed!")
+                                    st.success(f"Successfully saved {len(final_results)} test results for {patient_name}")
                                     
-                                    col1, col2 = st.columns(2)
-                                    with col1:
-                                        st.write("**Tests extracted by method:**")
-                                        for method, count in extraction_methods.items():
-                                            st.write(f"- {method.title()}: {count} tests")
-                                    
-                                    with col2:
-                                        st.write("**All extracted values:**")
-                                        for i, result in enumerate(test_data['results'], 1):
-                                            source = result.get('source', 'regex')
-                                            unit = result.get('unit', '')
-                                            unit_text = f" {unit}" if unit else ""
-                                            st.write(f"{i}. {result['test_type']}: {result['value']}{unit_text} ({source})")
-                                    
-                                    # Add text preview for debugging
-                                    with st.expander("Raw extracted text (first 2000 chars)"):
-                                        debug_text = file_parser.parse_file(uploaded_file, force_ocr)
-                                        st.text(debug_text[:2000] + "..." if len(debug_text) > 2000 else debug_text)
-                        else:
-                            status_text.text("❌ Failed to save")
-                            st.error("Failed to save test results to database")
+                                    # Show extraction debug info
+                                    with st.expander("Debug: Extraction details"):
+                                        extraction_methods = {}
+                                        for result in test_data['results']:
+                                            method = result.get('source', 'regex')
+                                            extraction_methods[method] = extraction_methods.get(method, 0) + 1
+                                        
+                                        col1, col2 = st.columns(2)
+                                        with col1:
+                                            st.write("**Tests extracted by method:**")
+                                            for method, count in extraction_methods.items():
+                                                st.write(f"- {method.title()}: {count} tests")
+                                        
+                                        with col2:
+                                            st.write("**All original extracted values:**")
+                                            for i, result in enumerate(test_data['results'], 1):
+                                                source = result.get('source', 'regex')
+                                                unit = result.get('unit', '')
+                                                unit_text = f" {unit}" if unit else ""
+                                                st.write(f"{i}. {result['test_type']}: {result['value']}{unit_text} ({source})")
+                                        
+                                        # Add text preview for debugging
+                                        with st.expander("Raw extracted text (first 2000 chars)"):
+                                            debug_text = file_parser.parse_file(uploaded_file, force_ocr)
+                                            st.text(debug_text[:2000] + "..." if len(debug_text) > 2000 else debug_text)
+                                else:
+                                    status_text.text("❌ Failed to save")
+                                    st.error("Failed to save test results to database")
+                        elif save_clicked and not patient_name:
+                            st.warning("Please enter a patient name to save results")
                     else:
-                        st.warning("Please enter patient name to save the results")
+                        st.warning("No test results found to preview")
                         
                 except Exception as e:
                     st.error(f"Error processing file {uploaded_file.name}: {str(e)}")
