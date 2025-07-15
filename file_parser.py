@@ -571,21 +571,46 @@ class FileParser:
             for existing_key, existing_result in list(seen.items()):
                 existing_name = re.sub(r'[^a-z0-9]', '', existing_key)
                 
-                # Check if test names are similar and values are close
-                if (test_key in existing_name or existing_name in test_key) and len(test_key) > 2:
+                # Enhanced duplicate detection for scanned documents
+                # Check if test names are similar
+                name_similarity = self._calculate_name_similarity(test_key, existing_name)
+                
+                if name_similarity > 0.7 and len(test_key) > 2:  # Similar test names
                     value_diff = abs(test_value - round(existing_result['value'], 2))
-                    if value_diff < 0.1:  # Values are very close
-                        current_priority = source_priority.get(result.get('source', 'regex'), 4)
-                        existing_priority = source_priority.get(existing_result.get('source', 'regex'), 4)
+                    
+                    # For scanned documents, be more lenient with value differences
+                    # due to OCR errors that might cause slight variations
+                    threshold = 0.5 if 'ocr' in result.get('source', '') else 0.1
+                    
+                    if value_diff < threshold:  # Values are close enough
+                        # Choose the result with better source priority
+                        current_priority = source_priority.get(result.get('source', 'regex'), 5)
+                        existing_priority = source_priority.get(existing_result.get('source', 'regex'), 5)
                         
-                        if current_priority <= existing_priority:
-                            # Replace with better source
+                        if current_priority < existing_priority:
+                            # Current result has better source, replace existing
+                            seen[existing_key] = result
                             unique_results = [r for r in unique_results if r != existing_result]
-                            del seen[existing_key]
-                            break
-                        else:
-                            is_duplicate = True
-                            break
+                            unique_results.append(result)
+                        
+                        is_duplicate = True
+                        break
+                
+                # Also check for exact value matches with different test names (common OCR issue)
+                elif abs(test_value - round(existing_result['value'], 2)) < 0.01:
+                    # Same value, check if test names could be OCR variations
+                    if self._could_be_ocr_variation(test_key, existing_name):
+                        # Choose the result with better source or more complete name
+                        current_priority = source_priority.get(result.get('source', 'regex'), 5)
+                        existing_priority = source_priority.get(existing_result.get('source', 'regex'), 5)
+                        
+                        if current_priority < existing_priority or len(test_name) > len(existing_key):
+                            seen[existing_key] = result
+                            unique_results = [r for r in unique_results if r != existing_result]
+                            unique_results.append(result)
+                        
+                        is_duplicate = True
+                        break
             
             if not is_duplicate:
                 seen[test_name] = result
@@ -625,6 +650,108 @@ class FileParser:
             return True
         
         return False
+    
+    def _calculate_name_similarity(self, name1: str, name2: str) -> float:
+        """Calculate similarity between two test names for duplicate detection."""
+        if not name1 or not name2:
+            return 0.0
+        
+        # Convert to lowercase for comparison
+        name1, name2 = name1.lower(), name2.lower()
+        
+        # Exact match
+        if name1 == name2:
+            return 1.0
+        
+        # Check if one is contained in the other
+        if name1 in name2 or name2 in name1:
+            return 0.9
+        
+        # Calculate character overlap
+        set1, set2 = set(name1), set(name2)
+        intersection = len(set1 & set2)
+        union = len(set1 | set2)
+        
+        if union == 0:
+            return 0.0
+        
+        jaccard_similarity = intersection / union
+        
+        # Boost similarity for common medical abbreviations
+        medical_synonyms = {
+            'glucose': ['glu', 'sugar', 'blood_sugar'],
+            'cholesterol': ['chol', 'total_cholesterol'],
+            'hemoglobin': ['hgb', 'hb'],
+            'hematocrit': ['hct', 'pcv'],
+            'platelets': ['plt', 'platelet_count'],
+            'creatinine': ['creat', 'crea'],
+            'triglycerides': ['tg', 'trig'],
+            'bilirubin': ['bili', 'total_bilirubin'],
+            'albumin': ['alb'],
+            'protein': ['prot', 'total_protein']
+        }
+        
+        for main_term, synonyms in medical_synonyms.items():
+            if ((name1 == main_term and name2 in synonyms) or 
+                (name2 == main_term and name1 in synonyms) or
+                (name1 in synonyms and name2 in synonyms)):
+                return 0.95
+        
+        return jaccard_similarity
+    
+    def _could_be_ocr_variation(self, name1: str, name2: str) -> bool:
+        """Check if two test names could be OCR variations of the same test."""
+        if not name1 or not name2:
+            return False
+        
+        # Convert to lowercase for comparison
+        name1, name2 = name1.lower(), name2.lower()
+        
+        # Common OCR character substitutions
+        ocr_substitutions = {
+            'o': ['0', 'c', 'e'],
+            '0': ['o', 'c', 'e'],
+            'i': ['l', '1', 'j'],
+            'l': ['i', '1', 'j'],
+            '1': ['i', 'l', 'j'],
+            'rn': ['m'],
+            'm': ['rn'],
+            'cl': ['d'],
+            'd': ['cl'],
+            'vv': ['w'],
+            'w': ['vv'],
+            'n': ['h'],
+            'h': ['n'],
+            'a': ['o', 'e'],
+            'e': ['c', 'o'],
+            'c': ['e', 'o'],
+            'u': ['n'],
+            'g': ['q'],
+            'q': ['g'],
+            'b': ['6'],
+            '6': ['b'],
+            's': ['5'],
+            '5': ['s']
+        }
+        
+        # Check if names are similar with OCR substitutions
+        def apply_ocr_substitutions(text):
+            variations = [text]
+            for original, substitutes in ocr_substitutions.items():
+                new_variations = []
+                for variation in variations:
+                    new_variations.append(variation)
+                    for substitute in substitutes:
+                        if original in variation:
+                            new_variations.append(variation.replace(original, substitute))
+                variations = new_variations
+            return set(variations)
+        
+        variations1 = apply_ocr_substitutions(name1)
+        variations2 = apply_ocr_substitutions(name2)
+        
+        # Check if any variation of name1 matches any variation of name2
+        return bool(variations1 & variations2) or name1 in variations2 or name2 in variations1
     
     def _get_display_name(self, test_key: str) -> str:
         """Convert test key to display name."""
@@ -865,7 +992,16 @@ class FileParser:
                         'source': 'ocr_pattern'
                     }
                     
-                    results.append(result)
+                    # Check for duplicates within OCR results to reduce noise
+                    is_duplicate = False
+                    for existing_result in results:
+                        if (self._calculate_name_similarity(test_name.lower(), existing_result['test_type'].lower()) > 0.8 and 
+                            abs(value - existing_result['value']) < 0.5):
+                            is_duplicate = True
+                            break
+                    
+                    if not is_duplicate:
+                        results.append(result)
                     
                 except (ValueError, IndexError, AttributeError):
                     continue
