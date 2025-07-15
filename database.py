@@ -247,6 +247,23 @@ class Database:
             print(f"Error deleting test result: {e}")
             return False
     
+    def update_test_result(self, result_id: int, test_type: str, value: float, 
+                          unit: str, test_date: date, reference_range: str = None) -> bool:
+        """Update a specific test result by ID."""
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+                cursor.execute('''
+                    UPDATE test_results 
+                    SET test_type = ?, test_value = ?, unit = ?, test_date = ?, reference_range = ?
+                    WHERE result_id = ?
+                ''', (test_type, value, unit, test_date, reference_range, result_id))
+                conn.commit()
+                return cursor.rowcount > 0
+        except Exception as e:
+            print(f"Error updating test result: {e}")
+            return False
+    
     def delete_test_results_by_date(self, patient_name: str, test_date: date) -> bool:
         """Delete all test results for a patient on a specific date."""
         try:
