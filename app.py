@@ -13,6 +13,7 @@ from auth_system import AuthSystem
 from auth_ui import AuthUI
 from anomaly_detection import AnomalyDetector
 from utils import validate_date, format_test_value
+from image_snippet_extractor import ImageSnippetExtractor
 
 # Initialize database and components
 @st.cache_resource
@@ -171,6 +172,14 @@ def upload_results_page(file_parser, data_processor, user_id):
                     # Extract test data
                     test_data = file_parser.extract_test_data(extracted_text)
                     
+                    # Initialize image snippet extractor for OCR documents
+                    snippet_extractor = None
+                    if uploaded_file.type == "application/pdf" and ("OCR" in extracted_text or force_ocr):
+                        snippet_extractor = ImageSnippetExtractor()
+                        uploaded_file.seek(0)
+                        pdf_bytes = uploaded_file.read()
+                        snippet_extractor.process_pdf_for_snippets(pdf_bytes)
+                    
                     if not test_data or not test_data.get('results'):
                         st.error("No valid blood test data found in the file")
                         # Show extracted text for debugging
@@ -288,6 +297,16 @@ def upload_results_page(file_parser, data_processor, user_id):
                                     # Left side - Original extracted data (read-only display)
                                     with left_col:
                                         st.markdown("**📄 Original Extracted Data:**")
+                                        
+                                        # Show image snippet for OCR documents
+                                        if snippet_extractor:
+                                            snippet_bytes = snippet_extractor.get_image_snippet_for_test(
+                                                result['test_type'], str(result['value'])
+                                            )
+                                            if snippet_bytes:
+                                                st.image(snippet_bytes, caption=f"Document snippet for {result['test_type']}", use_column_width=True)
+                                            else:
+                                                st.caption("📷 No image snippet available for this test")
                                         
                                         # Show context from document
                                         if test_context and "Could not locate" not in test_context:
