@@ -159,13 +159,63 @@ def upload_results_page(file_parser, data_processor, user_id):
                     
                     # Test results preview and editing
                     if test_data.get('results'):
-                        st.subheader(f"Review Test Results ({len(test_data['results'])} tests found)")
-                        st.write("Review and edit the extracted test results, then add any missing tests:")
+                        # Document preview and results comparison
+                        col1, col2 = st.columns([1, 1])
                         
-                        # Create form for editing
+                        with col1:
+                            st.subheader(f"📋 Review Test Results ({len(test_data['results'])} tests found)")
+                            st.write("Review and edit the extracted test results, then add any missing tests:")
+                        
+                        with col2:
+                            st.subheader("📄 Document Preview")
+                            with st.expander("📖 View Original Document Content", expanded=False):
+                                # Display file type and size
+                                file_size = len(uploaded_file.getvalue())
+                                st.caption(f"File: {uploaded_file.name} | Size: {file_size:,} bytes | Type: {uploaded_file.type}")
+                                
+                                # Show extracted text in a scrollable container
+                                if extracted_text:
+                                    # Limit text length for display
+                                    display_text = extracted_text[:3000] + "\n\n... (text truncated for display)" if len(extracted_text) > 3000 else extracted_text
+                                    
+                                    st.text_area(
+                                        "Extracted Document Text",
+                                        value=display_text,
+                                        height=400,
+                                        help="This is the text extracted from your document. Compare with the parsed results below to verify accuracy.",
+                                        label_visibility="collapsed"
+                                    )
+                                    
+                                    # Add search functionality for better comparison
+                                    search_term = st.text_input(
+                                        "🔍 Search in document",
+                                        placeholder="Enter test name or value to highlight in document",
+                                        key=f"search_{uploaded_file.name}"
+                                    )
+                                    
+                                    if search_term:
+                                        # Count occurrences of search term
+                                        occurrences = extracted_text.lower().count(search_term.lower())
+                                        if occurrences > 0:
+                                            st.success(f"Found '{search_term}' {occurrences} time(s) in the document")
+                                        else:
+                                            st.warning(f"'{search_term}' not found in the document")
+                                    
+                                    # Show extraction method used
+                                    if hasattr(test_data, 'extraction_method'):
+                                        st.caption(f"Extraction method: {test_data.get('extraction_method', 'Standard')}")
+                                    
+                                    # Show full text length info
+                                    st.caption(f"Total extracted text: {len(extracted_text):,} characters")
+                                else:
+                                    st.warning("No text could be extracted from this document.")
+                        
+                        # Create form for editing - full width below the preview
+                        st.markdown("---")  # Separator line
+                        
                         with st.form(key=f"edit_results_{uploaded_file.name}"):
                             # Header row
-                            col1, col2, col3, col4 = st.columns([3, 2, 2, 1])
+                            col1, col2, col3, col4, col5 = st.columns([3, 2, 2, 1, 1])
                             with col1:
                                 st.write("**Investigation Type**")
                             with col2:
@@ -174,18 +224,23 @@ def upload_results_page(file_parser, data_processor, user_id):
                                 st.write("**Unit**")
                             with col4:
                                 st.write("**Include**")
+                            with col5:
+                                st.write("**Search**")
                             
-                            # Extracted test results
+                            # Extracted test results with comparison help
                             st.write("**Extracted Tests:**")
+                            st.caption("💡 Tip: Use the document preview above to verify these extracted values are correct")
+                            
                             for i, result in enumerate(test_data['results']):
-                                col1, col2, col3, col4 = st.columns([3, 2, 2, 1])
+                                col1, col2, col3, col4, col5 = st.columns([3, 2, 2, 1, 1])
                                 
                                 with col1:
                                     st.text_input(
                                         f"Test {i+1}",
                                         value=result['test_type'],
                                         key=f"test_name_{uploaded_file.name}_{i}",
-                                        label_visibility="collapsed"
+                                        label_visibility="collapsed",
+                                        help=f"Original extracted: {result['test_type']}"
                                     )
                                 
                                 with col2:
@@ -194,7 +249,8 @@ def upload_results_page(file_parser, data_processor, user_id):
                                         value=float(result['value']),
                                         key=f"test_value_{uploaded_file.name}_{i}",
                                         label_visibility="collapsed",
-                                        format="%.2f"
+                                        format="%.2f",
+                                        help=f"Original extracted: {result['value']}"
                                     )
                                 
                                 with col3:
@@ -202,7 +258,8 @@ def upload_results_page(file_parser, data_processor, user_id):
                                         f"Unit {i+1}",
                                         value=result.get('unit', ''),
                                         key=f"test_unit_{uploaded_file.name}_{i}",
-                                        label_visibility="collapsed"
+                                        label_visibility="collapsed",
+                                        help=f"Original extracted: {result.get('unit', 'No unit found')}"
                                     )
                                 
                                 with col4:
@@ -212,6 +269,13 @@ def upload_results_page(file_parser, data_processor, user_id):
                                         key=f"include_{uploaded_file.name}_{i}",
                                         label_visibility="collapsed"
                                     )
+                                
+                                with col5:
+                                    # Quick search button for this specific test
+                                    if st.button(f"🔍", key=f"search_btn_{uploaded_file.name}_{i}", 
+                                               help=f"Search for '{result['test_type']}' in document"):
+                                        st.session_state[f"search_{uploaded_file.name}"] = result['test_type']
+                                        st.rerun()
                             
                             # Additional manual tests section
                             st.write("**Add Additional Tests (not scanned):**")
@@ -228,7 +292,7 @@ def upload_results_page(file_parser, data_processor, user_id):
                             # Additional test inputs
                             if num_additional > 0:
                                 for i in range(num_additional):
-                                    col1, col2, col3, col4 = st.columns([3, 2, 2, 1])
+                                    col1, col2, col3, col4, col5 = st.columns([3, 2, 2, 1, 1])
                                     
                                     with col1:
                                         st.text_input(
@@ -262,6 +326,10 @@ def upload_results_page(file_parser, data_processor, user_id):
                                             key=f"add_include_{uploaded_file.name}_{i}",
                                             label_visibility="collapsed"
                                         )
+                                    
+                                    with col5:
+                                        # Empty column to maintain layout
+                                        st.write("")
                             
                             # Save button
                             save_clicked = st.form_submit_button("💾 Save Results", type="primary")
