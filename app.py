@@ -107,38 +107,109 @@ def upload_results_page(file_parser, data_processor):
                     progress_bar.progress(75)
                     
                     # Preview and edit extracted data before saving
-                    st.subheader("Preview Extracted Data")
+                    st.subheader("Review & Edit Test Results")
+                    st.write("Review extracted data, edit values, and add additional tests not found by the scanner.")
                     
-                    # Patient information section
-                    col1, col2 = st.columns(2)
-                    
-                    with col1:
-                        patient_name = st.text_input(
-                            f"Patient Name for {uploaded_file.name}",
-                            value=test_data.get('patient_name', ''),
-                            key=f"name_{uploaded_file.name}",
-                            help="Edit the patient name if needed"
-                        )
-                    
-                    with col2:
-                        test_date = st.date_input(
-                            f"Test Date for {uploaded_file.name}",
-                            value=test_data.get('test_date', date.today()),
-                            key=f"date_{uploaded_file.name}"
-                        )
-                    
-                    # Test results preview and editing
-                    if test_data.get('results'):
-                        st.subheader(f"Review Test Results ({len(test_data['results'])} tests found)")
-                        st.write("Review and edit the extracted test results before saving:")
+                    # Create comprehensive form for all data
+                    with st.form(key=f"comprehensive_form_{uploaded_file.name}"):
+                        # Patient information section (editable in form)
+                        st.subheader("Patient Information")
+                        col1, col2 = st.columns(2)
                         
-                        # Create editable interface
-                        edited_results = []
+                        with col1:
+                            patient_name = st.text_input(
+                                "Patient Name",
+                                value=test_data.get('patient_name', ''),
+                                help="Edit the patient name if needed"
+                            )
                         
-                        # Header row
+                        with col2:
+                            test_date = st.date_input(
+                                "Test Report Date", 
+                                value=test_data.get('test_date', date.today()),
+                                help="Edit the test date if needed"
+                            )
+                        
+                        st.divider()
+                        
+                        # Extracted test results section
+                        if test_data.get('results'):
+                            st.subheader(f"Extracted Test Results ({len(test_data['results'])} found)")
+                            st.write("Review and edit the automatically extracted test results:")
+                            
+                            # Header row for extracted results
+                            col1, col2, col3, col4 = st.columns([3, 2, 2, 1])
+                            with col1:
+                                st.write("**Investigation Type**")
+                            with col2:
+                                st.write("**Value**") 
+                            with col3:
+                                st.write("**Unit**")
+                            with col4:
+                                st.write("**Include**")
+                            
+                            # Show extracted results
+                            for i, result in enumerate(test_data['results']):
+                                col1, col2, col3, col4 = st.columns([3, 2, 2, 1])
+                                
+                                with col1:
+                                    st.text_input(
+                                        f"Extracted Test {i+1}",
+                                        value=result['test_type'],
+                                        key=f"extracted_name_{uploaded_file.name}_{i}",
+                                        label_visibility="collapsed"
+                                    )
+                                
+                                with col2:
+                                    st.number_input(
+                                        f"Extracted Value {i+1}",
+                                        value=float(result['value']),
+                                        key=f"extracted_value_{uploaded_file.name}_{i}",
+                                        label_visibility="collapsed",
+                                        format="%.2f"
+                                    )
+                                
+                                with col3:
+                                    st.text_input(
+                                        f"Extracted Unit {i+1}",
+                                        value=result.get('unit', ''),
+                                        key=f"extracted_unit_{uploaded_file.name}_{i}",
+                                        label_visibility="collapsed"
+                                    )
+                                
+                                with col4:
+                                    st.checkbox(
+                                        f"Include extracted {i+1}",
+                                        value=True,
+                                        key=f"include_extracted_{uploaded_file.name}_{i}",
+                                        label_visibility="collapsed"
+                                    )
+                        
+                        st.divider()
+                        
+                        # Manual test entry section
+                        st.subheader("Add Additional Tests")
+                        st.write("Add test results that were not automatically detected:")
+                        
+                        # Initialize session state for manual tests count
+                        manual_count_key = f"manual_count_{uploaded_file.name}"
+                        if manual_count_key not in st.session_state:
+                            st.session_state[manual_count_key] = 3  # Start with 3 empty rows
+                        
+                        # Button to add more manual test rows
+                        col1, col2 = st.columns([1, 4])
+                        with col1:
+                            if st.form_submit_button("➕ Add Row", type="secondary"):
+                                st.session_state[manual_count_key] += 1
+                                st.rerun()
+                        
+                        with col2:
+                            st.write(f"Manual test rows: {st.session_state[manual_count_key]}")
+                        
+                        # Header row for manual tests
                         col1, col2, col3, col4 = st.columns([3, 2, 2, 1])
                         with col1:
-                            st.write("**Test Name**")
+                            st.write("**Investigation Type**")
                         with col2:
                             st.write("**Value**") 
                         with col3:
@@ -146,83 +217,101 @@ def upload_results_page(file_parser, data_processor):
                         with col4:
                             st.write("**Include**")
                         
-                        # Create form for editing
-                        with st.form(key=f"edit_results_{uploaded_file.name}"):
-                            for i, result in enumerate(test_data['results']):
-                                col1, col2, col3, col4 = st.columns([3, 2, 2, 1])
-                                
-                                with col1:
-                                    test_name = st.text_input(
-                                        f"Test {i+1}",
-                                        value=result['test_type'],
-                                        key=f"test_name_{uploaded_file.name}_{i}",
-                                        label_visibility="collapsed"
-                                    )
-                                
-                                with col2:
-                                    test_value = st.number_input(
-                                        f"Value {i+1}",
-                                        value=float(result['value']),
-                                        key=f"test_value_{uploaded_file.name}_{i}",
-                                        label_visibility="collapsed",
-                                        format="%.2f"
-                                    )
-                                
-                                with col3:
-                                    test_unit = st.text_input(
-                                        f"Unit {i+1}",
-                                        value=result.get('unit', ''),
-                                        key=f"test_unit_{uploaded_file.name}_{i}",
-                                        label_visibility="collapsed"
-                                    )
-                                
-                                with col4:
-                                    include_test = st.checkbox(
-                                        f"Include {i+1}",
-                                        value=True,
-                                        key=f"include_{uploaded_file.name}_{i}",
-                                        label_visibility="collapsed"
-                                    )
-                                
-                                # Collect edited results
-                                if include_test:
-                                    edited_results.append({
-                                        'test_type': test_name,
-                                        'value': test_value,
-                                        'unit': test_unit,
-                                        'reference_range': result.get('reference_range', '')
-                                    })
+                        # Manual test entry rows
+                        for i in range(st.session_state[manual_count_key]):
+                            col1, col2, col3, col4 = st.columns([3, 2, 2, 1])
                             
-                            # Save button
-                            save_clicked = st.form_submit_button("💾 Save Results", type="primary")
+                            with col1:
+                                st.text_input(
+                                    f"Manual Test {i+1}",
+                                    key=f"manual_name_{uploaded_file.name}_{i}",
+                                    label_visibility="collapsed",
+                                    placeholder="Enter test name..."
+                                )
+                            
+                            with col2:
+                                st.number_input(
+                                    f"Manual Value {i+1}",
+                                    key=f"manual_value_{uploaded_file.name}_{i}",
+                                    label_visibility="collapsed",
+                                    format="%.2f",
+                                    value=0.0
+                                )
+                            
+                            with col3:
+                                st.text_input(
+                                    f"Manual Unit {i+1}",
+                                    key=f"manual_unit_{uploaded_file.name}_{i}",
+                                    label_visibility="collapsed",
+                                    placeholder="e.g., mg/dl, g/dl"
+                                )
+                            
+                            with col4:
+                                st.checkbox(
+                                    f"Include manual {i+1}",
+                                    key=f"include_manual_{uploaded_file.name}_{i}",
+                                    label_visibility="collapsed"
+                                )
+                        
+                        st.divider()
+                        
+                        # Save button
+                        save_clicked = st.form_submit_button("💾 Save All Results", type="primary", use_container_width=True)
                         
                         if save_clicked and patient_name:
                             with st.spinner("Saving results..."):
                                 status_text.text("Saving to database...")
                                 progress_bar.progress(90)
                                 
-                                # Get final edited results (need to rebuild since form values reset)
+                                # Collect all test results (extracted + manual)
                                 final_results = []
-                                for i, result in enumerate(test_data['results']):
-                                    if st.session_state.get(f"include_{uploaded_file.name}_{i}", True):
-                                        final_results.append({
-                                            'test_type': st.session_state.get(f"test_name_{uploaded_file.name}_{i}", result['test_type']),
-                                            'value': st.session_state.get(f"test_value_{uploaded_file.name}_{i}", result['value']),
-                                            'unit': st.session_state.get(f"test_unit_{uploaded_file.name}_{i}", result.get('unit', '')),
-                                            'reference_range': result.get('reference_range', '')
-                                        })
                                 
-                                success = data_processor.save_test_results(
-                                    patient_name=patient_name,
-                                    test_date=test_date,
-                                    test_results=final_results
-                                )
+                                # Add selected extracted results
+                                if test_data.get('results'):
+                                    for i, result in enumerate(test_data['results']):
+                                        if st.session_state.get(f"include_extracted_{uploaded_file.name}_{i}", True):
+                                            final_results.append({
+                                                'test_type': st.session_state.get(f"extracted_name_{uploaded_file.name}_{i}", result['test_type']),
+                                                'value': st.session_state.get(f"extracted_value_{uploaded_file.name}_{i}", result['value']),
+                                                'unit': st.session_state.get(f"extracted_unit_{uploaded_file.name}_{i}", result.get('unit', '')),
+                                                'reference_range': result.get('reference_range', '')
+                                            })
                                 
-                                progress_bar.progress(100)
+                                # Add manual test results
+                                manual_count = st.session_state.get(f"manual_count_{uploaded_file.name}", 3)
+                                for i in range(manual_count):
+                                    if st.session_state.get(f"include_manual_{uploaded_file.name}_{i}", False):
+                                        test_name = st.session_state.get(f"manual_name_{uploaded_file.name}_{i}", "").strip()
+                                        test_value = st.session_state.get(f"manual_value_{uploaded_file.name}_{i}", 0.0)
+                                        test_unit = st.session_state.get(f"manual_unit_{uploaded_file.name}_{i}", "").strip()
+                                        
+                                        # Only add if test name is provided and value is not zero
+                                        if test_name and test_value != 0.0:
+                                            final_results.append({
+                                                'test_type': test_name,
+                                                'value': test_value,
+                                                'unit': test_unit,
+                                                'reference_range': ''
+                                            })
                                 
-                                if success:
-                                    status_text.text("✅ Successfully processed!")
-                                    st.success(f"Successfully saved {len(final_results)} test results for {patient_name}")
+                                if final_results:
+                                    success = data_processor.save_test_results(
+                                        patient_name=patient_name,
+                                        test_date=test_date,
+                                        test_results=final_results
+                                    )
+                                    
+                                    progress_bar.progress(100)
+                                    
+                                    if success:
+                                        status_text.text("✅ Successfully processed!")
+                                        extracted_count = len([r for i, r in enumerate(test_data.get('results', [])) if st.session_state.get(f"include_extracted_{uploaded_file.name}_{i}", True)])
+                                        manual_count_saved = len(final_results) - extracted_count
+                                        
+                                        st.success(f"Successfully saved {len(final_results)} test results for {patient_name}")
+                                        st.info(f"📊 Breakdown: {extracted_count} extracted tests + {manual_count_saved} manual tests")
+                                else:
+                                    st.warning("No test results selected to save")
                                     
                                     # Show extraction debug info
                                     with st.expander("Debug: Extraction details"):
@@ -255,7 +344,142 @@ def upload_results_page(file_parser, data_processor):
                         elif save_clicked and not patient_name:
                             st.warning("Please enter a patient name to save results")
                     else:
-                        st.warning("No test results found to preview")
+                        # No extracted results - show manual entry form only
+                        st.subheader("Add Test Results Manually")
+                        st.write("No test results were automatically extracted. Please enter the test data manually:")
+                        
+                        with st.form(key=f"manual_only_form_{uploaded_file.name}"):
+                            # Patient information section
+                            st.subheader("Patient Information")
+                            col1, col2 = st.columns(2)
+                            
+                            with col1:
+                                patient_name = st.text_input(
+                                    "Patient Name",
+                                    value=test_data.get('patient_name', ''),
+                                    help="Enter the patient name"
+                                )
+                            
+                            with col2:
+                                test_date = st.date_input(
+                                    "Test Report Date", 
+                                    value=test_data.get('test_date', date.today()),
+                                    help="Enter the test date"
+                                )
+                            
+                            st.divider()
+                            
+                            # Manual test entry section
+                            st.subheader("Test Results")
+                            
+                            # Initialize session state for manual tests count
+                            manual_count_key = f"manual_only_count_{uploaded_file.name}"
+                            if manual_count_key not in st.session_state:
+                                st.session_state[manual_count_key] = 5  # Start with 5 empty rows
+                            
+                            # Button to add more manual test rows
+                            col1, col2 = st.columns([1, 4])
+                            with col1:
+                                if st.form_submit_button("➕ Add Row", type="secondary"):
+                                    st.session_state[manual_count_key] += 1
+                                    st.rerun()
+                            
+                            with col2:
+                                st.write(f"Test entry rows: {st.session_state[manual_count_key]}")
+                            
+                            # Header row
+                            col1, col2, col3, col4 = st.columns([3, 2, 2, 1])
+                            with col1:
+                                st.write("**Investigation Type**")
+                            with col2:
+                                st.write("**Value**") 
+                            with col3:
+                                st.write("**Unit**")
+                            with col4:
+                                st.write("**Include**")
+                            
+                            # Manual test entry rows
+                            for i in range(st.session_state[manual_count_key]):
+                                col1, col2, col3, col4 = st.columns([3, 2, 2, 1])
+                                
+                                with col1:
+                                    st.text_input(
+                                        f"Test {i+1}",
+                                        key=f"manual_only_name_{uploaded_file.name}_{i}",
+                                        label_visibility="collapsed",
+                                        placeholder="Enter test name..."
+                                    )
+                                
+                                with col2:
+                                    st.number_input(
+                                        f"Value {i+1}",
+                                        key=f"manual_only_value_{uploaded_file.name}_{i}",
+                                        label_visibility="collapsed",
+                                        format="%.2f",
+                                        value=0.0
+                                    )
+                                
+                                with col3:
+                                    st.text_input(
+                                        f"Unit {i+1}",
+                                        key=f"manual_only_unit_{uploaded_file.name}_{i}",
+                                        label_visibility="collapsed",
+                                        placeholder="e.g., mg/dl, g/dl"
+                                    )
+                                
+                                with col4:
+                                    st.checkbox(
+                                        f"Include {i+1}",
+                                        key=f"include_manual_only_{uploaded_file.name}_{i}",
+                                        label_visibility="collapsed"
+                                    )
+                            
+                            # Save button
+                            save_manual_clicked = st.form_submit_button("💾 Save Test Results", type="primary", use_container_width=True)
+                            
+                            if save_manual_clicked and patient_name:
+                                with st.spinner("Saving results..."):
+                                    status_text.text("Saving to database...")
+                                    progress_bar.progress(90)
+                                    
+                                    # Collect manual test results
+                                    final_results = []
+                                    manual_count = st.session_state.get(manual_count_key, 5)
+                                    
+                                    for i in range(manual_count):
+                                        if st.session_state.get(f"include_manual_only_{uploaded_file.name}_{i}", False):
+                                            test_name = st.session_state.get(f"manual_only_name_{uploaded_file.name}_{i}", "").strip()
+                                            test_value = st.session_state.get(f"manual_only_value_{uploaded_file.name}_{i}", 0.0)
+                                            test_unit = st.session_state.get(f"manual_only_unit_{uploaded_file.name}_{i}", "").strip()
+                                            
+                                            # Only add if test name is provided and value is not zero
+                                            if test_name and test_value != 0.0:
+                                                final_results.append({
+                                                    'test_type': test_name,
+                                                    'value': test_value,
+                                                    'unit': test_unit,
+                                                    'reference_range': ''
+                                                })
+                                    
+                                    if final_results:
+                                        success = data_processor.save_test_results(
+                                            patient_name=patient_name,
+                                            test_date=test_date,
+                                            test_results=final_results
+                                        )
+                                        
+                                        progress_bar.progress(100)
+                                        
+                                        if success:
+                                            status_text.text("✅ Successfully processed!")
+                                            st.success(f"Successfully saved {len(final_results)} manually entered test results for {patient_name}")
+                                        else:
+                                            status_text.text("❌ Failed to save")
+                                            st.error("Failed to save test results to database")
+                                    else:
+                                        st.warning("No test results entered to save")
+                            elif save_manual_clicked and not patient_name:
+                                st.warning("Please enter a patient name to save results")
                         
                 except Exception as e:
                     st.error(f"Error processing file {uploaded_file.name}: {str(e)}")
