@@ -274,69 +274,68 @@ def upload_results_page(file_parser, data_processor, user_id):
                                 st.caption(f"Showing first 6 of {len(test_data['results'])} tests")
                         
                         with st.form(key=f"edit_results_{uploaded_file.name}"):
-                            # Header row
-                            col1, col2, col3, col4, col5 = st.columns([3, 2, 2, 1, 1])
-                            with col1:
-                                st.write("**Investigation Type**")
-                            with col2:
-                                st.write("**Value**") 
-                            with col3:
-                                st.write("**Unit**")
-                            with col4:
-                                st.write("**Include**")
-                            with col5:
-                                st.write("**Source**")
-                            
-                            # Extracted test results with comparison help
-                            st.write("**Extracted Tests:**")
-                            st.caption("💡 Tip: Use the document preview above to verify these extracted values are correct")
+                            st.write("**Review & Edit Extracted Tests:**")
+                            st.caption("💡 Left side shows original extracted data, right side allows editing before saving")
                             
                             for i, result in enumerate(test_data['results']):
-                                col1, col2, col3, col4, col5 = st.columns([3, 2, 2, 1, 1])
-                                
                                 # Get context text for this specific test
                                 test_context = _get_test_context(extracted_text, result)
                                 
-                                with col1:
-                                    st.text_input(
-                                        f"Test {i+1}",
-                                        value=result['test_type'],
-                                        key=f"test_name_{uploaded_file.name}_{i}",
-                                        label_visibility="collapsed",
-                                        help=f"📄 Context from document:\n{test_context}\n\n🔍 Original extracted: {result['test_type']}"
-                                    )
-                                
-                                with col2:
-                                    st.number_input(
-                                        f"Value {i+1}",
-                                        value=float(result['value']),
-                                        key=f"test_value_{uploaded_file.name}_{i}",
-                                        label_visibility="collapsed",
-                                        format="%.2f",
-                                        help=f"📄 Context from document:\n{test_context}\n\n🔍 Original extracted: {result['value']}"
-                                    )
-                                
-                                with col3:
-                                    st.text_input(
-                                        f"Unit {i+1}",
-                                        value=result.get('unit', ''),
-                                        key=f"test_unit_{uploaded_file.name}_{i}",
-                                        label_visibility="collapsed",
-                                        help=f"📄 Context from document:\n{test_context}\n\n🔍 Original extracted: {result.get('unit', 'No unit found')}"
-                                    )
-                                
-                                with col4:
-                                    st.checkbox(
-                                        f"Include {i+1}",
-                                        value=True,
-                                        key=f"include_{uploaded_file.name}_{i}",
-                                        label_visibility="collapsed"
-                                    )
-                                
-                                with col5:
-                                    # Show extraction source info
-                                    source = result.get('source', 'unknown')
-                                    st.caption(f"📄 {source}")
+                                # Create expandable section for each test
+                                with st.expander(f"Test {i+1}: {result['test_type']} = {result['value']} {result.get('unit', '')}", expanded=True):
+                                    left_col, right_col = st.columns([1, 1])
+                                    
+                                    # Left side - Original extracted data (read-only display)
+                                    with left_col:
+                                        st.markdown("**📄 Original Extracted Data:**")
+                                        
+                                        # Show context from document
+                                        if test_context and "Could not locate" not in test_context:
+                                            st.info(f"**Context from document:**\n{test_context}")
+                                        
+                                        # Show original values in a clean format
+                                        st.code(f"""Investigation: {result['test_type']}
+Value: {result['value']}
+Unit: {result.get('unit', 'Not specified')}
+Reference Range: {result.get('reference_range', 'Not specified')}
+Extraction Method: {result.get('source', 'regex')}""")
+                                    
+                                    # Right side - Editable fields
+                                    with right_col:
+                                        st.markdown("**✏️ Edit Before Saving:**")
+                                        
+                                        # Editable investigation type
+                                        st.text_input(
+                                            "Investigation Type",
+                                            value=result['test_type'],
+                                            key=f"test_name_{uploaded_file.name}_{i}",
+                                            help="Edit the test name if needed"
+                                        )
+                                        
+                                        # Editable value
+                                        st.number_input(
+                                            "Value",
+                                            value=float(result['value']),
+                                            key=f"test_value_{uploaded_file.name}_{i}",
+                                            format="%.2f",
+                                            help="Edit the test value if needed"
+                                        )
+                                        
+                                        # Editable unit
+                                        st.text_input(
+                                            "Unit",
+                                            value=result.get('unit', ''),
+                                            key=f"test_unit_{uploaded_file.name}_{i}",
+                                            help="Edit the unit if needed"
+                                        )
+                                        
+                                        # Include checkbox
+                                        st.checkbox(
+                                            "Include this test in results",
+                                            value=True,
+                                            key=f"include_{uploaded_file.name}_{i}",
+                                            help="Uncheck to exclude this test from being saved"
+                                        )
                             
                             # Additional manual tests section
                             st.write("**Add Additional Tests (not scanned):**")
