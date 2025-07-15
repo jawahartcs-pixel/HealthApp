@@ -1,22 +1,30 @@
 import streamlit as st
 import pandas as pd
-import os
-from datetime import datetime, date
-import plotly.express as px
-import plotly.graph_objects as go
+from datetime import date, datetime
 from database import Database
 from file_parser import FileParser
 from data_processor import DataProcessor
 from visualization import Visualization
-from utils import validate_date, format_test_value
+from utils import *
 
-# Initialize database and components
+# Set page config
+st.set_page_config(
+    page_title="Blood Test Results Manager",
+    page_icon="🩺",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
+
 @st.cache_resource
 def init_database():
-    return Database()
+    """Initialize database connection."""
+    db = Database()
+    db.init_database()
+    return db
 
 @st.cache_resource
 def init_components():
+    """Initialize all components."""
     db = init_database()
     file_parser = FileParser()
     data_processor = DataProcessor(db)
@@ -24,15 +32,8 @@ def init_components():
     return db, file_parser, data_processor, visualization
 
 def main():
-    st.set_page_config(
-        page_title="Blood Test Results Management",
-        page_icon="🩸",
-        layout="wide",
-        initial_sidebar_state="expanded"
-    )
-    
-    st.title("🩸 Blood Test Results Management")
-    st.markdown("Upload, manage, and visualize patient blood test results")
+    """Main application function."""
+    st.title("🩺 Blood Test Results Management System")
     
     # Initialize components
     db, file_parser, data_processor, visualization = init_components()
@@ -41,7 +42,7 @@ def main():
     st.sidebar.title("Navigation")
     page = st.sidebar.selectbox(
         "Select Page",
-        ["Upload Results", "View Patients", "Patient Dashboard", "Search & Filter", "Export Data", "Manage Data"]
+        ["Upload Results", "View Patients", "Patient Dashboard", "Search & Filter", "Export Data", "Manage Data", "Learning Statistics"]
     )
     
     if page == "Upload Results":
@@ -56,19 +57,23 @@ def main():
         export_data_page(db)
     elif page == "Manage Data":
         manage_data_page(db)
+    elif page == "Learning Statistics":
+        learning_stats_page(file_parser.learning_system)
 
 def upload_results_page(file_parser, data_processor):
-    st.header("📁 Upload Blood Test Results")
+    """Handle file upload and test results extraction."""
+    st.title("📄 Upload Blood Test Results")
+    st.write("Upload PDF, Word, or text files containing blood test results to extract and save patient data.")
     
     # File upload
     uploaded_files = st.file_uploader(
-        "Choose blood test result files",
+        "Choose blood test files",
         type=['pdf', 'txt', 'docx'],
         accept_multiple_files=True,
-        help="Upload PDF, Word (.docx), or text files containing blood test results"
+        help="Supported formats: PDF, TXT, DOCX files"
     )
     
-    # Option to force OCR for difficult PDFs
+    # OCR option
     force_ocr = st.checkbox(
         "Force OCR extraction",
         help="Use OCR (Optical Character Recognition) for image-based or problematic PDFs. This can help extract text from scanned documents."
@@ -96,48 +101,112 @@ def upload_results_page(file_parser, data_processor):
                     # Extract test data
                     test_data = file_parser.extract_test_data(extracted_text)
                     
-                    if not test_data or not test_data.get('results'):
-                        st.error("No valid blood test data found in the file")
-                        # Show extracted text for debugging
-                        with st.expander("Debug: Show extracted text"):
-                            st.text_area("Extracted text", extracted_text[:1000] + "..." if len(extracted_text) > 1000 else extracted_text, height=200)
-                        continue
-                    
-                    status_text.text("Processing patient information...")
-                    progress_bar.progress(75)
-                    
-                    # Preview and edit extracted data before saving
-                    st.subheader("Review & Edit Test Results")
-                    st.write("Review extracted data, edit values, and add additional tests not found by the scanner.")
-                    
-                    # Create comprehensive form for all data
-                    with st.form(key=f"comprehensive_form_{uploaded_file.name}"):
-                        # Patient information section (editable in form)
-                        st.subheader("Patient Information")
-                        col1, col2 = st.columns(2)
+                    # Check if we found test results
+                    if test_data and test_data.get('results'):
+                        status_text.text("Processing patient information...")
+                        progress_bar.progress(75)
                         
-                        with col1:
-                            patient_name = st.text_input(
-                                "Patient Name",
-                                value=test_data.get('patient_name', ''),
-                                help="Edit the patient name if needed"
-                            )
+                        # Preview and edit extracted data before saving
+                        st.subheader("Review & Edit Test Results")
+                        st.write("Review extracted data, edit values, and add additional tests not found by the scanner.")
                         
-                        with col2:
-                            test_date = st.date_input(
-                                "Test Report Date", 
-                                value=test_data.get('test_date', date.today()),
-                                help="Edit the test date if needed"
-                            )
-                        
-                        st.divider()
-                        
-                        # Extracted test results section
-                        if test_data.get('results'):
-                            st.subheader(f"Extracted Test Results ({len(test_data['results'])} found)")
-                            st.write("Review and edit the automatically extracted test results:")
+                        # Create comprehensive form for all data
+                        with st.form(key=f"comprehensive_form_{uploaded_file.name}"):
+                            # Patient information section (editable in form)
+                            st.subheader("Patient Information")
+                            col1, col2 = st.columns(2)
                             
-                            # Header row for extracted results
+                            with col1:
+                                patient_name = st.text_input(
+                                    "Patient Name",
+                                    value=test_data.get('patient_name', ''),
+                                    help="Edit the patient name if needed"
+                                )
+                            
+                            with col2:
+                                test_date = st.date_input(
+                                    "Test Report Date", 
+                                    value=test_data.get('test_date', date.today()),
+                                    help="Edit the test date if needed"
+                                )
+                            
+                            st.divider()
+                            
+                            # Extracted test results section
+                            if test_data.get('results'):
+                                st.subheader(f"Extracted Test Results ({len(test_data['results'])} found)")
+                                st.write("Review and edit the automatically extracted test results:")
+                                
+                                # Header row for extracted results
+                                col1, col2, col3, col4 = st.columns([3, 2, 2, 1])
+                                with col1:
+                                    st.write("**Investigation Type**")
+                                with col2:
+                                    st.write("**Value**") 
+                                with col3:
+                                    st.write("**Unit**")
+                                with col4:
+                                    st.write("**Include**")
+                                
+                                # Show extracted results
+                                for i, result in enumerate(test_data['results']):
+                                    col1, col2, col3, col4 = st.columns([3, 2, 2, 1])
+                                    
+                                    with col1:
+                                        st.text_input(
+                                            f"Extracted Test {i+1}",
+                                            value=result['test_type'],
+                                            key=f"extracted_name_{uploaded_file.name}_{i}",
+                                            label_visibility="collapsed"
+                                        )
+                                    
+                                    with col2:
+                                        st.number_input(
+                                            f"Extracted Value {i+1}",
+                                            value=float(result['value']),
+                                            key=f"extracted_value_{uploaded_file.name}_{i}",
+                                            label_visibility="collapsed",
+                                            format="%.2f"
+                                        )
+                                    
+                                    with col3:
+                                        st.text_input(
+                                            f"Extracted Unit {i+1}",
+                                            value=result.get('unit', ''),
+                                            key=f"extracted_unit_{uploaded_file.name}_{i}",
+                                            label_visibility="collapsed"
+                                        )
+                                    
+                                    with col4:
+                                        st.checkbox(
+                                            f"Include extracted {i+1}",
+                                            value=True,
+                                            key=f"include_extracted_{uploaded_file.name}_{i}",
+                                            label_visibility="collapsed"
+                                        )
+                            
+                            st.divider()
+                            
+                            # Manual test entry section
+                            st.subheader("Add Additional Tests")
+                            st.write("Add test results that were not automatically detected:")
+                            
+                            # Initialize session state for manual tests count
+                            manual_count_key = f"manual_count_{uploaded_file.name}"
+                            if manual_count_key not in st.session_state:
+                                st.session_state[manual_count_key] = 3  # Start with 3 empty rows
+                            
+                            # Button to add more manual test rows
+                            col1, col2 = st.columns([1, 4])
+                            with col1:
+                                if st.form_submit_button("➕ Add Row", type="secondary"):
+                                    st.session_state[manual_count_key] += 1
+                                    st.rerun()
+                            
+                            with col2:
+                                st.write(f"Manual test rows: {st.session_state[manual_count_key]}")
+                            
+                            # Header row for manual tests
                             col1, col2, col3, col4 = st.columns([3, 2, 2, 1])
                             with col1:
                                 st.write("**Investigation Type**")
@@ -148,201 +217,155 @@ def upload_results_page(file_parser, data_processor):
                             with col4:
                                 st.write("**Include**")
                             
-                            # Show extracted results
-                            for i, result in enumerate(test_data['results']):
+                            # Manual test entry rows
+                            for i in range(st.session_state[manual_count_key]):
                                 col1, col2, col3, col4 = st.columns([3, 2, 2, 1])
                                 
                                 with col1:
                                     st.text_input(
-                                        f"Extracted Test {i+1}",
-                                        value=result['test_type'],
-                                        key=f"extracted_name_{uploaded_file.name}_{i}",
-                                        label_visibility="collapsed"
+                                        f"Manual Test {i+1}",
+                                        key=f"manual_name_{uploaded_file.name}_{i}",
+                                        label_visibility="collapsed",
+                                        placeholder="Enter test name..."
                                     )
                                 
                                 with col2:
                                     st.number_input(
-                                        f"Extracted Value {i+1}",
-                                        value=float(result['value']),
-                                        key=f"extracted_value_{uploaded_file.name}_{i}",
+                                        f"Manual Value {i+1}",
+                                        key=f"manual_value_{uploaded_file.name}_{i}",
                                         label_visibility="collapsed",
-                                        format="%.2f"
+                                        format="%.2f",
+                                        value=0.0
                                     )
                                 
                                 with col3:
                                     st.text_input(
-                                        f"Extracted Unit {i+1}",
-                                        value=result.get('unit', ''),
-                                        key=f"extracted_unit_{uploaded_file.name}_{i}",
-                                        label_visibility="collapsed"
+                                        f"Manual Unit {i+1}",
+                                        key=f"manual_unit_{uploaded_file.name}_{i}",
+                                        label_visibility="collapsed",
+                                        placeholder="e.g., mg/dl, g/dl"
                                     )
                                 
                                 with col4:
                                     st.checkbox(
-                                        f"Include extracted {i+1}",
-                                        value=True,
-                                        key=f"include_extracted_{uploaded_file.name}_{i}",
+                                        f"Include manual {i+1}",
+                                        key=f"include_manual_{uploaded_file.name}_{i}",
                                         label_visibility="collapsed"
                                     )
-                        
-                        st.divider()
-                        
-                        # Manual test entry section
-                        st.subheader("Add Additional Tests")
-                        st.write("Add test results that were not automatically detected:")
-                        
-                        # Initialize session state for manual tests count
-                        manual_count_key = f"manual_count_{uploaded_file.name}"
-                        if manual_count_key not in st.session_state:
-                            st.session_state[manual_count_key] = 3  # Start with 3 empty rows
-                        
-                        # Button to add more manual test rows
-                        col1, col2 = st.columns([1, 4])
-                        with col1:
-                            if st.form_submit_button("➕ Add Row", type="secondary"):
-                                st.session_state[manual_count_key] += 1
-                                st.rerun()
-                        
-                        with col2:
-                            st.write(f"Manual test rows: {st.session_state[manual_count_key]}")
-                        
-                        # Header row for manual tests
-                        col1, col2, col3, col4 = st.columns([3, 2, 2, 1])
-                        with col1:
-                            st.write("**Investigation Type**")
-                        with col2:
-                            st.write("**Value**") 
-                        with col3:
-                            st.write("**Unit**")
-                        with col4:
-                            st.write("**Include**")
-                        
-                        # Manual test entry rows
-                        for i in range(st.session_state[manual_count_key]):
-                            col1, col2, col3, col4 = st.columns([3, 2, 2, 1])
                             
-                            with col1:
-                                st.text_input(
-                                    f"Manual Test {i+1}",
-                                    key=f"manual_name_{uploaded_file.name}_{i}",
-                                    label_visibility="collapsed",
-                                    placeholder="Enter test name..."
-                                )
+                            st.divider()
                             
-                            with col2:
-                                st.number_input(
-                                    f"Manual Value {i+1}",
-                                    key=f"manual_value_{uploaded_file.name}_{i}",
-                                    label_visibility="collapsed",
-                                    format="%.2f",
-                                    value=0.0
-                                )
+                            # Save button
+                            save_clicked = st.form_submit_button("💾 Save All Results", type="primary", use_container_width=True)
                             
-                            with col3:
-                                st.text_input(
-                                    f"Manual Unit {i+1}",
-                                    key=f"manual_unit_{uploaded_file.name}_{i}",
-                                    label_visibility="collapsed",
-                                    placeholder="e.g., mg/dl, g/dl"
-                                )
-                            
-                            with col4:
-                                st.checkbox(
-                                    f"Include manual {i+1}",
-                                    key=f"include_manual_{uploaded_file.name}_{i}",
-                                    label_visibility="collapsed"
-                                )
-                        
-                        st.divider()
-                        
-                        # Save button
-                        save_clicked = st.form_submit_button("💾 Save All Results", type="primary", use_container_width=True)
-                        
-                        if save_clicked and patient_name:
-                            with st.spinner("Saving results..."):
-                                status_text.text("Saving to database...")
-                                progress_bar.progress(90)
-                                
-                                # Collect all test results (extracted + manual)
-                                final_results = []
-                                
-                                # Add selected extracted results
-                                if test_data.get('results'):
-                                    for i, result in enumerate(test_data['results']):
+                            if save_clicked and patient_name:
+                                with st.spinner("Saving results..."):
+                                    status_text.text("Saving to database...")
+                                    progress_bar.progress(90)
+                                    
+                                    # Collect final results (extracted + manual)
+                                    final_results = []
+                                    
+                                    # Add selected extracted results
+                                    for i, result in enumerate(test_data.get('results', [])):
                                         if st.session_state.get(f"include_extracted_{uploaded_file.name}_{i}", True):
-                                            final_results.append({
-                                                'test_type': st.session_state.get(f"extracted_name_{uploaded_file.name}_{i}", result['test_type']),
-                                                'value': st.session_state.get(f"extracted_value_{uploaded_file.name}_{i}", result['value']),
-                                                'unit': st.session_state.get(f"extracted_unit_{uploaded_file.name}_{i}", result.get('unit', '')),
-                                                'reference_range': result.get('reference_range', '')
-                                            })
-                                
-                                # Add manual test results
-                                manual_count = st.session_state.get(f"manual_count_{uploaded_file.name}", 3)
-                                for i in range(manual_count):
-                                    if st.session_state.get(f"include_manual_{uploaded_file.name}_{i}", False):
-                                        test_name = st.session_state.get(f"manual_name_{uploaded_file.name}_{i}", "").strip()
-                                        test_value = st.session_state.get(f"manual_value_{uploaded_file.name}_{i}", 0.0)
-                                        test_unit = st.session_state.get(f"manual_unit_{uploaded_file.name}_{i}", "").strip()
-                                        
-                                        # Only add if test name is provided and value is not zero
-                                        if test_name and test_value != 0.0:
+                                            test_name = st.session_state.get(f"extracted_name_{uploaded_file.name}_{i}", result['test_type'])
+                                            test_value = st.session_state.get(f"extracted_value_{uploaded_file.name}_{i}", result['value'])
+                                            test_unit = st.session_state.get(f"extracted_unit_{uploaded_file.name}_{i}", result.get('unit', ''))
+                                            
                                             final_results.append({
                                                 'test_type': test_name,
                                                 'value': test_value,
                                                 'unit': test_unit,
-                                                'reference_range': ''
+                                                'reference_range': result.get('reference_range', '')
                                             })
-                                
-                                if final_results:
-                                    success = data_processor.save_test_results(
-                                        patient_name=patient_name,
-                                        test_date=test_date,
-                                        test_results=final_results
-                                    )
                                     
-                                    progress_bar.progress(100)
+                                    # Add manual test results
+                                    manual_count = st.session_state.get(manual_count_key, 3)
+                                    for i in range(manual_count):
+                                        if st.session_state.get(f"include_manual_{uploaded_file.name}_{i}", False):
+                                            test_name = st.session_state.get(f"manual_name_{uploaded_file.name}_{i}", "").strip()
+                                            test_value = st.session_state.get(f"manual_value_{uploaded_file.name}_{i}", 0.0)
+                                            test_unit = st.session_state.get(f"manual_unit_{uploaded_file.name}_{i}", "").strip()
+                                            
+                                            # Only add if test name is provided and value is not zero
+                                            if test_name and test_value != 0.0:
+                                                final_results.append({
+                                                    'test_type': test_name,
+                                                    'value': test_value,
+                                                    'unit': test_unit,
+                                                    'reference_range': ''
+                                                })
                                     
-                                    if success:
-                                        status_text.text("✅ Successfully processed!")
-                                        extracted_count = len([r for i, r in enumerate(test_data.get('results', [])) if st.session_state.get(f"include_extracted_{uploaded_file.name}_{i}", True)])
-                                        manual_count_saved = len(final_results) - extracted_count
+                                    if final_results:
+                                        # Learn from user edits before saving
+                                        original_results = test_data.get('test_results', [])
+                                        extraction_methods = test_data.get('extraction_methods', {})
                                         
-                                        st.success(f"Successfully saved {len(final_results)} test results for {patient_name}")
-                                        st.info(f"📊 Breakdown: {extracted_count} extracted tests + {manual_count_saved} manual tests")
-                                else:
-                                    st.warning("No test results selected to save")
-                                    
-                                    # Show extraction debug info
-                                    with st.expander("Debug: Extraction details"):
-                                        extraction_methods = {}
-                                        for result in test_data['results']:
-                                            method = result.get('source', 'regex')
-                                            extraction_methods[method] = extraction_methods.get(method, 0) + 1
+                                        # Track user corrections and performance
+                                        corrected_count, added_count = file_parser.learning_system.learn_from_user_edits(
+                                            original_results, final_results, extraction_methods
+                                        )
                                         
-                                        col1, col2 = st.columns(2)
-                                        with col1:
-                                            st.write("**Tests extracted by method:**")
-                                            for method, count in extraction_methods.items():
-                                                st.write(f"- {method.title()}: {count} tests")
+                                        # Track extraction performance
+                                        file_parser.learning_system.track_extraction_performance(
+                                            document_type=uploaded_file.type,
+                                            extraction_methods=extraction_methods,
+                                            original_count=len(original_results),
+                                            final_count=len(final_results),
+                                            corrected_count=corrected_count,
+                                            added_count=added_count
+                                        )
                                         
-                                        with col2:
-                                            st.write("**All original extracted values:**")
-                                            for i, result in enumerate(test_data['results'], 1):
-                                                source = result.get('source', 'regex')
-                                                unit = result.get('unit', '')
-                                                unit_text = f" {unit}" if unit else ""
-                                                st.write(f"{i}. {result['test_type']}: {result['value']}{unit_text} ({source})")
+                                        success = data_processor.save_test_results(
+                                            patient_name=patient_name,
+                                            test_date=test_date,
+                                            test_results=final_results
+                                        )
                                         
-                                        # Add text preview for debugging
-                                        with st.expander("Raw extracted text (first 2000 chars)"):
-                                            debug_text = file_parser.parse_file(uploaded_file, force_ocr)
-                                            st.text(debug_text[:2000] + "..." if len(debug_text) > 2000 else debug_text)
-                                else:
-                                    status_text.text("❌ Failed to save")
-                                    st.error("Failed to save test results to database")
-                        elif save_clicked and not patient_name:
-                            st.warning("Please enter a patient name to save results")
+                                        progress_bar.progress(100)
+                                        
+                                        if success:
+                                            status_text.text("✅ Successfully processed!")
+                                            extracted_count = len([r for i, r in enumerate(test_data.get('results', [])) if st.session_state.get(f"include_extracted_{uploaded_file.name}_{i}", True)])
+                                            manual_count_saved = len(final_results) - extracted_count
+                                            
+                                            st.success(f"Successfully saved {len(final_results)} test results for {patient_name}")
+                                            st.info(f"📊 Breakdown: {extracted_count} extracted tests + {manual_count_saved} manual tests")
+                                        else:
+                                            status_text.text("❌ Failed to save")
+                                            st.error("Failed to save test results to database")
+                                    else:
+                                        st.warning("No test results selected to save")
+                                        
+                                        # Show extraction debug info
+                                        with st.expander("Debug: Extraction details"):
+                                            extraction_methods = {}
+                                            for result in test_data['results']:
+                                                method = result.get('source', 'regex')
+                                                extraction_methods[method] = extraction_methods.get(method, 0) + 1
+                                            
+                                            col1, col2 = st.columns(2)
+                                            with col1:
+                                                st.write("**Tests extracted by method:**")
+                                                for method, count in extraction_methods.items():
+                                                    st.write(f"- {method.title()}: {count} tests")
+                                            
+                                            with col2:
+                                                st.write("**All original extracted values:**")
+                                                for i, result in enumerate(test_data['results'], 1):
+                                                    source = result.get('source', 'regex')
+                                                    unit = result.get('unit', '')
+                                                    unit_text = f" {unit}" if unit else ""
+                                                    st.write(f"{i}. {result['test_type']}: {result['value']}{unit_text} ({source})")
+                                            
+                                            # Add text preview for debugging
+                                            with st.expander("Raw extracted text (first 2000 chars)"):
+                                                debug_text = file_parser.parse_file(uploaded_file, force_ocr)
+                                                st.text(debug_text[:2000] + "..." if len(debug_text) > 2000 else debug_text)
+                            elif save_clicked and not patient_name:
+                                st.warning("Please enter a patient name to save results")
+                    
                     else:
                         # No extracted results - show manual entry form only
                         st.subheader("Add Test Results Manually")
@@ -356,14 +379,14 @@ def upload_results_page(file_parser, data_processor):
                             with col1:
                                 patient_name = st.text_input(
                                     "Patient Name",
-                                    value=test_data.get('patient_name', ''),
+                                    value=test_data.get('patient_name', '') if test_data else '',
                                     help="Enter the patient name"
                                 )
                             
                             with col2:
                                 test_date = st.date_input(
                                     "Test Report Date", 
-                                    value=test_data.get('test_date', date.today()),
+                                    value=test_data.get('test_date', date.today()) if test_data else date.today(),
                                     help="Enter the test date"
                                 )
                             
@@ -462,6 +485,20 @@ def upload_results_page(file_parser, data_processor):
                                                 })
                                     
                                     if final_results:
+                                        # Learn from manual entries
+                                        for result in final_results:
+                                            file_parser.learning_system._learn_medical_term(result['test_type'])
+                                        
+                                        # Track manual entry performance
+                                        file_parser.learning_system.track_extraction_performance(
+                                            document_type="manual_entry",
+                                            extraction_methods={"manual": "manual"},
+                                            original_count=0,
+                                            final_count=len(final_results),
+                                            corrected_count=0,
+                                            added_count=len(final_results)
+                                        )
+                                        
                                         success = data_processor.save_test_results(
                                             patient_name=patient_name,
                                             test_date=test_date,
@@ -481,158 +518,137 @@ def upload_results_page(file_parser, data_processor):
                             elif save_manual_clicked and not patient_name:
                                 st.warning("Please enter a patient name to save results")
                         
+                        # Show debug information for no results case
+                        with st.expander("Debug: Why no results found?"):
+                            st.write("**Extracted text preview (first 1000 chars):**")
+                            st.text(extracted_text[:1000] + "..." if len(extracted_text) > 1000 else extracted_text)
+                            
+                            if test_data:
+                                st.write("**Test data structure:**")
+                                st.json(test_data)
+                
                 except Exception as e:
-                    st.error(f"Error processing file {uploaded_file.name}: {str(e)}")
+                    st.error(f"Error processing file: {str(e)}")
+                    st.write("Please try a different file or contact support.")
 
 def view_patients_page(db):
-    st.header("👥 View Patients")
+    """Display all patients and their summary information."""
+    st.title("👥 View Patients")
     
     patients = db.get_all_patients()
     
-    if not patients:
-        st.info("No patients found. Please upload some blood test results first.")
-        return
-    
-    # Display patients in a table
-    patients_df = pd.DataFrame(patients, columns=['Patient ID', 'Patient Name', 'First Test', 'Last Test', 'Total Tests'])
-    
-    st.subheader(f"Total Patients: {len(patients)}")
-    
-    # Add search functionality
-    search_term = st.text_input("🔍 Search patients by name", placeholder="Enter patient name...")
-    
-    if search_term:
-        patients_df = patients_df[patients_df['Patient Name'].str.contains(search_term, case=False, na=False)]
-    
-    if not patients_df.empty:
-        st.dataframe(patients_df, use_container_width=True, hide_index=True)
+    if patients:
+        st.write(f"Total patients: {len(patients)}")
         
-        # Patient selection for quick actions
+        # Convert to DataFrame for better display
+        df = pd.DataFrame(patients, columns=[
+            'Patient Name', 'First Test Date', 'Latest Test Date', 'Total Tests'
+        ])
+        
+        # Format dates
+        df['First Test Date'] = pd.to_datetime(df['First Test Date']).dt.strftime('%Y-%m-%d')
+        df['Latest Test Date'] = pd.to_datetime(df['Latest Test Date']).dt.strftime('%Y-%m-%d')
+        
+        st.dataframe(df, use_container_width=True)
+        
+        # Patient selection for details
+        st.subheader("Patient Details")
         selected_patient = st.selectbox(
-            "Select patient for quick view",
-            options=patients_df['Patient Name'].tolist(),
-            index=None,
-            placeholder="Choose a patient..."
+            "Select a patient to view details",
+            options=[patient[0] for patient in patients]
         )
         
         if selected_patient:
-            patient_tests = db.get_patient_tests(selected_patient)
-            if patient_tests:
-                st.subheader(f"Recent Tests for {selected_patient}")
-                recent_df = pd.DataFrame(patient_tests[-5:], columns=['Date', 'Test Type', 'Value', 'Unit', 'Reference Range'])
-                st.dataframe(recent_df, use_container_width=True, hide_index=True)
+            tests = db.get_patient_tests(selected_patient)
+            if tests:
+                st.write(f"Test results for **{selected_patient}**:")
+                
+                test_df = pd.DataFrame(tests, columns=[
+                    'Date', 'Test Type', 'Value', 'Unit', 'Reference Range'
+                ])
+                test_df['Date'] = pd.to_datetime(test_df['Date']).dt.strftime('%Y-%m-%d')
+                
+                st.dataframe(test_df, use_container_width=True)
+            else:
+                st.info("No test results found for this patient.")
     else:
-        st.info("No patients found matching your search.")
+        st.info("No patients found. Upload some test results first.")
 
 def patient_dashboard_page(db, visualization):
-    st.header("📊 Patient Dashboard")
+    """Display patient dashboard with charts and trends."""
+    st.title("📊 Patient Dashboard")
     
     patients = db.get_all_patients()
     
     if not patients:
-        st.info("No patients found. Please upload some blood test results first.")
+        st.info("No patients found. Upload some test results first.")
         return
     
     # Patient selection
-    patient_names = [patient[1] for patient in patients]
-    selected_patient = st.selectbox(
-        "Select Patient",
-        options=patient_names,
-        index=None,
-        placeholder="Choose a patient to view dashboard..."
-    )
+    patient_names = [patient[0] for patient in patients]
+    selected_patient = st.selectbox("Select Patient", patient_names)
     
     if selected_patient:
-        # Get patient data
-        patient_tests = db.get_patient_tests(selected_patient)
+        # Get patient tests
+        tests = db.get_patient_tests(selected_patient)
         
-        if not patient_tests:
-            st.warning(f"No test results found for {selected_patient}")
-            return
-        
-        # Convert to DataFrame for easier manipulation
-        df = pd.DataFrame(patient_tests, columns=['Date', 'Test Type', 'Value', 'Unit', 'Reference Range'])
-        df['Date'] = pd.to_datetime(df['Date'])
-        df['Value'] = pd.to_numeric(df['Value'], errors='coerce')
-        
-        # Patient summary
-        col1, col2, col3, col4 = st.columns(4)
-        
-        with col1:
-            st.metric("Total Tests", len(df))
-        
-        with col2:
-            st.metric("Test Types", df['Test Type'].nunique())
-        
-        with col3:
-            first_test = df['Date'].min().strftime('%Y-%m-%d')
-            st.metric("First Test", first_test)
-        
-        with col4:
-            last_test = df['Date'].max().strftime('%Y-%m-%d')
-            st.metric("Last Test", last_test)
-        
-        # Test type selection for visualization
-        test_types = df['Test Type'].unique().tolist()
-        selected_tests = st.multiselect(
-            "Select test types to visualize",
-            options=test_types,
-            default=test_types[:3] if len(test_types) >= 3 else test_types
-        )
-        
-        if selected_tests:
-            # Create visualizations
-            for test_type in selected_tests:
-                test_data = df[df['Test Type'] == test_type].copy()
-                
-                if not test_data.empty:
-                    fig = visualization.create_trend_chart(test_data, test_type, selected_patient)
+        if tests:
+            # Convert to DataFrame
+            df = pd.DataFrame(tests, columns=[
+                'Date', 'Test Type', 'Value', 'Unit', 'Reference Range'
+            ])
+            df['Date'] = pd.to_datetime(df['Date'])
+            
+            # Create dashboard
+            dashboard_charts = visualization.create_patient_overview_dashboard(selected_patient)
+            
+            if dashboard_charts:
+                # Display charts
+                for chart_name, fig in dashboard_charts.items():
+                    st.subheader(chart_name)
                     st.plotly_chart(fig, use_container_width=True)
-        
-        # Recent test results table
-        st.subheader("📋 Recent Test Results")
-        recent_tests = df.sort_values('Date', ascending=False).head(10)
-        st.dataframe(recent_tests, use_container_width=True, hide_index=True)
+            else:
+                st.warning("Could not create charts for this patient.")
+        else:
+            st.info(f"No test results found for {selected_patient}")
 
 def search_filter_page(db, visualization):
-    st.header("🔍 Search & Filter Results")
+    """Search and filter test results with visualizations."""
+    st.title("🔍 Search & Filter")
     
-    # Filter controls
-    col1, col2, col3 = st.columns(3)
+    # Get available options
+    patients = db.get_all_patients()
+    test_types = db.get_all_test_types()
+    
+    if not patients:
+        st.info("No data available. Upload some test results first.")
+        return
+    
+    # Search filters
+    st.subheader("Search Filters")
+    
+    col1, col2 = st.columns(2)
     
     with col1:
-        # Patient filter
-        patients = db.get_all_patients()
-        patient_names = [patient[1] for patient in patients]
         selected_patients = st.multiselect(
-            "Filter by Patient",
-            options=patient_names,
-            placeholder="Select patients..."
+            "Select Patients",
+            options=[patient[0] for patient in patients],
+            default=None
         )
+        
+        start_date = st.date_input("Start Date", value=None)
     
     with col2:
-        # Date range filter
-        start_date = st.date_input(
-            "Start Date",
-            value=date.today().replace(year=date.today().year-1)
+        selected_test_types = st.multiselect(
+            "Select Test Types",
+            options=test_types,
+            default=None
         )
+        
+        end_date = st.date_input("End Date", value=None)
     
-    with col3:
-        end_date = st.date_input(
-            "End Date",
-            value=date.today()
-        )
-    
-    # Test type filter
-    all_test_types = db.get_all_test_types()
-    selected_test_types = st.multiselect(
-        "Filter by Test Type",
-        options=all_test_types,
-        placeholder="Select test types..."
-    )
-    
-    # Apply filters and get results
-    if st.button("🔍 Apply Filters", type="primary"):
+    # Search button
+    if st.button("🔍 Search"):
         results = db.search_test_results(
             patient_names=selected_patients if selected_patients else None,
             test_types=selected_test_types if selected_test_types else None,
@@ -641,49 +657,55 @@ def search_filter_page(db, visualization):
         )
         
         if results:
-            st.subheader(f"📊 Search Results ({len(results)} records)")
+            st.subheader(f"Search Results ({len(results)} records)")
             
-            # Convert to DataFrame
-            df = pd.DataFrame(results, columns=['Patient Name', 'Date', 'Test Type', 'Value', 'Unit', 'Reference Range'])
-            df['Date'] = pd.to_datetime(df['Date'])
-            df['Value'] = pd.to_numeric(df['Value'], errors='coerce')
+            # Display results
+            df = pd.DataFrame(results, columns=[
+                'Patient', 'Date', 'Test Type', 'Value', 'Unit', 'Reference Range'
+            ])
+            df['Date'] = pd.to_datetime(df['Date']).dt.strftime('%Y-%m-%d')
             
-            # Display results table
-            st.dataframe(df, use_container_width=True, hide_index=True)
+            st.dataframe(df, use_container_width=True)
             
-            # Create summary visualization if data exists
-            if not df.empty and selected_test_types:
-                st.subheader("📈 Trend Visualization")
+            # Create visualizations if specific test type selected
+            if len(selected_test_types) == 1:
+                test_type = selected_test_types[0]
                 
-                for test_type in selected_test_types:
-                    test_data = df[df['Test Type'] == test_type]
-                    if not test_data.empty:
-                        fig = visualization.create_multi_patient_chart(test_data, test_type)
-                        st.plotly_chart(fig, use_container_width=True)
+                if len(selected_patients) == 1:
+                    # Single patient trend
+                    patient_name = selected_patients[0]
+                    trend_fig = visualization.create_trend_chart(df, test_type, patient_name)
+                    st.plotly_chart(trend_fig, use_container_width=True)
+                else:
+                    # Multi-patient comparison
+                    comparison_fig = visualization.create_multi_patient_chart(df, test_type)
+                    st.plotly_chart(comparison_fig, use_container_width=True)
         else:
             st.info("No results found matching your criteria.")
 
 def export_data_page(db):
-    st.header("📤 Export Data")
+    """Export data in various formats."""
+    st.title("📁 Export Data")
     
-    # Export options
-    export_type = st.radio(
+    export_type = st.selectbox(
         "Select export type",
         ["All Data", "Specific Patient", "Date Range", "Test Type"]
     )
     
     if export_type == "Specific Patient":
         patients = db.get_all_patients()
-        patient_names = [patient[1] for patient in patients]
+        patient_names = [patient[0] for patient in patients]
         selected_patient = st.selectbox("Select Patient", patient_names)
         
         if selected_patient and st.button("Export Patient Data"):
             patient_tests = db.get_patient_tests(selected_patient)
             if patient_tests:
-                df = pd.DataFrame(patient_tests, columns=['Date', 'Test Type', 'Value', 'Unit', 'Reference Range'])
+                df = pd.DataFrame(patient_tests, columns=[
+                    'Date', 'Test Type', 'Value', 'Unit', 'Reference Range'
+                ])
                 csv = df.to_csv(index=False)
                 st.download_button(
-                    label=f"Download {selected_patient}_test_results.csv",
+                    label=f"Download {selected_patient} data as CSV",
                     data=csv,
                     file_name=f"{selected_patient}_test_results.csv",
                     mime="text/csv"
@@ -699,12 +721,14 @@ def export_data_page(db):
         if st.button("Export Date Range"):
             results = db.search_test_results(start_date=start_date, end_date=end_date)
             if results:
-                df = pd.DataFrame(results, columns=['Patient Name', 'Date', 'Test Type', 'Value', 'Unit', 'Reference Range'])
+                df = pd.DataFrame(results, columns=[
+                    'Patient', 'Date', 'Test Type', 'Value', 'Unit', 'Reference Range'
+                ])
                 csv = df.to_csv(index=False)
                 st.download_button(
-                    label=f"Download results_{start_date}_to_{end_date}.csv",
+                    label=f"Download data from {start_date} to {end_date} as CSV",
                     data=csv,
-                    file_name=f"results_{start_date}_to_{end_date}.csv",
+                    file_name=f"test_results_{start_date}_to_{end_date}.csv",
                     mime="text/csv"
                 )
     
@@ -715,10 +739,12 @@ def export_data_page(db):
         if selected_test_type and st.button("Export Test Type Data"):
             results = db.search_test_results(test_types=[selected_test_type])
             if results:
-                df = pd.DataFrame(results, columns=['Patient Name', 'Date', 'Test Type', 'Value', 'Unit', 'Reference Range'])
+                df = pd.DataFrame(results, columns=[
+                    'Patient', 'Date', 'Test Type', 'Value', 'Unit', 'Reference Range'
+                ])
                 csv = df.to_csv(index=False)
                 st.download_button(
-                    label=f"Download {selected_test_type}_results.csv",
+                    label=f"Download {selected_test_type} data as CSV",
                     data=csv,
                     file_name=f"{selected_test_type}_results.csv",
                     mime="text/csv"
@@ -728,242 +754,275 @@ def export_data_page(db):
         if st.button("Export All Data"):
             all_results = db.get_all_test_results()
             if all_results:
-                df = pd.DataFrame(all_results, columns=['Patient Name', 'Date', 'Test Type', 'Value', 'Unit', 'Reference Range'])
+                df = pd.DataFrame(all_results, columns=[
+                    'Patient', 'Date', 'Test Type', 'Value', 'Unit', 'Reference Range'
+                ])
                 csv = df.to_csv(index=False)
                 st.download_button(
-                    label="Download all_test_results.csv",
+                    label="Download all data as CSV",
                     data=csv,
                     file_name="all_test_results.csv",
                     mime="text/csv"
                 )
 
 def manage_data_page(db):
-    st.header("🗂️ Manage Data")
+    """Manage and delete data."""
+    st.title("🗑️ Manage Data")
+    st.warning("⚠️ Data deletion is permanent and cannot be undone!")
     
-    # Database statistics
+    # Show database statistics
     stats = db.get_database_stats()
     
-    col1, col2, col3, col4 = st.columns(4)
+    col1, col2, col3 = st.columns(3)
     with col1:
         st.metric("Total Patients", stats['total_patients'])
     with col2:
-        st.metric("Total Tests", stats['total_tests'])
+        st.metric("Total Test Results", stats['total_results'])
     with col3:
-        st.metric("Test Types", stats['unique_test_types'])
-    with col4:
         if stats['earliest_test'] and stats['latest_test']:
-            st.metric("Date Range", f"{stats['earliest_test']} to {stats['latest_test']}")
+            date_range = f"{stats['earliest_test']} to {stats['latest_test']}"
+            st.metric("Date Range", date_range)
     
-    st.divider()
+    st.subheader("Delete Options")
     
-    # Deletion options
     deletion_type = st.selectbox(
-        "Choose deletion type",
-        ["Select an option", "Delete Individual Test Results", "Delete Report by Date", "Delete by Test Type", "Delete Patient Data", "Delete All Data"],
-        index=0
+        "What would you like to delete?",
+        ["Delete Individual Test Results", "Delete Patient Reports by Date", 
+         "Delete Test Type for Patient", "Delete Entire Patient Record", "Delete All Data"]
     )
     
     if deletion_type == "Delete Individual Test Results":
-        st.subheader("🎯 Delete Individual Test Results")
-        
-        # Patient selection
         patients = db.get_all_patients()
+        
         if not patients:
             st.info("No patients found.")
             return
         
-        patient_names = [patient[1] for patient in patients]
-        selected_patient = st.selectbox("Select Patient", patient_names, index=None, placeholder="Choose a patient...")
+        patient_names = [patient[0] for patient in patients]
+        selected_patient = st.selectbox("Select Patient", patient_names)
         
         if selected_patient:
-            # Get test results with IDs
             test_results = db.get_patient_test_results_with_ids(selected_patient)
             
             if not test_results:
-                st.info("No test results found for this patient.")
+                st.info(f"No test results found for {selected_patient}")
                 return
             
-            st.write(f"**Test Results for {selected_patient}**")
+            st.write(f"Test results for **{selected_patient}**:")
             
-            # Create DataFrame for display
-            df = pd.DataFrame(test_results, columns=['ID', 'Date', 'Test Type', 'Value', 'Unit', 'Reference Range'])
-            
-            # Multi-select for deletion
-            selected_indices = st.multiselect(
-                "Select test results to delete",
-                options=range(len(df)),
-                format_func=lambda x: f"{df.iloc[x]['Date']} - {df.iloc[x]['Test Type']}: {df.iloc[x]['Value']} {df.iloc[x]['Unit']}"
-            )
-            
-            if selected_indices:
-                st.dataframe(df.iloc[selected_indices], use_container_width=True, hide_index=True)
+            # Create checkboxes for each test result
+            results_to_delete = []
+            for result in test_results:
+                result_id, date, test_type, value, unit = result
+                checkbox_key = f"delete_{result_id}"
                 
-                col1, col2 = st.columns([1, 3])
-                with col1:
-                    if st.button("🗑️ Delete Selected", type="primary"):
-                        deleted_count = 0
-                        for idx in selected_indices:
-                            result_id = df.iloc[idx]['ID']
-                            if db.delete_test_result(result_id):
-                                deleted_count += 1
-                        
-                        if deleted_count > 0:
-                            st.success(f"Successfully deleted {deleted_count} test results!")
-                            st.rerun()
-                        else:
-                            st.error("Failed to delete test results.")
-            else:
-                st.dataframe(df.drop('ID', axis=1), use_container_width=True, hide_index=True)
+                if st.checkbox(
+                    f"{date} - {test_type}: {value} {unit}",
+                    key=checkbox_key
+                ):
+                    results_to_delete.append(result_id)
+            
+            if results_to_delete and st.button("Delete Selected Results", type="primary"):
+                deleted_count = 0
+                for result_id in results_to_delete:
+                    if db.delete_test_result(result_id):
+                        deleted_count += 1
+                
+                if deleted_count > 0:
+                    st.success(f"Successfully deleted {deleted_count} test results")
+                    st.rerun()
+                else:
+                    st.error("Failed to delete test results")
     
-    elif deletion_type == "Delete Report by Date":
-        st.subheader("📅 Delete Report by Date")
-        
-        # Patient selection
+    elif deletion_type == "Delete Patient Reports by Date":
         patients = db.get_all_patients()
+        
         if not patients:
             st.info("No patients found.")
             return
         
-        patient_names = [patient[1] for patient in patients]
-        selected_patient = st.selectbox("Select Patient", patient_names, index=None, placeholder="Choose a patient...")
+        patient_names = [patient[0] for patient in patients]
+        selected_patient = st.selectbox("Select Patient", patient_names)
         
         if selected_patient:
-            # Get test results grouped by date
-            results_by_date = db.get_test_results_by_date(selected_patient)
+            test_dates = db.get_test_results_by_date(selected_patient)
             
-            if not results_by_date:
-                st.info("No test results found for this patient.")
+            if not test_dates:
+                st.info(f"No test results found for {selected_patient}")
                 return
             
-            st.write(f"**Test Reports for {selected_patient}**")
+            st.write(f"Test dates for **{selected_patient}**:")
             
-            for test_date, tests in results_by_date.items():
-                with st.expander(f"📋 Report from {test_date} ({len(tests)} tests)"):
-                    # Show tests for this date
-                    date_df = pd.DataFrame(tests, columns=['Test Type', 'Value', 'Unit', 'Reference Range', 'Count'])
-                    st.dataframe(date_df, use_container_width=True, hide_index=True)
-                    
-                    if st.button(f"🗑️ Delete Entire Report ({test_date})", key=f"delete_date_{test_date}"):
-                        if db.delete_test_results_by_date(selected_patient, test_date):
-                            st.success(f"Successfully deleted all test results from {test_date}!")
-                            st.rerun()
-                        else:
-                            st.error("Failed to delete test results.")
+            for test_date, results in test_dates.items():
+                st.write(f"**{test_date}** ({len(results)} tests)")
+                
+                if st.button(f"Delete all results from {test_date}", key=f"delete_date_{test_date}"):
+                    if db.delete_test_results_by_date(selected_patient, test_date):
+                        st.success(f"Successfully deleted all results from {test_date}")
+                        st.rerun()
+                    else:
+                        st.error(f"Failed to delete results from {test_date}")
     
-    elif deletion_type == "Delete by Test Type":
-        st.subheader("🧪 Delete by Test Type")
-        
-        # Patient selection
+    elif deletion_type == "Delete Test Type for Patient":
         patients = db.get_all_patients()
+        
         if not patients:
             st.info("No patients found.")
             return
         
-        patient_names = [patient[1] for patient in patients]
-        selected_patient = st.selectbox("Select Patient", patient_names, index=None, placeholder="Choose a patient...")
+        patient_names = [patient[0] for patient in patients]
+        selected_patient = st.selectbox("Select Patient", patient_names)
         
         if selected_patient:
-            # Get available test types for this patient
             patient_tests = db.get_patient_tests(selected_patient)
-            if not patient_tests:
-                st.info("No test results found for this patient.")
-                return
-            
-            # Extract unique test types
             test_types = list(set([test[1] for test in patient_tests]))
-            test_types.sort()
             
-            selected_test_type = st.selectbox("Select Test Type to Delete", test_types, index=None, placeholder="Choose a test type...")
+            if not test_types:
+                st.info(f"No test types found for {selected_patient}")
+                return
             
-            if selected_test_type:
-                # Show tests of this type
-                filtered_tests = [test for test in patient_tests if test[1] == selected_test_type]
-                
-                st.warning(f"⚠️ This will delete **{len(filtered_tests)}** {selected_test_type} test results for {selected_patient}!")
-                
-                with st.expander("Preview of data to be deleted"):
-                    test_df = pd.DataFrame(filtered_tests, columns=['Date', 'Test Type', 'Value', 'Unit', 'Reference Range'])
-                    st.dataframe(test_df, use_container_width=True, hide_index=True)
-                
-                # Confirmation
-                confirm = st.checkbox(f"I confirm I want to delete all {selected_test_type} results for {selected_patient}")
-                
-                if confirm:
-                    col1, col2 = st.columns([1, 3])
-                    with col1:
-                        if st.button(f"🗑️ Delete {selected_test_type} Results", type="primary"):
-                            if db.delete_test_results_by_type(selected_patient, selected_test_type):
-                                st.success(f"Successfully deleted all {selected_test_type} results for {selected_patient}!")
-                                st.rerun()
-                            else:
-                                st.error("Failed to delete test results.")
+            selected_test_type = st.selectbox("Select Test Type to Delete", test_types)
+            
+            if selected_test_type and st.button(f"Delete all {selected_test_type} results for {selected_patient}", type="primary"):
+                if db.delete_test_results_by_type(selected_patient, selected_test_type):
+                    st.success(f"Successfully deleted all {selected_test_type} results for {selected_patient}")
+                    st.rerun()
+                else:
+                    st.error(f"Failed to delete {selected_test_type} results")
     
-    elif deletion_type == "Delete Patient Data":
-        st.subheader("👤 Delete Patient Data")
-        
-        # Patient selection
+    elif deletion_type == "Delete Entire Patient Record":
         patients = db.get_all_patients()
+        
         if not patients:
             st.info("No patients found.")
             return
         
-        patient_names = [patient[1] for patient in patients]
-        selected_patient = st.selectbox("Select Patient to Delete", patient_names, index=None, placeholder="Choose a patient...")
+        patient_names = [patient[0] for patient in patients]
+        selected_patient = st.selectbox("Select Patient to Delete", patient_names)
         
         if selected_patient:
-            # Show patient summary
             patient_tests = db.get_patient_tests(selected_patient)
-            if patient_tests:
-                st.warning(f"⚠️ This will delete **{selected_patient}** and **{len(patient_tests)}** test results permanently!")
-                
-                # Show recent tests
-                with st.expander("Preview of data to be deleted"):
-                    recent_df = pd.DataFrame(patient_tests[:10], columns=['Date', 'Test Type', 'Value', 'Unit', 'Reference Range'])
-                    st.dataframe(recent_df, use_container_width=True, hide_index=True)
-                    if len(patient_tests) > 10:
-                        st.write(f"... and {len(patient_tests) - 10} more test results")
-                
-                # Confirmation
-                confirm = st.checkbox(f"I confirm I want to delete all data for {selected_patient}")
-                
-                if confirm:
-                    col1, col2 = st.columns([1, 3])
-                    with col1:
-                        if st.button("🗑️ Delete Patient", type="primary"):
-                            if db.delete_patient(selected_patient):
-                                st.success(f"Successfully deleted {selected_patient} and all associated test results!")
-                                st.rerun()
-                            else:
-                                st.error("Failed to delete patient data.")
+            st.warning(f"This will delete **{selected_patient}** and all {len(patient_tests)} test results!")
+            
+            confirm_text = st.text_input(f"Type '{selected_patient}' to confirm deletion:")
+            
+            if confirm_text == selected_patient and st.button("DELETE PATIENT", type="primary"):
+                if db.delete_patient(selected_patient):
+                    st.success(f"Successfully deleted {selected_patient} and all associated data")
+                    st.rerun()
+                else:
+                    st.error(f"Failed to delete {selected_patient}")
     
     elif deletion_type == "Delete All Data":
-        st.subheader("🚨 Delete All Data")
+        stats = db.get_database_stats()
         
-        st.error("⚠️ **DANGER ZONE** ⚠️")
-        st.warning("This will permanently delete ALL patient data and test results from the database!")
-        
-        if stats['total_patients'] > 0:
-            st.write(f"This action will delete:")
-            st.write(f"- **{stats['total_patients']}** patients")
-            st.write(f"- **{stats['total_tests']}** test results")
-            st.write(f"- **{stats['unique_test_types']}** different test types")
+        if stats['total_results'] > 0:
+            st.error(f"⚠️ This will permanently delete ALL {stats['total_patients']} patients and {stats['total_results']} test results!")
             
-            # Multiple confirmations required
             confirm1 = st.checkbox("I understand this action cannot be undone")
-            confirm2 = st.checkbox("I want to delete ALL data from the database") if confirm1 else False
-            confirm3 = st.text_input("Type 'DELETE ALL DATA' to confirm") if confirm2 else ""
+            confirm2 = st.checkbox("I want to delete ALL data from the database")
+            confirm_text = st.text_input("Type 'DELETE ALL DATA' to confirm:")
             
-            if confirm1 and confirm2 and confirm3 == "DELETE ALL DATA":
-                col1, col2 = st.columns([1, 3])
-                with col1:
-                    if st.button("🗑️ DELETE ALL DATA", type="primary"):
-                        if db.delete_all_data():
-                            st.success("All data has been permanently deleted!")
-                            st.rerun()
-                        else:
-                            st.error("Failed to delete all data.")
+            if confirm1 and confirm2 and confirm_text == "DELETE ALL DATA":
+                if st.button("🗑️ DELETE ALL DATA", type="primary"):
+                    if db.delete_all_data():
+                        st.success("All data has been deleted from the database")
+                        st.rerun()
+                    else:
+                        st.error("Failed to delete all data.")
         else:
             st.info("Database is already empty.")
+
+def learning_stats_page(learning_system):
+    """Display learning system statistics and insights."""
+    st.title("🧠 Learning Statistics")
+    st.write("Monitor how the system improves through user feedback and corrections")
+    
+    # Get learning statistics
+    stats = learning_system.get_learning_stats()
+    
+    # Display overview metrics
+    col1, col2, col3, col4 = st.columns(4)
+    
+    with col1:
+        st.metric("Learned Medical Terms", stats.get('learned_terms', 0))
+    
+    with col2:
+        st.metric("User Corrections", stats.get('user_corrections', 0))
+    
+    with col3:
+        st.metric("Duplicate Patterns", stats.get('duplicate_patterns', 0))
+    
+    with col4:
+        improvement_rate = 0
+        if stats.get('user_corrections', 0) > 0:
+            improvement_rate = round((stats.get('learned_terms', 0) / stats.get('user_corrections', 1)) * 100, 1)
+        st.metric("Learning Efficiency", f"{improvement_rate}%")
+    
+    # Correction types breakdown
+    if stats.get('correction_types'):
+        st.subheader("📊 Types of User Corrections")
+        correction_data = stats['correction_types']
+        
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            correction_labels = {
+                'name': 'Test Name Corrections',
+                'value': 'Value Corrections', 
+                'unit': 'Unit Corrections',
+                'added': 'Manual Additions',
+                'removed': 'Removals'
+            }
+            
+            for correction_type, count in correction_data.items():
+                label = correction_labels.get(correction_type, correction_type.title())
+                st.write(f"**{label}**: {count}")
+        
+        with col2:
+            if correction_data:
+                import plotly.express as px
+                import pandas as pd
+                
+                df = pd.DataFrame(list(correction_data.items()), columns=['Type', 'Count'])
+                df['Label'] = df['Type'].map(correction_labels).fillna(df['Type'].str.title())
+                
+                fig = px.pie(df, values='Count', names='Label', title="Correction Types Distribution")
+                fig.update_traces(textposition='inside', textinfo='percent+label')
+                st.plotly_chart(fig, use_container_width=True)
+    
+    # Learning insights
+    st.subheader("💡 Learning Insights")
+    
+    if stats.get('learned_terms', 0) > 0:
+        st.success(f"✅ System has learned {stats['learned_terms']} medical terms from user interactions")
+    
+    if stats.get('user_corrections', 0) > 0:
+        st.info(f"📈 {stats['user_corrections']} corrections have been processed to improve future extractions")
+    
+    if stats.get('duplicate_patterns', 0) > 0:
+        st.info(f"🔍 {stats['duplicate_patterns']} duplicate patterns identified for better deduplication")
+    
+    if stats.get('learned_terms', 0) == 0:
+        st.warning("📚 No learning data yet. Upload some documents and make corrections to train the system!")
+    
+    # Performance tips
+    with st.expander("💡 How to improve system accuracy"):
+        st.write("""
+        **Tips for training the system:**
+        
+        1. **Review extracted results** - Always check what the system found before saving
+        2. **Correct test names** - Edit any incorrectly identified test names  
+        3. **Add missing tests** - Use manual entry for tests the scanner missed
+        4. **Remove duplicates** - Uncheck duplicate or incorrect test results
+        5. **Be consistent** - Use standard medical terminology for better learning
+        
+        **The more you use and correct the system, the better it becomes at:**
+        - Recognizing medical terminology
+        - Avoiding duplicate extractions
+        - Improving extraction accuracy
+        - Learning your preferred formats
+        """)
 
 if __name__ == "__main__":
     main()
