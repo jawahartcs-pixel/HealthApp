@@ -121,18 +121,34 @@ Preferred communication style: Simple, everyday language.
 
 ## Recent Changes
 
-### July 15, 2025 - OCR Implementation & Preview/Edit Interface
+### July 15, 2025 - Enhanced Manual Entry & Comprehensive Form Interface
+- **Manual Test Entry**: Added ability to manually enter additional test results not detected by scanner
+  - Dynamic row addition for unlimited manual test entries
+  - Three-column format: Investigation Type, Value, Unit with Include checkboxes
+  - Automatic filtering of empty entries (requires test name and non-zero value)
+  - Separate tracking for extracted vs manually entered tests
+- **Unified Form Interface**: Comprehensive single-form workflow for all data entry
+  - Editable patient name and test date within the form
+  - Combined extracted and manual test results in one submission
+  - Clear separation between auto-extracted and manually added tests
+  - Smart validation for manual entries
+- **Word Document Support**: Added Microsoft Word (.docx) file upload capability
+  - Extracts text from both paragraphs and tables in Word documents
+  - Seamless integration with existing PDF and text file processing
+- **Enhanced Medical Terminology Validation**: Improved filtering of test results
+  - Comprehensive medical terms database with 40+ test types
+  - Smart keyword matching for medical terminology
+  - Abbreviation recognition (HbA1c, HDL, LDL, TSH, etc.)
+  - Only medical test values are saved to database
+
+### July 15, 2025 - OCR Implementation & Preview/Edit Interface  
 - **OCR Integration**: Added Tesseract OCR support for image-based and scanned PDFs
   - Automatic OCR fallback when standard extraction yields limited text
   - Force OCR option with checkbox for problematic documents
   - Enhanced medical term correction for common OCR errors
   - High-quality 300 DPI processing for better accuracy
-- **Preview & Edit Interface**: Added comprehensive review system before saving results
-  - Interactive table for editing test names, values, and units
-  - Checkbox system to include/exclude individual tests
-  - Patient name editing with improved extraction patterns
-  - Form-based editing with real-time preview
-- **Enhanced Patient Name Recognition**: Prioritized patterns looking for text near "Name"
+- **Enhanced Patient Name Recognition**: Prioritized patterns looking for text near "Name" with Mr/Mrs prefixes
+- **DD-MM-YY Date Format**: Prioritized DD-MM-YY format recognition at document top
 - **Multi-Layer Extraction Strategy**: 5-tier approach with priority system
   - Tabular extraction > Line analysis > OCR patterns > Regex > Generic
 - **Improved Debug Information**: Enhanced extraction method tracking and raw text preview
