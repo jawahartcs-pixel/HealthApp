@@ -1024,22 +1024,30 @@ class FileParser:
         """Extract test results from tabular format commonly found in lab reports."""
         results = []
         
-        # Enhanced tabular patterns with better column detection
+        # Enhanced tabular patterns to capture more variations including decimal numbers and # symbol
         tabular_patterns = [
-            # Tab-separated values (most reliable for proper tables)
+            # Tab-separated values with decimal support
             r'([a-zA-Z][a-zA-Z\s\(\)\/\-\.#]+?)\t+(\d+(?:\.\d+)?)\t*([a-zA-Z\/\%\^µμmM]*)\t*([^\n\r\t]*)',
-            # Multiple consecutive spaces (4+ spaces indicate column separation)
-            r'([a-zA-Z][a-zA-Z\s\(\)\/\-\.#]+?)\s{4,}(\d+(?:\.\d+)?)\s*([a-zA-Z\/\%\^µμmM]*)\s*([^\n\r]*)',
-            # Pattern with vertical bars or pipes (proper table columns)
-            r'([a-zA-Z][a-zA-Z\s\(\)\/\-\.#]+?)\s*\|\s*(\d+(?:\.\d+)?)\s*\|\s*([a-zA-Z\/\%\^µμmM]*)\s*\|\s*([^\n\r]*)',
-            # Values at end of line with significant spacing
-            r'([a-zA-Z][a-zA-Z\s\(\)\/\-\.#]+?)\s{3,}(\d+(?:\.\d+)?)\s*([a-zA-Z\/\%\^µμmM]*)\s*$',
-            # Pattern with colons (key-value pairs)
+            # Multiple spaces with flexible spacing and decimal support
+            r'([a-zA-Z][a-zA-Z\s\(\)\/\-\.#]+?)\s{3,}(\d+(?:\.\d+)?)\s*([a-zA-Z\/\%\^µμmM]*)\s*([^\n\r]*)',
+            # Values at end of line with decimal support
+            r'([a-zA-Z][a-zA-Z\s\(\)\/\-\.#]+?)\s+(\d+(?:\.\d+)?)\s*([a-zA-Z\/\%\^µμmM]*)\s*$',
+            # Pattern with vertical bars, pipes, or dashes with decimal support
+            r'([a-zA-Z][a-zA-Z\s\(\)\/\-\.#]+?)\s*[\|\-]\s*(\d+(?:\.\d+)?)\s*[\|\-]?\s*([a-zA-Z\/\%\^µμmM]*)\s*[\|\-]?\s*([^\n\r]*)',
+            # Pattern with colons and decimal support
             r'([a-zA-Z][a-zA-Z\s\(\)\/\-\.#]+?):\s*(\d+(?:\.\d+)?)\s*([a-zA-Z\/\%\^µμmM]*)\s*([^\n\r]*)',
-            # Pattern with scientific notation
-            r'([a-zA-Z][a-zA-Z\s\(\)\/\-\.#]+?)\s{3,}(\d+(?:\.\d+)?(?:[eE][\+\-]?\d+)?)\s*([a-zA-Z\/\%\^µμmM]*)\s*([^\n\r]*)',
+            # Pattern with dots or dashes leading to values with decimal support
+            r'([a-zA-Z][a-zA-Z\s\(\)\/\-\.#]+?)[\.\-]{2,}\s*(\d+(?:\.\d+)?)\s*([a-zA-Z\/\%\^µμmM]*)\s*([^\n\r]*)',
+            # Pattern for values in parentheses or brackets with decimal support
+            r'([a-zA-Z][a-zA-Z\s\(\)\/\-\.#]+?)\s*[\(\[]\s*(\d+(?:\.\d+)?)\s*[\)\]]\s*([a-zA-Z\/\%\^µμmM]*)',
+            # Pattern for scientific notation values
+            r'([a-zA-Z][a-zA-Z\s\(\)\/\-\.#]+?)\s+(\d+(?:\.\d+)?(?:[eE][\+\-]?\d+)?)\s*([a-zA-Z\/\%\^µμmM]*)\s*([^\n\r]*)',
+            # Pattern for ranges like "Test Name 10.5 - 15.2" (capture first value)
+            r'([a-zA-Z][a-zA-Z\s\(\)\/\-\.#]+?)\s+(\d+(?:\.\d+)?)\s*[\-\–]\s*\d+(?:\.\d+)?\s*([a-zA-Z\/\%\^µμmM]*)',
             # Pattern for values followed by reference ranges in parentheses
-            r'([a-zA-Z][a-zA-Z\s\(\)\/\-\.#]+?)\s{3,}(\d+(?:\.\d+)?)\s*([a-zA-Z\/\%\^µμmM]*)\s*\([^)]*\)'
+            r'([a-zA-Z][a-zA-Z\s\(\)\/\-\.#]+?)\s+(\d+(?:\.\d+)?)\s*([a-zA-Z\/\%\^µμmM]*)\s*\([^)]*\)',
+            # Simple pattern for test name followed by number anywhere in line
+            r'^([a-zA-Z][a-zA-Z\s\(\)\/\-\.#]{2,40}?)\s.*?(\d+(?:\.\d+))\s*([a-zA-Z\/\%\^µμmM]*)'
         ]
         
         for pattern in tabular_patterns:
@@ -1055,33 +1063,16 @@ class FileParser:
                     # Clean up test name but preserve "#" symbol
                     test_name = re.sub(r'\s+', ' ', test_name)
                     
-                    # Check for "#" symbol near the test name and preserve it
-                    hash_symbol = ""
-                    if '#' in test_name:
-                        # Extract the "#" and clean the rest
-                        hash_symbol = " #"
-                        test_name = test_name.replace('#', '').strip()
-                    
-                    # Look for "#" symbol in the original line context
-                    original_line = match.group(0)
-                    if '#' in original_line and not hash_symbol:
-                        # Check if # appears after the test name within reasonable distance
-                        test_end_pos = original_line.find(test_name) + len(test_name)
-                        remaining_text = original_line[test_end_pos:test_end_pos+10]  # Check next 10 chars
-                        if '#' in remaining_text:
-                            hash_symbol = " #"
-                    
-                    # Remove specimen-related contamination from test name
+                    # Remove specimen-related contamination from test name only if it's clearly specimen data
                     specimen_patterns = [
-                        r'^(edta\s+w\.?\s*blood|serum|plasma|urine|whole\s+blood|blood)\s+',
-                        r'\s+(edta\s+w\.?\s*blood|serum|plasma|urine|whole\s+blood|blood)$',
-                        r'^blood\s+',  # Remove "blood" prefix
-                        r'\s+blood$'   # Remove "blood" suffix
+                        r'^(edta\s+w\.?\s*blood|serum|plasma|urine|whole\s+blood)\s+',
+                        r'\s+(edta\s+w\.?\s*blood|serum|plasma|urine|whole\s+blood)$'
                     ]
                     
                     for pattern in specimen_patterns:
                         test_name = re.sub(pattern, '', test_name, flags=re.IGNORECASE).strip()
                     
+                    # Clean up punctuation but preserve "#" symbol naturally occurring in test names
                     test_name = test_name.strip('.,()[]{}')
                     
                     # Skip if test name is too short or looks invalid
@@ -1100,7 +1091,7 @@ class FileParser:
                         continue
                     
                     result = {
-                        'test_type': (test_name + hash_symbol).title(),
+                        'test_type': test_name.title(),
                         'value': value,
                         'unit': unit,
                         'reference_range': ref_range,
@@ -1149,30 +1140,13 @@ class FileParser:
                         test_name = match.group(1).strip()
                         value_str = match.group(2).strip()
                         
-                        # Clean test name but preserve "#" symbol
+                        # Clean test name but preserve "#" symbol naturally occurring in test names
                         test_name = re.sub(r'\s+', ' ', test_name)
                         
-                        # Check for "#" symbol near the test name and preserve it
-                        hash_symbol = ""
-                        if '#' in test_name:
-                            hash_symbol = " #"
-                            test_name = test_name.replace('#', '').strip()
-                        
-                        # Look for "#" symbol in the original line context
-                        if '#' in line and not hash_symbol:
-                            # Check if # appears after the test name within reasonable distance
-                            test_pos = line.find(test_name)
-                            if test_pos >= 0:
-                                remaining_text = line[test_pos + len(test_name):test_pos + len(test_name) + 10]
-                                if '#' in remaining_text:
-                                    hash_symbol = " #"
-                        
-                        # Remove specimen-related contamination from test name
+                        # Remove specimen-related contamination from test name only if it's clearly specimen data
                         specimen_patterns = [
-                            r'^(edta\s+w\.?\s*blood|serum|plasma|urine|whole\s+blood|blood)\s+',
-                            r'\s+(edta\s+w\.?\s*blood|serum|plasma|urine|whole\s+blood|blood)$',
-                            r'^blood\s+',  # Remove "blood" prefix
-                            r'\s+blood$'   # Remove "blood" suffix
+                            r'^(edta\s+w\.?\s*blood|serum|plasma|urine|whole\s+blood)\s+',
+                            r'\s+(edta\s+w\.?\s*blood|serum|plasma|urine|whole\s+blood)$'
                         ]
                         
                         for pattern in specimen_patterns:
@@ -1197,7 +1171,7 @@ class FileParser:
                         unit = unit_match.group(2) if unit_match else ''
                         
                         result = {
-                            'test_type': (test_name + hash_symbol).title(),
+                            'test_type': test_name.title(),
                             'value': value,
                             'unit': unit,
                             'reference_range': '',
@@ -1242,30 +1216,13 @@ class FileParser:
                     value_str = match.group(2).strip()
                     unit = match.group(3).strip() if len(match.groups()) > 2 and match.group(3) else ''
                     
-                    # Clean up test name but preserve "#" symbol
+                    # Clean up test name but preserve "#" symbol naturally occurring in test names
                     test_name = re.sub(r'\s+', ' ', test_name)
                     
-                    # Check for "#" symbol near the test name and preserve it
-                    hash_symbol = ""
-                    if '#' in test_name:
-                        hash_symbol = " #"
-                        test_name = test_name.replace('#', '').strip()
-                    
-                    # Look for "#" symbol in the original match context
-                    original_match = match.group(0)
-                    if '#' in original_match and not hash_symbol:
-                        # Check if # appears after the test name within reasonable distance
-                        test_end_pos = original_match.find(test_name) + len(test_name)
-                        remaining_text = original_match[test_end_pos:test_end_pos+10]
-                        if '#' in remaining_text:
-                            hash_symbol = " #"
-                    
-                    # Remove specimen-related contamination from test name
+                    # Remove specimen-related contamination from test name only if it's clearly specimen data
                     specimen_patterns = [
-                        r'^(edta\s+w\.?\s*blood|serum|plasma|urine|whole\s+blood|blood)\s+',
-                        r'\s+(edta\s+w\.?\s*blood|serum|plasma|urine|whole\s+blood|blood)$',
-                        r'^blood\s+',  # Remove "blood" prefix
-                        r'\s+blood$'   # Remove "blood" suffix
+                        r'^(edta\s+w\.?\s*blood|serum|plasma|urine|whole\s+blood)\s+',
+                        r'\s+(edta\s+w\.?\s*blood|serum|plasma|urine|whole\s+blood)$'
                     ]
                     
                     for pattern in specimen_patterns:
@@ -1289,7 +1246,7 @@ class FileParser:
                         continue
                     
                     result = {
-                        'test_type': (test_name + hash_symbol).title(),
+                        'test_type': test_name.title(),
                         'value': value,
                         'unit': unit,
                         'reference_range': '',
@@ -1339,30 +1296,13 @@ class FileParser:
                     value_str = match.group(2).strip()
                     unit = match.group(3).strip() if len(match.groups()) > 2 and match.group(3) else ''
                     
-                    # Clean up test name but preserve "#" symbol
+                    # Clean up test name but preserve "#" symbol naturally occurring in test names
                     test_name = re.sub(r'\s+', ' ', test_name)
                     
-                    # Check for "#" symbol near the test name and preserve it
-                    hash_symbol = ""
-                    if '#' in test_name:
-                        hash_symbol = " #"
-                        test_name = test_name.replace('#', '').strip()
-                    
-                    # Look for "#" symbol in the original match context
-                    original_match = match.group(0)
-                    if '#' in original_match and not hash_symbol:
-                        # Check if # appears after the test name within reasonable distance
-                        test_end_pos = original_match.find(test_name) + len(test_name)
-                        remaining_text = original_match[test_end_pos:test_end_pos+10]
-                        if '#' in remaining_text:
-                            hash_symbol = " #"
-                    
-                    # Remove specimen-related contamination from test name
+                    # Remove specimen-related contamination from test name only if it's clearly specimen data
                     specimen_patterns = [
-                        r'^(edta\s+w\.?\s*blood|serum|plasma|urine|whole\s+blood|blood)\s+',
-                        r'\s+(edta\s+w\.?\s*blood|serum|plasma|urine|whole\s+blood|blood)$',
-                        r'^blood\s+',  # Remove "blood" prefix
-                        r'\s+blood$'   # Remove "blood" suffix
+                        r'^(edta\s+w\.?\s*blood|serum|plasma|urine|whole\s+blood)\s+',
+                        r'\s+(edta\s+w\.?\s*blood|serum|plasma|urine|whole\s+blood)$'
                     ]
                     
                     for pattern in specimen_patterns:
@@ -1385,7 +1325,7 @@ class FileParser:
                         continue
                     
                     result = {
-                        'test_type': (test_name + hash_symbol).title(),
+                        'test_type': test_name.title(),
                         'value': value,
                         'unit': unit,
                         'reference_range': '',
