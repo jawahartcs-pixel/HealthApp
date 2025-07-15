@@ -642,8 +642,8 @@ class FileParser:
         # Remove extra whitespace
         text = re.sub(r'\s+', ' ', text)
         
-        # Remove special characters that might interfere with parsing
-        text = re.sub(r'[^\w\s\.\-\:\(\)/]', ' ', text)
+        # Remove special characters that might interfere with parsing, but preserve "#"
+        text = re.sub(r'[^\w\s\.\-\:\(\)/#]', ' ', text)
         
         return text.strip()
     
@@ -1024,30 +1024,22 @@ class FileParser:
         """Extract test results from tabular format commonly found in lab reports."""
         results = []
         
-        # Enhanced tabular patterns to capture more variations including decimal numbers
+        # Enhanced tabular patterns with better column detection
         tabular_patterns = [
-            # Tab-separated values with decimal support
-            r'([a-zA-Z][a-zA-Z\s\(\)\/\-\.]+?)\t+(\d+(?:\.\d+)?)\t*([a-zA-Z\/\%\^µμmM]*)\t*([^\n\r\t]*)',
-            # Multiple spaces with flexible spacing and decimal support
-            r'([a-zA-Z][a-zA-Z\s\(\)\/\-\.]+?)\s{3,}(\d+(?:\.\d+)?)\s*([a-zA-Z\/\%\^µμmM]*)\s*([^\n\r]*)',
-            # Values at end of line with decimal support
-            r'([a-zA-Z][a-zA-Z\s\(\)\/\-\.]+?)\s+(\d+(?:\.\d+)?)\s*([a-zA-Z\/\%\^µμmM]*)\s*$',
-            # Pattern with vertical bars, pipes, or dashes with decimal support
-            r'([a-zA-Z][a-zA-Z\s\(\)\/\-\.]+?)\s*[\|\-]\s*(\d+(?:\.\d+)?)\s*[\|\-]?\s*([a-zA-Z\/\%\^µμmM]*)\s*[\|\-]?\s*([^\n\r]*)',
-            # Pattern with colons and decimal support
-            r'([a-zA-Z][a-zA-Z\s\(\)\/\-\.]+?):\s*(\d+(?:\.\d+)?)\s*([a-zA-Z\/\%\^µμmM]*)\s*([^\n\r]*)',
-            # Pattern with dots or dashes leading to values with decimal support
-            r'([a-zA-Z][a-zA-Z\s\(\)\/\-\.]+?)[\.\-]{2,}\s*(\d+(?:\.\d+)?)\s*([a-zA-Z\/\%\^µμmM]*)\s*([^\n\r]*)',
-            # Pattern for values in parentheses or brackets with decimal support
-            r'([a-zA-Z][a-zA-Z\s\(\)\/\-\.]+?)\s*[\(\[]\s*(\d+(?:\.\d+)?)\s*[\)\]]\s*([a-zA-Z\/\%\^µμmM]*)',
-            # Pattern for scientific notation values
-            r'([a-zA-Z][a-zA-Z\s\(\)\/\-\.]+?)\s+(\d+(?:\.\d+)?(?:[eE][\+\-]?\d+)?)\s*([a-zA-Z\/\%\^µμmM]*)\s*([^\n\r]*)',
-            # Pattern for ranges like "Test Name 10.5 - 15.2" (capture first value)
-            r'([a-zA-Z][a-zA-Z\s\(\)\/\-\.]+?)\s+(\d+(?:\.\d+)?)\s*[\-\–]\s*\d+(?:\.\d+)?\s*([a-zA-Z\/\%\^µμmM]*)',
+            # Tab-separated values (most reliable for proper tables)
+            r'([a-zA-Z][a-zA-Z\s\(\)\/\-\.#]+?)\t+(\d+(?:\.\d+)?)\t*([a-zA-Z\/\%\^µμmM]*)\t*([^\n\r\t]*)',
+            # Multiple consecutive spaces (4+ spaces indicate column separation)
+            r'([a-zA-Z][a-zA-Z\s\(\)\/\-\.#]+?)\s{4,}(\d+(?:\.\d+)?)\s*([a-zA-Z\/\%\^µμmM]*)\s*([^\n\r]*)',
+            # Pattern with vertical bars or pipes (proper table columns)
+            r'([a-zA-Z][a-zA-Z\s\(\)\/\-\.#]+?)\s*\|\s*(\d+(?:\.\d+)?)\s*\|\s*([a-zA-Z\/\%\^µμmM]*)\s*\|\s*([^\n\r]*)',
+            # Values at end of line with significant spacing
+            r'([a-zA-Z][a-zA-Z\s\(\)\/\-\.#]+?)\s{3,}(\d+(?:\.\d+)?)\s*([a-zA-Z\/\%\^µμmM]*)\s*$',
+            # Pattern with colons (key-value pairs)
+            r'([a-zA-Z][a-zA-Z\s\(\)\/\-\.#]+?):\s*(\d+(?:\.\d+)?)\s*([a-zA-Z\/\%\^µμmM]*)\s*([^\n\r]*)',
+            # Pattern with scientific notation
+            r'([a-zA-Z][a-zA-Z\s\(\)\/\-\.#]+?)\s{3,}(\d+(?:\.\d+)?(?:[eE][\+\-]?\d+)?)\s*([a-zA-Z\/\%\^µμmM]*)\s*([^\n\r]*)',
             # Pattern for values followed by reference ranges in parentheses
-            r'([a-zA-Z][a-zA-Z\s\(\)\/\-\.]+?)\s+(\d+(?:\.\d+)?)\s*([a-zA-Z\/\%\^µμmM]*)\s*\([^)]*\)',
-            # Simple pattern for test name followed by number anywhere in line
-            r'^([a-zA-Z][a-zA-Z\s\(\)\/\-\.]{2,40}?)\s.*?(\d+(?:\.\d+))\s*([a-zA-Z\/\%\^µμmM]*)'
+            r'([a-zA-Z][a-zA-Z\s\(\)\/\-\.#]+?)\s{3,}(\d+(?:\.\d+)?)\s*([a-zA-Z\/\%\^µμmM]*)\s*\([^)]*\)'
         ]
         
         for pattern in tabular_patterns:
@@ -1078,6 +1070,17 @@ class FileParser:
                         remaining_text = original_line[test_end_pos:test_end_pos+10]  # Check next 10 chars
                         if '#' in remaining_text:
                             hash_symbol = " #"
+                    
+                    # Remove specimen-related contamination from test name
+                    specimen_patterns = [
+                        r'^(edta\s+w\.?\s*blood|serum|plasma|urine|whole\s+blood|blood)\s+',
+                        r'\s+(edta\s+w\.?\s*blood|serum|plasma|urine|whole\s+blood|blood)$',
+                        r'^blood\s+',  # Remove "blood" prefix
+                        r'\s+blood$'   # Remove "blood" suffix
+                    ]
+                    
+                    for pattern in specimen_patterns:
+                        test_name = re.sub(pattern, '', test_name, flags=re.IGNORECASE).strip()
                     
                     test_name = test_name.strip('.,()[]{}')
                     
@@ -1164,6 +1167,17 @@ class FileParser:
                                 if '#' in remaining_text:
                                     hash_symbol = " #"
                         
+                        # Remove specimen-related contamination from test name
+                        specimen_patterns = [
+                            r'^(edta\s+w\.?\s*blood|serum|plasma|urine|whole\s+blood|blood)\s+',
+                            r'\s+(edta\s+w\.?\s*blood|serum|plasma|urine|whole\s+blood|blood)$',
+                            r'^blood\s+',  # Remove "blood" prefix
+                            r'\s+blood$'   # Remove "blood" suffix
+                        ]
+                        
+                        for pattern in specimen_patterns:
+                            test_name = re.sub(pattern, '', test_name, flags=re.IGNORECASE).strip()
+                        
                         test_name = test_name.strip('.,()[]{}')
                         
                         # Skip if looks like header or non-test
@@ -1245,6 +1259,17 @@ class FileParser:
                         remaining_text = original_match[test_end_pos:test_end_pos+10]
                         if '#' in remaining_text:
                             hash_symbol = " #"
+                    
+                    # Remove specimen-related contamination from test name
+                    specimen_patterns = [
+                        r'^(edta\s+w\.?\s*blood|serum|plasma|urine|whole\s+blood|blood)\s+',
+                        r'\s+(edta\s+w\.?\s*blood|serum|plasma|urine|whole\s+blood|blood)$',
+                        r'^blood\s+',  # Remove "blood" prefix
+                        r'\s+blood$'   # Remove "blood" suffix
+                    ]
+                    
+                    for pattern in specimen_patterns:
+                        test_name = re.sub(pattern, '', test_name, flags=re.IGNORECASE).strip()
                     
                     test_name = test_name.strip('.,()[]{}')
                     
@@ -1331,6 +1356,17 @@ class FileParser:
                         remaining_text = original_match[test_end_pos:test_end_pos+10]
                         if '#' in remaining_text:
                             hash_symbol = " #"
+                    
+                    # Remove specimen-related contamination from test name
+                    specimen_patterns = [
+                        r'^(edta\s+w\.?\s*blood|serum|plasma|urine|whole\s+blood|blood)\s+',
+                        r'\s+(edta\s+w\.?\s*blood|serum|plasma|urine|whole\s+blood|blood)$',
+                        r'^blood\s+',  # Remove "blood" prefix
+                        r'\s+blood$'   # Remove "blood" suffix
+                    ]
+                    
+                    for pattern in specimen_patterns:
+                        test_name = re.sub(pattern, '', test_name, flags=re.IGNORECASE).strip()
                     
                     test_name = test_name.strip('.,()[]{}')
                     
