@@ -121,6 +121,23 @@ Preferred communication style: Simple, everyday language.
 
 ## Recent Changes
 
+### July 15, 2025 - Document Preview & Comparison System
+- **Side-by-Side Document Verification**: Implemented comprehensive document preview feature for upload validation
+  - Real-time document text extraction and display alongside parsed results
+  - Search functionality within document content with occurrence counting
+  - Quick search buttons for extracted test values to locate them in source document
+  - File information display showing name, size, and extraction method used
+- **Enhanced Result Verification**: Built-in comparison tools for accuracy checking
+  - Tooltip help text showing original extracted values for each editable field
+  - Source information display showing extraction method (tabular, OCR, regex, etc.)
+  - Extraction method breakdown with test counts per method
+  - Raw text preview for debugging extraction issues
+- **Improved Form Structure**: Fixed critical form validation and interaction issues
+  - Proper form submit button implementation for result saving
+  - Separated interactive elements from form structure to prevent errors
+  - Quick search functionality positioned outside form for proper operation
+  - Maintained all preview and editing capabilities without form conflicts
+
 ### July 15, 2025 - AI-Powered Anomaly Detection System
 - **Advanced Machine Learning Integration**: Created comprehensive AI anomaly detection system using multiple algorithms
   - Isolation Forest for multivariate anomaly detection
