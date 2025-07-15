@@ -121,6 +121,21 @@ Preferred communication style: Simple, everyday language.
 
 ## Recent Changes
 
+### July 15, 2025 - Fixed "#" Symbol Detection and Specimen Contamination
+- **Enhanced "#" Symbol Preservation**: Fixed normalization process to preserve "#" symbols during text processing
+  - Updated `_normalize_text()` function to include "#" in allowed characters
+  - Improved detection of "#" symbols in tabular, line-by-line, OCR, and generic extraction methods
+  - Fixed duplicate detection logic to properly distinguish between "Test Name" and "Test Name #"
+- **Specimen Data Contamination Fix**: Resolved issue where specimen information was being included in test names
+  - Added specimen pattern filtering to remove "EDTA W.Blood", "Serum", "Plasma", etc. from test names
+  - Implemented proper column separation detection using tabs and multiple spaces instead of periods
+  - Enhanced tabular extraction patterns to focus on proper table column structure
+  - Applied specimen filtering across all extraction methods for consistency
+- **Improved Table Column Detection**: Enhanced parsing to better recognize proper table columns
+  - Prioritized tab-separated values and multiple consecutive spaces (4+) for column detection
+  - Added patterns for vertical bars and pipes to identify structured table data
+  - Reduced false positives from single spaces or periods being treated as column separators
+
 ### July 15, 2025 - AI-Powered Anomaly Detection System
 - **Advanced Machine Learning Integration**: Created comprehensive AI anomaly detection system using multiple algorithms
   - Isolation Forest for multivariate anomaly detection
