@@ -8,6 +8,7 @@ from database import Database
 from file_parser import FileParser
 from data_processor import DataProcessor
 from visualization import Visualization
+from alert_system import AlertSystem
 from utils import validate_date, format_test_value
 
 # Initialize database and components
@@ -21,7 +22,8 @@ def init_components():
     file_parser = FileParser()
     data_processor = DataProcessor(db)
     visualization = Visualization(db)
-    return db, file_parser, data_processor, visualization
+    alert_system = AlertSystem(db)
+    return db, file_parser, data_processor, visualization, alert_system
 
 def main():
     st.set_page_config(
@@ -35,27 +37,29 @@ def main():
     st.markdown("Upload, manage, and visualize patient blood test results")
     
     # Initialize components
-    db, file_parser, data_processor, visualization = init_components()
+    db, file_parser, data_processor, visualization, alert_system = init_components()
     
     # Sidebar navigation
     st.sidebar.title("Navigation")
     page = st.sidebar.selectbox(
         "Select Page",
-        ["Upload Results", "View Patients", "Patient Dashboard", "Search & Filter", "Export Data", "Manage Data"]
+        ["Upload Results", "View Patients", "Patient Dashboard", "Search & Filter", "Export Data", "Manage Data", "Alert Dashboard"]
     )
     
     if page == "Upload Results":
         upload_results_page(file_parser, data_processor)
     elif page == "View Patients":
-        view_patients_page(db)
+        view_patients_page(db, alert_system)
     elif page == "Patient Dashboard":
-        patient_dashboard_page(db, visualization)
+        patient_dashboard_page(db, visualization, alert_system)
     elif page == "Search & Filter":
         search_filter_page(db, visualization)
     elif page == "Export Data":
         export_data_page(db)
     elif page == "Manage Data":
         manage_data_page(db)
+    elif page == "Alert Dashboard":
+        alert_dashboard_page(alert_system)
 
 def upload_results_page(file_parser, data_processor):
     st.header("📁 Upload Blood Test Results")
@@ -324,7 +328,7 @@ def upload_results_page(file_parser, data_processor):
                 except Exception as e:
                     st.error(f"Error processing file {uploaded_file.name}: {str(e)}")
 
-def view_patients_page(db):
+def view_patients_page(db, alert_system):
     st.header("👥 View Patients")
     
     patients = db.get_all_patients()
@@ -357,14 +361,40 @@ def view_patients_page(db):
         
         if selected_patient:
             patient_tests = db.get_patient_tests(selected_patient)
+            patient_alerts = alert_system.get_patient_alerts(selected_patient)
+            
             if patient_tests:
+                # Display alerts summary
+                if patient_alerts:
+                    critical_alerts = [a for a in patient_alerts if a['level'] == 'CRITICAL']
+                    high_alerts = [a for a in patient_alerts if a['level'] == 'HIGH']
+                    
+                    st.subheader(f"🚨 Alerts for {selected_patient}")
+                    
+                    col1, col2, col3 = st.columns(3)
+                    with col1:
+                        st.metric("Critical Alerts", len(critical_alerts))
+                    with col2:
+                        st.metric("High Priority", len(high_alerts))
+                    with col3:
+                        st.metric("Total Alerts", len(patient_alerts))
+                    
+                    # Show top alerts
+                    for alert in patient_alerts[:3]:
+                        st.markdown(f"""
+                        <div style="padding: 10px; margin: 5px 0; border-left: 4px solid {alert['color']}; background-color: {alert['color']}15; border-radius: 5px;">
+                            <strong>{alert['icon']} {alert['level']}</strong>: {alert['message']} 
+                            <br><small>Date: {alert['test_date']} | {alert['test_type']}</small>
+                        </div>
+                        """, unsafe_allow_html=True)
+                
                 st.subheader(f"Recent Tests for {selected_patient}")
                 recent_df = pd.DataFrame(patient_tests[-5:], columns=['Date', 'Test Type', 'Value', 'Unit', 'Reference Range'])
                 st.dataframe(recent_df, use_container_width=True, hide_index=True)
     else:
         st.info("No patients found matching your search.")
 
-def patient_dashboard_page(db, visualization):
+def patient_dashboard_page(db, visualization, alert_system):
     st.header("📊 Patient Dashboard")
     
     patients = db.get_all_patients()
@@ -411,6 +441,35 @@ def patient_dashboard_page(db, visualization):
         with col4:
             last_test = df['Date'].max().strftime('%Y-%m-%d')
             st.metric("Last Test", last_test)
+        
+        # Get and display patient alerts
+        patient_alerts = alert_system.get_patient_alerts(selected_patient)
+        if patient_alerts:
+            st.subheader("🚨 Active Alerts")
+            critical_alerts = [a for a in patient_alerts if a['level'] == 'CRITICAL']
+            high_alerts = [a for a in patient_alerts if a['level'] == 'HIGH']
+            
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                st.metric("Critical Alerts", len(critical_alerts))
+            with col2:
+                st.metric("High Priority", len(high_alerts))
+            with col3:
+                st.metric("Total Alerts", len(patient_alerts))
+            
+            # Show alerts with expandable details
+            for alert in patient_alerts:
+                with st.expander(f"{alert['icon']} {alert['level']} - {alert['test_type']} ({alert['test_date']})", expanded=alert['level'] == 'CRITICAL'):
+                    st.markdown(f"**Message:** {alert['message']}")
+                    st.markdown(f"**Value:** {alert['value']} {alert['unit']}")
+                    st.markdown(f"**Reference Range:** {alert['reference_range']}")
+                    
+                    if alert['recommendations']:
+                        st.markdown("**Recommendations:**")
+                        for rec in alert['recommendations']:
+                            st.markdown(f"• {rec}")
+            
+            st.divider()
         
         # Create individual graphs for each investigation type
         st.subheader("📈 Investigation Trends")
@@ -1186,6 +1245,138 @@ def manage_data_page(db):
                             st.error("Failed to delete all data.")
         else:
             st.info("Database is already empty.")
+
+def alert_dashboard_page(alert_system):
+    st.header("🚨 Alert Dashboard")
+    
+    # Get alert summary
+    alert_summary = alert_system.get_alert_summary()
+    all_alerts = alert_system.get_all_alerts()
+    
+    # Display summary metrics
+    col1, col2, col3, col4 = st.columns(4)
+    with col1:
+        st.metric("Total Alerts", alert_summary['total_alerts'])
+    with col2:
+        st.metric("Critical Alerts", alert_summary['critical_alerts'])
+    with col3:
+        st.metric("High Priority", alert_summary['high_alerts'])
+    with col4:
+        st.metric("Patients Affected", alert_summary['patients_with_alerts'])
+    
+    if not all_alerts:
+        st.info("🎉 No alerts found! All test results are within normal ranges.")
+        return
+    
+    # Alert level filter
+    st.subheader("Filter Alerts")
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        selected_levels = st.multiselect(
+            "Alert Levels",
+            options=['CRITICAL', 'HIGH', 'MEDIUM', 'LOW'],
+            default=['CRITICAL', 'HIGH']
+        )
+    
+    with col2:
+        selected_patients = st.multiselect(
+            "Patients",
+            options=sorted(set([alert['patient_name'] for alert in all_alerts])),
+            default=[]
+        )
+    
+    # Filter alerts based on selection
+    filtered_alerts = all_alerts
+    if selected_levels:
+        filtered_alerts = [a for a in filtered_alerts if a['level'] in selected_levels]
+    if selected_patients:
+        filtered_alerts = [a for a in filtered_alerts if a['patient_name'] in selected_patients]
+    
+    # Display filtered alerts
+    st.subheader(f"Alerts ({len(filtered_alerts)} of {len(all_alerts)})")
+    
+    if not filtered_alerts:
+        st.info("No alerts match the selected filters.")
+        return
+    
+    # Group alerts by level
+    critical_alerts = [a for a in filtered_alerts if a['level'] == 'CRITICAL']
+    high_alerts = [a for a in filtered_alerts if a['level'] == 'HIGH']
+    medium_alerts = [a for a in filtered_alerts if a['level'] == 'MEDIUM']
+    low_alerts = [a for a in filtered_alerts if a['level'] == 'LOW']
+    
+    # Display Critical Alerts
+    if critical_alerts:
+        st.subheader("🚨 Critical Alerts")
+        for alert in critical_alerts:
+            st.markdown(f"""
+            <div style="padding: 15px; margin: 10px 0; border-left: 5px solid {alert['color']}; background-color: {alert['color']}20; border-radius: 5px;">
+                <h4>{alert['icon']} {alert['patient_name']} - {alert['test_type']}</h4>
+                <p><strong>Message:</strong> {alert['message']}</p>
+                <p><strong>Date:</strong> {alert['test_date']} | <strong>Value:</strong> {alert['value']} {alert['unit']}</p>
+                <p><strong>Reference Range:</strong> {alert['reference_range']}</p>
+            </div>
+            """, unsafe_allow_html=True)
+            
+            if alert['recommendations']:
+                with st.expander("View Recommendations"):
+                    for rec in alert['recommendations']:
+                        st.markdown(f"• {rec}")
+    
+    # Display High Priority Alerts
+    if high_alerts:
+        st.subheader("⚠️ High Priority Alerts")
+        for alert in high_alerts:
+            with st.expander(f"{alert['icon']} {alert['patient_name']} - {alert['test_type']} ({alert['test_date']})"):
+                st.markdown(f"**Message:** {alert['message']}")
+                st.markdown(f"**Value:** {alert['value']} {alert['unit']}")
+                st.markdown(f"**Reference Range:** {alert['reference_range']}")
+                
+                if alert['recommendations']:
+                    st.markdown("**Recommendations:**")
+                    for rec in alert['recommendations']:
+                        st.markdown(f"• {rec}")
+    
+    # Display Medium and Low Priority Alerts
+    if medium_alerts or low_alerts:
+        st.subheader("⚡ Other Alerts")
+        other_alerts = medium_alerts + low_alerts
+        
+        for alert in other_alerts:
+            with st.expander(f"{alert['icon']} {alert['level']} - {alert['patient_name']} - {alert['test_type']} ({alert['test_date']})"):
+                st.markdown(f"**Message:** {alert['message']}")
+                st.markdown(f"**Value:** {alert['value']} {alert['unit']}")
+                st.markdown(f"**Reference Range:** {alert['reference_range']}")
+                
+                if alert['recommendations']:
+                    st.markdown("**Recommendations:**")
+                    for rec in alert['recommendations']:
+                        st.markdown(f"• {rec}")
+    
+    # Recent Alerts Section
+    st.subheader("📅 Recent Alerts (Last 7 Days)")
+    recent_alerts = alert_system.check_recent_alerts(7)
+    
+    if recent_alerts:
+        st.write(f"Found {len(recent_alerts)} alerts in the last 7 days")
+        
+        # Create a summary table of recent alerts
+        recent_data = []
+        for alert in recent_alerts:
+            recent_data.append({
+                'Patient': alert['patient_name'],
+                'Test Type': alert['test_type'],
+                'Level': alert['level'],
+                'Date': alert['test_date'],
+                'Value': f"{alert['value']} {alert['unit']}",
+                'Message': alert['message']
+            })
+        
+        recent_df = pd.DataFrame(recent_data)
+        st.dataframe(recent_df, use_container_width=True, hide_index=True)
+    else:
+        st.info("No alerts in the last 7 days.")
 
 if __name__ == "__main__":
     main()
