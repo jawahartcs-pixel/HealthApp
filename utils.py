@@ -229,7 +229,12 @@ def validate_file_type(file_type: str) -> bool:
     supported_types = [
         'application/pdf',
         'text/plain',
-        'text/csv'
+        'text/csv',
+        'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        'application/vnd.ms-excel',
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        'application/xml',
+        'text/xml'
     ]
     
     return file_type in supported_types

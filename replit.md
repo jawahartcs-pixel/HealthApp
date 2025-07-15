@@ -121,6 +121,26 @@ Preferred communication style: Simple, everyday language.
 
 ## Recent Changes
 
+### July 15, 2025 - Multiple File Format Support
+- **Enhanced File Parser**: Added support for multiple file formats beyond PDF and Word
+  - Excel files (.xlsx, .xls) with multi-sheet support
+  - CSV files with structured data parsing
+  - XML files with hierarchical data extraction
+  - Improved text extraction from tabular data in Excel
+- **Updated File Upload Interface**: Enhanced file uploader to accept new formats
+  - Added Excel, CSV, and XML to supported file types
+  - Updated help text to reflect all supported formats
+  - Maintained backward compatibility with existing PDF and Word support
+- **Robust Error Handling**: Added comprehensive error handling for new file formats
+  - Graceful handling of malformed files
+  - Clear error messages for unsupported content
+  - Automatic fallback mechanisms for parsing issues
+- **Dependencies Management**: Added required packages for new file format support
+  - openpyxl for Excel file processing
+  - xlrd for legacy Excel format support
+  - lxml for XML parsing capabilities
+  - pandas integration for structured data handling
+
 ### July 15, 2025 - Advanced Table Filtering & Sorting System
 - **Enhanced Complete Database Records Table**: Added comprehensive filtering and sorting capabilities
   - Multi-column sorting (Date, Test Type, Value, Unit) with ascending/descending options
