@@ -8,6 +8,11 @@ import pytesseract
 from pdf2image import convert_from_bytes
 from PIL import Image
 from docx import Document
+import pandas as pd
+import openpyxl
+import xlrd
+import xml.etree.ElementTree as ET
+import csv
 
 class FileParser:
     def __init__(self):
@@ -173,6 +178,12 @@ class FileParser:
                 return self._parse_text(uploaded_file)
             elif uploaded_file.type == "application/vnd.openxmlformats-officedocument.wordprocessingml.document":
                 return self._parse_docx(uploaded_file)
+            elif uploaded_file.type in ["application/vnd.ms-excel", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"]:
+                return self._parse_excel(uploaded_file)
+            elif uploaded_file.type == "text/csv":
+                return self._parse_csv(uploaded_file)
+            elif uploaded_file.type in ["application/xml", "text/xml"]:
+                return self._parse_xml(uploaded_file)
             else:
                 raise ValueError(f"Unsupported file type: {uploaded_file.type}")
         except Exception as e:
@@ -388,6 +399,219 @@ class FileParser:
             return '\n'.join(text_content)
         except Exception as e:
             raise Exception(f"Error reading Word document: {str(e)}")
+    
+    def _parse_excel(self, uploaded_file) -> str:
+        """Extract text from Excel file."""
+        try:
+            # Reset file pointer to beginning
+            uploaded_file.seek(0)
+            
+            # Read Excel file using pandas
+            df = pd.read_excel(uploaded_file, sheet_name=None, header=None)
+            
+            text = ""
+            for sheet_name, sheet_data in df.items():
+                text += f"\n--- SHEET: {sheet_name} ---\n"
+                
+                # Try to detect if this looks like a structured test results table
+                if self._is_structured_test_data(sheet_data):
+                    text += self._parse_structured_excel_data(sheet_data)
+                else:
+                    # Convert DataFrame to text representation
+                    for index, row in sheet_data.iterrows():
+                        row_text = " ".join([str(cell) for cell in row if pd.notna(cell)])
+                        if row_text.strip():
+                            text += row_text + "\n"
+            
+            return text
+        except Exception as e:
+            raise Exception(f"Error reading Excel file: {str(e)}")
+    
+    def _is_structured_test_data(self, df: pd.DataFrame) -> bool:
+        """Check if Excel data appears to be structured test results."""
+        try:
+            # Convert all data to string and check for common patterns
+            df_str = df.astype(str).str.lower()
+            
+            # Look for common medical test column headers
+            medical_indicators = ['test', 'result', 'value', 'unit', 'reference', 'range', 'normal', 'patient', 'date']
+            
+            # Check first few rows for header-like content
+            first_rows = df_str.head(3).values.flatten()
+            
+            matches = sum(1 for cell in first_rows if any(indicator in str(cell) for indicator in medical_indicators))
+            
+            return matches >= 2  # At least 2 medical indicators found
+        except:
+            return False
+    
+    def _parse_structured_excel_data(self, df: pd.DataFrame) -> str:
+        """Parse structured Excel data (tables with headers)."""
+        try:
+            text = ""
+            
+            # Convert to string and find potential header row
+            df_str = df.astype(str)
+            
+            # Look for header row (containing test, result, value, etc.)
+            header_row = None
+            for i, row in df_str.iterrows():
+                row_lower = row.str.lower()
+                if any(indicator in ' '.join(row_lower.values) for indicator in ['test', 'result', 'value']):
+                    header_row = i
+                    break
+            
+            if header_row is not None:
+                # Extract headers
+                headers = df_str.iloc[header_row].values
+                text += f"Headers: {' | '.join(headers)}\n"
+                
+                # Extract data rows
+                for i in range(header_row + 1, len(df_str)):
+                    row = df_str.iloc[i]
+                    if row.notna().any():  # Skip empty rows
+                        row_data = []
+                        for j, cell in enumerate(row.values):
+                            if pd.notna(cell) and str(cell) != 'nan':
+                                if j < len(headers):
+                                    row_data.append(f"{headers[j]}: {cell}")
+                                else:
+                                    row_data.append(str(cell))
+                        if row_data:
+                            text += " | ".join(row_data) + "\n"
+            else:
+                # No clear header found, use standard parsing
+                for index, row in df_str.iterrows():
+                    row_text = " ".join([str(cell) for cell in row if pd.notna(cell) and str(cell) != 'nan'])
+                    if row_text.strip():
+                        text += row_text + "\n"
+            
+            return text
+        except Exception as e:
+            return str(e)
+    
+    def _parse_csv(self, uploaded_file) -> str:
+        """Extract text from CSV file."""
+        try:
+            # Reset file pointer to beginning
+            uploaded_file.seek(0)
+            
+            # Read CSV file using pandas
+            df = pd.read_csv(uploaded_file)
+            
+            text = ""
+            
+            # Check if this looks like structured test data
+            if self._is_structured_test_data(df):
+                # Add headers information
+                text += f"Headers: {' | '.join(df.columns)}\n"
+                
+                # Format each row with column names
+                for index, row in df.iterrows():
+                    row_data = []
+                    for col, value in row.items():
+                        if pd.notna(value):
+                            row_data.append(f"{col}: {value}")
+                    if row_data:
+                        text += " | ".join(row_data) + "\n"
+            else:
+                # Convert DataFrame to text representation
+                for index, row in df.iterrows():
+                    row_text = " ".join([str(cell) for cell in row if pd.notna(cell)])
+                    if row_text.strip():
+                        text += row_text + "\n"
+            
+            return text
+        except Exception as e:
+            raise Exception(f"Error reading CSV file: {str(e)}")
+    
+    def _parse_xml(self, uploaded_file) -> str:
+        """Extract text from XML file."""
+        try:
+            # Reset file pointer to beginning
+            uploaded_file.seek(0)
+            
+            # Read XML content
+            xml_content = uploaded_file.read()
+            if isinstance(xml_content, bytes):
+                xml_content = xml_content.decode('utf-8', errors='ignore')
+            
+            # Parse XML
+            root = ET.fromstring(xml_content)
+            
+            text = ""
+            
+            # Look for structured medical data patterns
+            medical_elements = ['test', 'result', 'value', 'patient', 'name', 'date', 'unit', 'reference']
+            
+            # Try to extract structured data first
+            structured_data = self._extract_structured_xml_data(root, medical_elements)
+            if structured_data:
+                text += structured_data
+            else:
+                # Fallback to generic text extraction
+                text += self._extract_generic_xml_text(root)
+            
+            return text
+        except Exception as e:
+            raise Exception(f"Error reading XML file: {str(e)}")
+    
+    def _extract_structured_xml_data(self, root, medical_elements: list) -> str:
+        """Extract structured medical data from XML."""
+        try:
+            text = ""
+            
+            # Look for elements that contain medical data
+            for elem in root.iter():
+                if elem.tag.lower() in medical_elements:
+                    if elem.text and elem.text.strip():
+                        text += f"{elem.tag}: {elem.text.strip()}\n"
+                    
+                    # Check for attributes
+                    for attr, value in elem.attrib.items():
+                        if attr.lower() in medical_elements:
+                            text += f"{attr}: {value}\n"
+            
+            # Also look for parent-child relationships that might represent test results
+            test_results = []
+            for elem in root.iter():
+                if any(keyword in elem.tag.lower() for keyword in ['test', 'result', 'lab']):
+                    result_data = {}
+                    
+                    # Extract child elements
+                    for child in elem:
+                        if child.text and child.text.strip():
+                            result_data[child.tag] = child.text.strip()
+                    
+                    # Extract attributes
+                    for attr, value in elem.attrib.items():
+                        result_data[attr] = value
+                    
+                    if result_data:
+                        test_results.append(result_data)
+            
+            # Format test results
+            for result in test_results:
+                result_text = " | ".join([f"{k}: {v}" for k, v in result.items()])
+                if result_text:
+                    text += result_text + "\n"
+            
+            return text if text.strip() else ""
+        except:
+            return ""
+    
+    def _extract_generic_xml_text(self, root) -> str:
+        """Extract generic text from XML elements."""
+        text = ""
+        
+        # Extract text from all elements
+        for elem in root.iter():
+            if elem.text and elem.text.strip():
+                text += elem.text.strip() + "\n"
+            if elem.tail and elem.tail.strip():
+                text += elem.tail.strip() + "\n"
+        
+        return text
     
     def extract_test_data(self, text: str) -> Dict[str, Any]:
         """Extract test data from text content."""
