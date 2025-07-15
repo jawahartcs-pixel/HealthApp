@@ -121,6 +121,24 @@ Preferred communication style: Simple, everyday language.
 
 ## Recent Changes
 
+### July 15, 2025 - Manual Test Addition & Enhanced Duplicate Removal
+- **Manual Test Addition**: Added ability to add tests not captured by scanning
+  - Dynamic input fields for investigation type, value, and unit
+  - Configurable number of additional tests (up to 20)
+  - Separate section for manual tests with include/exclude checkboxes
+  - Combined saving of extracted and manual tests
+- **Enhanced Duplicate Removal**: Improved duplicate detection for scanned documents
+  - Smart name similarity calculation using Jaccard similarity
+  - OCR variation detection for common character substitutions (o/0, l/1, rn/m)
+  - Medical synonym recognition (glucose/sugar, cholesterol/chol)
+  - Source-priority based duplicate resolution
+  - Lenient value thresholds for OCR-extracted content
+- **Improved Editing Interface**: Enhanced the preview and edit system
+  - Clear separation between extracted and manual tests
+  - Investigation type, value, and unit columns for consistency
+  - Patient name and date remain editable before saving
+  - Real-time count of extracted vs additional tests
+
 ### July 15, 2025 - OCR Implementation & Preview/Edit Interface
 - **OCR Integration**: Added Tesseract OCR support for image-based and scanned PDFs
   - Automatic OCR fallback when standard extraction yields limited text
