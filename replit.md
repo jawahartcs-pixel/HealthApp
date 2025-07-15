@@ -119,9 +119,18 @@ Preferred communication style: Simple, everyday language.
 - **File Validation**: Input validation for uploaded files
 - **Data Integrity**: Database constraints prevent invalid data entry
 
+## Recent Changes
+
+### July 15, 2025 - Enhanced PDF Parsing
+- **Improved PDF Text Extraction**: Added table extraction capability to handle structured lab reports
+- **Multiple Pattern Matching**: Implemented tabular, regex, and generic pattern matching for comprehensive test result extraction
+- **Enhanced Debug Information**: Added extraction method breakdown and text preview for troubleshooting
+- **Better Duplicate Handling**: Refined duplicate removal to be less aggressive while maintaining accuracy
+
 ## Development Notes
 
 - **Code Organization**: Clear separation of concerns with modular design
 - **Error Handling**: Comprehensive validation and user-friendly error messages
-- **Extensibility**: Pattern-based file parser can easily support new test types
+- **Extensibility**: Multi-method file parser can handle various PDF layouts and formats
 - **Maintainability**: Well-structured codebase with clear component boundaries
+- **PDF Processing**: Enhanced extraction handles both text and tabular data from lab reports

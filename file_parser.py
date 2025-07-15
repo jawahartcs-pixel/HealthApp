@@ -158,11 +158,31 @@ class FileParser:
         try:
             with pdfplumber.open(io.BytesIO(uploaded_file.read())) as pdf:
                 text = ""
+                tables_text = ""
+                
                 for page in pdf.pages:
+                    # Extract regular text
                     page_text = page.extract_text()
                     if page_text:
                         text += page_text + "\n"
-                return text
+                    
+                    # Try to extract tables which might contain test results
+                    try:
+                        tables = page.extract_tables()
+                        for table in tables:
+                            for row in table:
+                                if row:
+                                    # Join non-None cells with tabs
+                                    row_text = '\t'.join([str(cell) if cell is not None else '' for cell in row])
+                                    tables_text += row_text + "\n"
+                    except:
+                        # If table extraction fails, continue with text extraction
+                        pass
+                
+                # Combine text and table content
+                combined_text = text + "\n\n" + tables_text
+                return combined_text
+                
         except Exception as e:
             raise Exception(f"Error reading PDF: {str(e)}")
     
@@ -256,6 +276,11 @@ class FileParser:
         """Extract test results from text."""
         results = []
         
+        # First, try to find results using tabular pattern (common in PDF reports)
+        tabular_results = self._extract_tabular_results(text)
+        results.extend(tabular_results)
+        
+        # Then use regex patterns for any missed results
         for test_name, pattern in self.test_patterns.items():
             matches = re.finditer(pattern, text, re.IGNORECASE)
             
@@ -270,7 +295,8 @@ class FileParser:
                         'test_type': display_name,
                         'value': value,
                         'unit': self.common_units.get(test_name, ''),
-                        'reference_range': self.reference_ranges.get(test_name, '')
+                        'reference_range': self.reference_ranges.get(test_name, ''),
+                        'source': 'regex'
                     }
                     
                     results.append(result)
@@ -278,14 +304,22 @@ class FileParser:
                 except (ValueError, IndexError):
                     continue
         
-        # Remove duplicates (same test type with same value)
+        # Try to extract any numeric value pairs that look like test results
+        generic_results = self._extract_generic_test_results(text)
+        results.extend(generic_results)
+        
+        # Remove duplicates but be less aggressive - only remove exact matches
         unique_results = []
         seen = set()
         
         for result in results:
-            key = (result['test_type'], result['value'])
+            # Create a more specific key to avoid removing different tests with same value
+            key = (result['test_type'].lower().strip(), round(result['value'], 2))
             if key not in seen:
                 seen.add(key)
+                # Remove the source field before returning
+                if 'source' in result:
+                    del result['source']
                 unique_results.append(result)
         
         return unique_results
@@ -326,3 +360,126 @@ class FileParser:
         }
         
         return display_names.get(test_key, test_key.replace('_', ' ').title())
+    
+    def _extract_tabular_results(self, text: str) -> List[Dict[str, Any]]:
+        """Extract test results from tabular format commonly found in lab reports."""
+        results = []
+        
+        # Look for common tabular patterns where test name, value, and range are on the same line
+        # Pattern: Test Name | Value | Unit | Reference Range
+        tabular_patterns = [
+            # Tab-separated values (most common in extracted tables)
+            r'([a-zA-Z][a-zA-Z\s\(\)\/\-]+?)\t+(\d+(?:\.\d+)?)\t*([a-zA-Z\/\%\^]*)\t*([^\n\r]*)',
+            # Multiple spaces or tabs
+            r'([a-zA-Z][a-zA-Z\s\(\)\/\-]+?)\s{2,}(\d+(?:\.\d+)?)\s+([a-zA-Z\/\%\^]*)\s*([^\n\r]*)',
+            # Pattern with vertical bars or pipes
+            r'([a-zA-Z][a-zA-Z\s\(\)\/\-]+?)\s*[\|\-]\s*(\d+(?:\.\d+)?)\s*[\|\-]\s*([a-zA-Z\/\%\^]*)\s*[\|\-]?\s*([^\n\r]*)',
+            # Pattern with colons
+            r'([a-zA-Z][a-zA-Z\s\(\)\/\-]+?):\s*(\d+(?:\.\d+)?)\s+([a-zA-Z\/\%\^]*)\s*([^\n\r]*)',
+            # Pattern with dots leading to values
+            r'([a-zA-Z][a-zA-Z\s\(\)\/\-]+?)\.{2,}\s*(\d+(?:\.\d+)?)\s+([a-zA-Z\/\%\^]*)\s*([^\n\r]*)'
+        ]
+        
+        for pattern in tabular_patterns:
+            matches = re.finditer(pattern, text, re.IGNORECASE | re.MULTILINE)
+            
+            for match in matches:
+                try:
+                    test_name = match.group(1).strip()
+                    value_str = match.group(2).strip()
+                    unit = match.group(3).strip() if match.group(3) else ''
+                    ref_range = match.group(4).strip() if match.group(4) else ''
+                    
+                    # Clean up test name
+                    test_name = re.sub(r'\s+', ' ', test_name)
+                    test_name = test_name.strip('.,()[]{}')
+                    
+                    # Skip if test name is too short or looks invalid
+                    if len(test_name) < 2 or len(test_name) > 50:
+                        continue
+                    
+                    # Skip common non-test words
+                    skip_words = ['page', 'lab', 'report', 'date', 'time', 'patient', 'doctor', 'reference', 'normal', 'abnormal']
+                    if any(word in test_name.lower() for word in skip_words):
+                        continue
+                    
+                    value = float(value_str)
+                    
+                    # Validate value range
+                    if value < 0 or value > 100000:
+                        continue
+                    
+                    result = {
+                        'test_type': test_name.title(),
+                        'value': value,
+                        'unit': unit,
+                        'reference_range': ref_range,
+                        'source': 'tabular'
+                    }
+                    
+                    results.append(result)
+                    
+                except (ValueError, IndexError, AttributeError):
+                    continue
+        
+        return results
+    
+    def _extract_generic_test_results(self, text: str) -> List[Dict[str, Any]]:
+        """Extract generic test results using broader patterns."""
+        results = []
+        
+        # Look for patterns like "Test Name: 123" or "Test Name = 123"
+        generic_patterns = [
+            r'([a-zA-Z][a-zA-Z\s\(\)\/\-]{2,30})\s*[:\=]\s*(\d+(?:\.\d+)?)\s*([a-zA-Z\/\%\^]*)',
+            r'([a-zA-Z][a-zA-Z\s\(\)\/\-]{2,30})\s+(\d+(?:\.\d+)?)\s+([a-zA-Z\/\%\^]+)',
+            # Pattern for results in parentheses
+            r'([a-zA-Z][a-zA-Z\s\(\)\/\-]{2,30})\s*\(\s*(\d+(?:\.\d+)?)\s*\)',
+        ]
+        
+        common_test_keywords = [
+            'glucose', 'cholesterol', 'hemoglobin', 'hematocrit', 'platelet', 'white', 'red', 'wbc', 'rbc',
+            'sodium', 'potassium', 'chloride', 'creatinine', 'bun', 'alt', 'ast', 'bilirubin', 'albumin',
+            'tsh', 'thyroid', 'iron', 'ferritin', 'vitamin', 'calcium', 'phosphorus', 'magnesium'
+        ]
+        
+        for pattern in generic_patterns:
+            matches = re.finditer(pattern, text, re.IGNORECASE)
+            
+            for match in matches:
+                try:
+                    test_name = match.group(1).strip()
+                    value_str = match.group(2).strip()
+                    unit = match.group(3).strip() if len(match.groups()) > 2 and match.group(3) else ''
+                    
+                    # Clean up test name
+                    test_name = re.sub(r'\s+', ' ', test_name)
+                    test_name = test_name.strip('.,()[]{}')
+                    
+                    # Only include if test name contains known test keywords
+                    if not any(keyword in test_name.lower() for keyword in common_test_keywords):
+                        continue
+                    
+                    # Skip if test name is too short or too long
+                    if len(test_name) < 3 or len(test_name) > 40:
+                        continue
+                    
+                    value = float(value_str)
+                    
+                    # Validate value range
+                    if value < 0 or value > 50000:
+                        continue
+                    
+                    result = {
+                        'test_type': test_name.title(),
+                        'value': value,
+                        'unit': unit,
+                        'reference_range': '',
+                        'source': 'generic'
+                    }
+                    
+                    results.append(result)
+                    
+                except (ValueError, IndexError, AttributeError):
+                    continue
+        
+        return results
