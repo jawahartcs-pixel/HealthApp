@@ -2261,8 +2261,8 @@ def investigation_standards_page(investigation_standards):
                                 if hasattr(uploaded_file, 'type'):
                                     st.write(f"**Type:** {uploaded_file.type}")
                             
-                            # Force OCR option for images and scanned documents
-                            force_ocr = st.checkbox(f"Force OCR for {file_name}", key=f"force_ocr_{i}")
+                            # Force OCR option for images and scanned documents (enabled by default)
+                            force_ocr = st.checkbox(f"Force OCR for {file_name}", value=True, key=f"force_ocr_{i}")
                             
                             with st.spinner(f"Processing {file_name}..."):
                                 # Process file for image snippets if it's a PDF or image
