@@ -121,6 +121,22 @@ Preferred communication style: Simple, everyday language.
 
 ## Recent Changes
 
+### July 16, 2025 - Reference Range Extraction & Display
+- **Enhanced Reference Range Extraction**: Added comprehensive reference range detection to file parser
+  - Enhanced tabular patterns to capture reference ranges from various formats
+  - Added specific patterns for parentheses, brackets, and "Normal/Reference" keywords
+  - Implemented reference range cleaning and formatting for consistent display
+  - Added helper methods to extract ranges from line remainders during text analysis
+- **Reference Range UI Integration**: Added reference range fields throughout the user interface
+  - Reference range display in original extracted data preview
+  - Editable reference range field in test result editing interface
+  - Reference range input for additional manual tests
+  - Reference range included in saved test results data structure
+- **Improved Pattern Recognition**: Enhanced extraction patterns for better reference range capture
+  - Support for numeric ranges (5.0-15.0), comparison operators (<10, >5)
+  - Handling of ranges with units and various formatting styles
+  - Automatic cleaning of noise words while preserving meaningful content
+
 ### July 16, 2025 - Optimized Form Field Editing & OCR Caching
 - **Implemented Extraction Result Caching**: Added intelligent caching system to prevent unnecessary OCR reprocessing
   - Extraction results cached based on file name, size, and OCR settings
