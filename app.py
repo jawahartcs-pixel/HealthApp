@@ -2300,66 +2300,19 @@ def investigation_standards_page(investigation_standards):
                                         # Display extracted tests
                                         st.success(f"✅ Extracted {len(test_data['results'])} test types from {file_name}")
                                         
-                                        # Create side-by-side layout for document and extracted tests
-                                        doc_col, tests_col = st.columns([1, 1])
+                                        # Display extracted test types
+                                        test_types_found = []
+                                        for result in test_data['results']:
+                                            test_type = result.get('test_type', '').strip()
+                                            if test_type and test_type not in test_types_found:
+                                                test_types_found.append(test_type)
                                         
-                                        with doc_col:
-                                            st.subheader("📄 Full Document with Highlights")
-                                            # Show full document image snippet with highlighted extracted tests
-                                            try:
-                                                # Get image snippet extractor
-                                                if hasattr(st.session_state, 'image_snippet_extractor'):
-                                                    image_snippet_extractor = st.session_state.image_snippet_extractor
-                                                else:
-                                                    from image_snippet_extractor import ImageSnippetExtractor
-                                                    image_snippet_extractor = ImageSnippetExtractor()
-                                                    st.session_state.image_snippet_extractor = image_snippet_extractor
-                                                
-                                                # Display extracted test types
-                                                test_types_found = []
-                                                for result in test_data['results']:
-                                                    test_type = result.get('test_type', '').strip()
-                                                    if test_type and test_type not in test_types_found:
-                                                        test_types_found.append(test_type)
-                                                
-                                                # Get document with all highlighted test names
-                                                highlighted_doc = image_snippet_extractor.get_document_with_highlights(test_types_found)
-                                                if highlighted_doc:
-                                                    st.image(highlighted_doc, caption=f"Document with highlighted investigations: {file_name}", use_column_width=True)
-                                                    st.caption("🔵 Blue boxes highlight extracted investigation types")
-                                                else:
-                                                    # Fallback: show document type and basic info
-                                                    st.info("Highlighted document image not available for this file type")
-                                                    if hasattr(uploaded_file, 'type'):
-                                                        if uploaded_file.type.startswith('image/'):
-                                                            # For image files, display the image directly
-                                                            uploaded_file.seek(0)
-                                                            st.image(uploaded_file, caption=f"Original image: {file_name}", use_column_width=True)
-                                                        else:
-                                                            st.write(f"File type: {uploaded_file.type}")
-                                                            st.write(f"Use 'View Snippet' buttons below to see specific sections")
-                                            except Exception as e:
-                                                st.warning(f"Could not display highlighted document: {str(e)}")
-                                                # Show basic file info as fallback
-                                                if hasattr(uploaded_file, 'type') and uploaded_file.type.startswith('image/'):
-                                                    uploaded_file.seek(0)
-                                                    st.image(uploaded_file, caption=f"Original image: {file_name}", use_column_width=True)
+                                        st.write(f"**Found {len(test_types_found)} investigation types:**")
+                                        for test_type in test_types_found:
+                                            st.write(f"• {test_type}")
                                         
-                                        with tests_col:
-                                            st.subheader("🔬 Extracted Investigations")
-                                            # Display extracted test types
-                                            test_types_found = []
-                                            for result in test_data['results']:
-                                                test_type = result.get('test_type', '').strip()
-                                                if test_type and test_type not in test_types_found:
-                                                    test_types_found.append(test_type)
-                                            
-                                            st.write(f"**Found {len(test_types_found)} investigation types:**")
-                                            for test_type in test_types_found:
-                                                st.write(f"• {test_type}")
-                                            
-                                            if test_types_found:
-                                                st.info("👇 Scroll down to create investigation standards for these items")
+                                        if test_types_found:
+                                            st.info("👇 Each investigation below shows the document snippet with highlighted text")
                                         
                                         # Add to all extracted tests
                                         all_extracted_tests.extend(test_types_found)
@@ -2423,30 +2376,11 @@ def investigation_standards_page(investigation_standards):
                         exists_in_aliases = test_name_lower in all_aliases
                         
                         with st.expander(f"{'✅' if exists_in_aliases else '➕'} {test_name}", expanded=not exists_in_aliases):
-                            col1, col2, col3 = st.columns([2, 1, 1])
+                            # Create two-column layout: Document snippet on left, Investigation details on right
+                            snippet_col, details_col = st.columns([1, 1])
                             
-                            with col1:
-                                if exists_in_aliases:
-                                    st.info("📋 This investigation type already exists in the system")
-                                    st.write("**Status:** Found in existing aliases")
-                                else:
-                                    st.warning("🆕 New investigation type - not found in existing aliases")
-                                    
-                                    # Show inline creation form for new investigations
-                                    checkbox_key = f"create_{abs(hash(test_name)) % 1000000}"
-                                    create_checkbox = st.checkbox(
-                                        "Create new investigation standard", 
-                                        key=checkbox_key, 
-                                        value=True
-                                    )
-                            
-                            with col2:
-                                if exists_in_aliases:
-                                    st.write("**Action:** None needed")
-                                else:
-                                    st.write("**Action:** Create new")
-                            
-                            with col3:
+                            with snippet_col:
+                                st.subheader("📄 Document Snippet")
                                 # Show image snippet for this investigation type
                                 if hasattr(st.session_state, 'image_snippet_extractor'):
                                     image_snippet_extractor = st.session_state.image_snippet_extractor
@@ -2455,110 +2389,123 @@ def investigation_standards_page(investigation_standards):
                                     image_snippet_extractor = ImageSnippetExtractor()
                                     st.session_state.image_snippet_extractor = image_snippet_extractor
                                 
-                                if st.button(f"📷 View Snippet", key=f"snippet_{abs(hash(test_name)) % 1000000}", help=f"Show document snippet for {test_name}"):
-                                    try:
-                                        # Try to get image snippet for this test with highlighting
-                                        snippet_image = image_snippet_extractor.get_context_snippet(test_name)
-                                        if snippet_image:
-                                            st.image(snippet_image, caption=f"Document snippet with highlighted '{test_name}'", use_column_width=True)
-                                            st.caption("🔵 Blue boxes show the highlighted investigation type")
-                                        else:
-                                            st.info(f"No visual snippet available for '{test_name}'")
-                                    except Exception as e:
-                                        st.error(f"Error getting snippet: {str(e)}")
+                                try:
+                                    # Get image snippet for this test with highlighting
+                                    snippet_image = image_snippet_extractor.get_context_snippet(test_name)
+                                    if snippet_image:
+                                        st.image(snippet_image, caption=f"Highlighted: '{test_name}'", use_container_width=True)
+                                        st.caption("🔵 Blue boxes highlight the investigation type")
+                                    else:
+                                        st.info(f"No visual snippet available for '{test_name}'")
+                                except Exception as e:
+                                    st.error(f"Error getting snippet: {str(e)}")
                             
-                            # Continue with the form logic for new investigations
-                            if not exists_in_aliases:
-                                checkbox_key = f"create_{abs(hash(test_name)) % 1000000}"
-                                create_checkbox = st.session_state.get(checkbox_key, True)
-                                
-                                if create_checkbox:
-                                    # Create unique form key using test name hash to avoid duplicates
-                                    form_key = f"create_form_{abs(hash(test_name)) % 1000000}"
+                            with details_col:
+                                st.subheader("🔬 Investigation Details")
+                                if exists_in_aliases:
+                                    st.info("📋 This investigation type already exists in the system")
+                                    st.write("**Status:** Found in existing aliases")
+                                    st.write("**Action:** None needed")
+                                else:
+                                    st.warning("🆕 New investigation type - not found in existing aliases")
+                                    st.write("**Action:** Create new")
                                     
-                                    with st.form(form_key):
-                                        st.write("**Investigation Standard Details:**")
+                                    # Show inline creation form for new investigations
+                                    checkbox_key = f"create_{abs(hash(test_name)) % 1000000}"
+                                    create_checkbox = st.checkbox(
+                                        "Create new investigation standard", 
+                                        key=checkbox_key, 
+                                        value=True
+                                    )
+                                    
+                                    # Show form if checkbox is checked
+                                    if create_checkbox:
+                                        # Create unique form key using test name hash to avoid duplicates
+                                        form_key = f"create_form_{abs(hash(test_name)) % 1000000}"
                                         
-                                        # Standard name (pre-populated with extracted text)
-                                        standard_name = st.text_input(
-                                            "Standard Investigation Name", 
-                                            value=test_name,
-                                            key=f"name_{form_key}"
-                                        )
-                                        
-                                        # Category
-                                        category = st.selectbox(
-                                            "Category", 
-                                            ["Blood Chemistry", "Hematology", "Lipid Profile", "Liver Function", 
-                                             "Kidney Function", "Thyroid Function", "Cardiac Markers", "Diabetes Markers",
-                                             "Electrolytes", "Vitamins", "Hormones", "Other"],
-                                            key=f"category_{form_key}"
-                                        )
-                                        
-                                        # Reference ranges
-                                        col_male, col_female = st.columns(2)
-                                        
-                                        with col_male:
-                                            st.write("**Male Range:**")
-                                            male_min = st.number_input("Min", value=0.0, key=f"male_min_{form_key}")
-                                            male_max = st.number_input("Max", value=100.0, key=f"male_max_{form_key}")
-                                            male_unit = st.text_input("Unit", value="mg/dL", key=f"male_unit_{form_key}")
-                                        
-                                        with col_female:
-                                            st.write("**Female Range:**")
-                                            female_min = st.number_input("Min", value=0.0, key=f"female_min_{form_key}")
-                                            female_max = st.number_input("Max", value=100.0, key=f"female_max_{form_key}")
-                                            female_unit = st.text_input("Unit", value="mg/dL", key=f"female_unit_{form_key}")
-                                        
-                                        # Description
-                                        description = st.text_area(
-                                            "Description", 
-                                            value="Investigation standard created from medical report extraction",
-                                            key=f"desc_{form_key}"
-                                        )
-                                        
-                                        # Aliases (automatically include the extracted text)
-                                        aliases_input = st.text_input(
-                                            "Aliases (comma-separated)", 
-                                            value=test_name,
-                                            help="The extracted test name will be automatically added to aliases",
-                                            key=f"aliases_{form_key}"
-                                        )
-                                        
-                                        # Submit button
-                                        submit_individual = st.form_submit_button(
-                                            f"✅ Create Standard for {test_name}", 
-                                            type="primary"
-                                        )
-                                        
-                                        if submit_individual:
-                                            try:
-                                                # Ensure extracted test name is in aliases
-                                                aliases_list = [alias.strip() for alias in aliases_input.split(',') if alias.strip()]
-                                                if test_name not in aliases_list:
-                                                    aliases_list.append(test_name)
-                                                
-                                                success = investigation_standards.add_standard(
-                                                    standard_name=standard_name,
-                                                    category=category,
-                                                    male_range_min=male_min,
-                                                    male_range_max=male_max,
-                                                    male_unit=male_unit,
-                                                    female_range_min=female_min,
-                                                    female_range_max=female_max,
-                                                    female_unit=female_unit,
-                                                    description=description,
-                                                    aliases=", ".join(aliases_list)
-                                                )
-                                                
-                                                if success:
-                                                    st.success(f"✅ Successfully created standard for {test_name}!")
-                                                    st.rerun()
-                                                else:
-                                                    st.error(f"❌ Failed to create standard for {test_name}")
+                                        with st.form(form_key):
+                                            st.write("**Investigation Standard Details:**")
                                             
-                                            except Exception as e:
-                                                st.error(f"Error creating standard: {str(e)}")
+                                            # Standard name (pre-populated with extracted text)
+                                            standard_name = st.text_input(
+                                                "Standard Investigation Name", 
+                                                value=test_name,
+                                                key=f"name_{form_key}"
+                                            )
+                                            
+                                            # Category
+                                            category = st.selectbox(
+                                                "Category", 
+                                                ["Blood Chemistry", "Hematology", "Lipid Profile", "Liver Function", 
+                                                 "Kidney Function", "Thyroid Function", "Cardiac Markers", "Diabetes Markers",
+                                                 "Electrolytes", "Vitamins", "Hormones", "Other"],
+                                                key=f"category_{form_key}"
+                                            )
+                                            
+                                            # Reference ranges
+                                            col_male, col_female = st.columns(2)
+                                            
+                                            with col_male:
+                                                st.write("**Male Range:**")
+                                                male_min = st.number_input("Min", value=0.0, key=f"male_min_{form_key}")
+                                                male_max = st.number_input("Max", value=100.0, key=f"male_max_{form_key}")
+                                                male_unit = st.text_input("Unit", value="mg/dL", key=f"male_unit_{form_key}")
+                                            
+                                            with col_female:
+                                                st.write("**Female Range:**")
+                                                female_min = st.number_input("Min", value=0.0, key=f"female_min_{form_key}")
+                                                female_max = st.number_input("Max", value=100.0, key=f"female_max_{form_key}")
+                                                female_unit = st.text_input("Unit", value="mg/dL", key=f"female_unit_{form_key}")
+                                            
+                                            # Description
+                                            description = st.text_area(
+                                                "Description", 
+                                                value="Investigation standard created from medical report extraction",
+                                                key=f"desc_{form_key}"
+                                            )
+                                            
+                                            # Aliases (automatically include the extracted text)
+                                            aliases_input = st.text_input(
+                                                "Aliases (comma-separated)", 
+                                                value=test_name,
+                                                help="The extracted test name will be automatically added to aliases",
+                                                key=f"aliases_{form_key}"
+                                            )
+                                            
+                                            # Submit button
+                                            submit_individual = st.form_submit_button(
+                                                f"✅ Create Standard for {test_name}", 
+                                                type="primary"
+                                            )
+                                            
+                                            if submit_individual:
+                                                try:
+                                                    # Ensure extracted test name is in aliases
+                                                    aliases_list = [alias.strip() for alias in aliases_input.split(',') if alias.strip()]
+                                                    if test_name not in aliases_list:
+                                                        aliases_list.append(test_name)
+                                                    
+                                                    success = investigation_standards.add_standard(
+                                                        standard_name=standard_name,
+                                                        category=category,
+                                                        male_range_min=male_min,
+                                                        male_range_max=male_max,
+                                                        male_unit=male_unit,
+                                                        female_range_min=female_min,
+                                                        female_range_max=female_max,
+                                                        female_unit=female_unit,
+                                                        description=description,
+                                                        aliases=", ".join(aliases_list)
+                                                    )
+                                                    
+                                                    if success:
+                                                        st.success(f"✅ Successfully created standard for {test_name}!")
+                                                        st.rerun()
+                                                    else:
+                                                        st.error(f"❌ Failed to create standard for {test_name}")
+                                                
+                                                except Exception as e:
+                                                    st.error(f"Error creating standard: {str(e)}")
 
 if __name__ == "__main__":
     main()
