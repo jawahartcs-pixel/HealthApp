@@ -121,15 +121,8 @@ Preferred communication style: Simple, everyday language.
 
 ## Recent Changes
 
-### July 16, 2025 - Enhanced Document Context & Reference Range Support
-- **Improved Document Snippet Display**: Significantly enhanced context extraction and display for extracted test results
-  - Increased context window from 100 to 200-400 characters around each test
-  - Added position information showing where tests were found in document
-  - Replaced limited info boxes with expandable text areas for better readability
-  - Added "Show More/Less Context" buttons for extended context viewing
-  - Extended context shows up to 1500 characters with position tracking
-  - Better highlighting of test values with arrow markers (➤ value ⬅)
-- **Reference Range Extraction & Display**: Added comprehensive reference range detection to file parser
+### July 16, 2025 - Reference Range Extraction & Display
+- **Enhanced Reference Range Extraction**: Added comprehensive reference range detection to file parser
   - Enhanced tabular patterns to capture reference ranges from various formats
   - Added specific patterns for parentheses, brackets, and "Normal/Reference" keywords
   - Implemented reference range cleaning and formatting for consistent display

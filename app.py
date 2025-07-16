@@ -98,16 +98,11 @@ def main():
 def upload_results_page(file_parser, data_processor, user_id):
     st.header("📁 Upload Blood Test Results")
     
-    def _get_test_context(full_text, result, extended=False):
+    def _get_test_context(full_text, result):
         """Get surrounding context for a specific test result from the document."""
         test_name = result['test_type'].lower()
         test_value = str(result['value'])
         text_lower = full_text.lower()
-        
-        # Determine context window based on extended flag
-        context_before = 400 if extended else 200
-        context_after = 400 if extended else 200
-        max_length = 1500 if extended else 800
         
         # Try to find the test name in the text
         name_pos = text_lower.find(test_name)
@@ -122,9 +117,9 @@ def upload_results_page(file_parser, data_processor, user_id):
         
         # If we found the test name, get surrounding context
         if name_pos != -1:
-            # Get extended context around the test name
-            start = max(0, name_pos - context_before)
-            end = min(len(full_text), name_pos + len(test_name) + context_after)
+            # Get 100 characters before and after the test name
+            start = max(0, name_pos - 100)
+            end = min(len(full_text), name_pos + len(test_name) + 100)
             context = full_text[start:end].strip()
             
             # Clean up the context
@@ -134,31 +129,19 @@ def upload_results_page(file_parser, data_processor, user_id):
             if test_value in context:
                 context = context.replace(test_value, f"➤ {test_value} ⬅")
             
-            # Add position information
-            context_info = f"[Found at position {name_pos:,} in document]\n\n{context}"
-            
-            # Limit length but don't truncate as aggressively
-            if len(context_info) > max_length:
-                context_info = context_info[:max_length] + "\n\n[...truncated for display...]"
-            
-            return context_info
+            return context[:300] + "..." if len(context) > 300 else context
         
         # If test name not found, try to find the value
         value_pos = full_text.find(test_value)
         if value_pos != -1:
-            start = max(0, value_pos - context_before//2)
-            end = min(len(full_text), value_pos + len(test_value) + context_after//2)
+            start = max(0, value_pos - 50)
+            end = min(len(full_text), value_pos + len(test_value) + 50)
             context = full_text[start:end].strip()
             context = ' '.join(context.split())
             context = context.replace(test_value, f"➤ {test_value} ⬅")
-            
-            context_info = f"[Found value at position {value_pos:,} in document]\n\n{context}"
-            if len(context_info) > max_length//2:
-                context_info = context_info[:max_length//2] + "\n\n[...truncated for display...]"
-            
-            return context_info
+            return context[:200] + "..." if len(context) > 200 else context
         
-        return f"Could not locate '{test_name}' or value '{test_value}' in document text"
+        return f"Could not locate '{test_name}' in document text"
     
     # File upload
     uploaded_files = st.file_uploader(
@@ -366,28 +349,7 @@ def upload_results_page(file_parser, data_processor, user_id):
                                         
                                         # Show context from document
                                         if test_context and "Could not locate" not in test_context:
-                                            st.markdown("**📄 Document Context:**")
-                                            
-                                            # Button to toggle extended context
-                                            extended_key = f"extended_context_{uploaded_file.name}_{i}"
-                                            if st.button(f"🔍 Show {'Less' if st.session_state.get(extended_key, False) else 'More'} Context", 
-                                                       key=f"context_btn_{uploaded_file.name}_{i}"):
-                                                st.session_state[extended_key] = not st.session_state.get(extended_key, False)
-                                                st.rerun()
-                                            
-                                            # Get context based on extended flag
-                                            show_extended = st.session_state.get(extended_key, False)
-                                            display_context = _get_test_context(extracted_text, result, extended=show_extended)
-                                            
-                                            # Use text_area for better display of longer text
-                                            st.text_area(
-                                                "Context",
-                                                value=display_context,
-                                                height=250 if show_extended else 150,
-                                                key=f"context_display_{uploaded_file.name}_{i}",
-                                                label_visibility="collapsed",
-                                                help="Surrounding text from the document where this test was found. Click 'Show More Context' for extended view."
-                                            )
+                                            st.info(f"**Context from document:**\n{test_context}")
                                         
                                         # Show original values in a clean format
                                         st.code(f"""Investigation: {result['test_type']}
