@@ -45,19 +45,44 @@ def main():
     st.title("🩸 Blood Test Results Management")
     st.markdown("Upload, manage, and visualize patient blood test results")
     
+    # Step-by-step debugging
+    st.write("DEBUG: Starting initialization...")
+    
     try:
-        # Initialize components
-        db, file_parser, data_processor, visualization, alert_system, auth_system, auth_ui, anomaly_detector, investigation_standards = init_components()
+        # Initialize components one by one
+        st.write("DEBUG: Initializing database...")
+        db = init_database()
+        
+        st.write("DEBUG: Initializing file parser...")
+        file_parser = FileParser()
+        
+        st.write("DEBUG: Initializing other components...")
+        data_processor = DataProcessor(db)
+        visualization = Visualization(db)
+        alert_system = AlertSystem(db)
+        auth_system = AuthSystem()
+        auth_ui = AuthUI(auth_system)
+        anomaly_detector = AnomalyDetector(db)
+        investigation_standards = InvestigationStandards()
+        
+        st.write("DEBUG: All components initialized successfully!")
         
         # Store investigation_standards in session state for access in upload page
         st.session_state['investigation_standards'] = investigation_standards
         
+        st.write("DEBUG: Checking authentication...")
         # Check authentication
         if not auth_ui.check_authentication():
+            st.write("DEBUG: Authentication required, showing login page...")
             auth_ui.login_page()
             return
+        
+        st.write("DEBUG: Authentication passed, setting up navigation...")
+        
     except Exception as e:
         st.error(f"Initialization error: {str(e)}")
+        import traceback
+        st.text(traceback.format_exc())
         st.stop()
     
     # Sidebar navigation
