@@ -121,7 +121,12 @@ Preferred communication style: Simple, everyday language.
 
 ## Recent Changes
 
-### July 16, 2025 - Optimized Form Field Editing
+### July 16, 2025 - Optimized Form Field Editing & OCR Caching
+- **Implemented Extraction Result Caching**: Added intelligent caching system to prevent unnecessary OCR reprocessing
+  - Extraction results cached based on file name, size, and OCR settings
+  - Patient name and date changes no longer trigger OCR re-extraction
+  - Visual indicator shows when cached results are being used
+  - Clear cache button available for manual reprocessing when needed
 - **Simplified Patient Name and Date Editing**: Removed session state management that caused page reloads
   - Patient name and test date fields are directly editable without triggering OCR re-extraction
   - Form values are passed directly to data processor when saving results

@@ -157,35 +157,64 @@ def upload_results_page(file_parser, data_processor, user_id):
         help="Use OCR (Optical Character Recognition) for image-based or problematic PDFs. This can help extract text from scanned documents."
     )
     
+    # Clear cache button for reprocessing
+    if st.button("🔄 Clear Cache & Reprocess Files", help="Clear cached extraction results and reprocess all files"):
+        # Clear all extraction cache
+        keys_to_remove = [key for key in st.session_state.keys() if key.startswith('extraction_')]
+        for key in keys_to_remove:
+            del st.session_state[key]
+        st.rerun()
+    
     if uploaded_files:
         st.subheader("Processing Files")
         
         for uploaded_file in uploaded_files:
             with st.expander(f"Processing: {uploaded_file.name}"):
                 try:
-                    # Show processing status
-                    progress_bar = st.progress(0)
-                    status_text = st.empty()
+                    # Cache extraction results to prevent reprocessing on form changes
+                    cache_key = f"extraction_{uploaded_file.name}_{uploaded_file.size}_{force_ocr}"
                     
-                    status_text.text("Reading file...")
-                    progress_bar.progress(25)
-                    
-                    # Parse file
-                    extracted_text = file_parser.parse_file(uploaded_file, force_ocr)
-                    
-                    status_text.text("Extracting test data...")
-                    progress_bar.progress(50)
-                    
-                    # Extract test data
-                    test_data = file_parser.extract_test_data(extracted_text)
-                    
-                    # Initialize image snippet extractor for OCR documents
-                    snippet_extractor = None
-                    if uploaded_file.type == "application/pdf" and ("OCR" in extracted_text or force_ocr):
-                        snippet_extractor = ImageSnippetExtractor()
-                        uploaded_file.seek(0)
-                        pdf_bytes = uploaded_file.read()
-                        snippet_extractor.process_pdf_for_snippets(pdf_bytes)
+                    if cache_key not in st.session_state:
+                        # Show processing status only during initial extraction
+                        progress_bar = st.progress(0)
+                        status_text = st.empty()
+                        
+                        status_text.text("Reading file...")
+                        progress_bar.progress(25)
+                        
+                        # Parse file
+                        extracted_text = file_parser.parse_file(uploaded_file, force_ocr)
+                        
+                        status_text.text("Extracting test data...")
+                        progress_bar.progress(50)
+                        
+                        # Extract test data
+                        test_data = file_parser.extract_test_data(extracted_text)
+                        
+                        # Initialize image snippet extractor for OCR documents
+                        snippet_extractor = None
+                        if uploaded_file.type == "application/pdf" and ("OCR" in extracted_text or force_ocr):
+                            snippet_extractor = ImageSnippetExtractor()
+                            uploaded_file.seek(0)
+                            pdf_bytes = uploaded_file.read()
+                            snippet_extractor.process_pdf_for_snippets(pdf_bytes)
+                        
+                        # Cache the results
+                        st.session_state[cache_key] = {
+                            'extracted_text': extracted_text,
+                            'test_data': test_data,
+                            'snippet_extractor': snippet_extractor
+                        }
+                        
+                        status_text.text("Extraction complete!")
+                        progress_bar.progress(100)
+                    else:
+                        # Use cached results
+                        st.info("ℹ️ Using cached extraction results (no reprocessing needed)")
+                        cached_data = st.session_state[cache_key]
+                        extracted_text = cached_data['extracted_text']
+                        test_data = cached_data['test_data']
+                        snippet_extractor = cached_data['snippet_extractor']
                     
                     if not test_data or not test_data.get('results'):
                         st.error("No valid blood test data found in the file")
