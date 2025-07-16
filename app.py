@@ -506,10 +506,14 @@ Extraction Method: {result.get('source', 'regex')}""")
                                     if st.session_state.get(f"include_{uploaded_file.name}_{i}", True):
                                         # Determine which test type to use based on user selection
                                         dropdown_selection = st.session_state.get(f"test_dropdown_{uploaded_file.name}_{i}", "(Use custom text below)")
+                                        custom_text_value = st.session_state.get(f"test_name_{uploaded_file.name}_{i}", result['test_type'])
+                                        
+                                        # Debug output
+                                        st.write(f"DEBUG Test {i+1}: Dropdown='{dropdown_selection}', Custom='{custom_text_value}'")
                                         
                                         if dropdown_selection == "(Use custom text below)":
                                             # User chose to use custom text - ignore fuzzy match, use custom input
-                                            final_test_type = st.session_state.get(f"test_name_{uploaded_file.name}_{i}", result['test_type'])
+                                            final_test_type = custom_text_value
                                         else:
                                             # User selected a standard from dropdown - use that standard
                                             final_test_type = dropdown_selection
