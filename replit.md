@@ -121,6 +121,24 @@ Preferred communication style: Simple, everyday language.
 
 ## Recent Changes
 
+### July 16, 2025 - Image Upload Support & Standards Creation from Reports
+- **Image File Support**: Added comprehensive support for image uploads in file parser
+  - Support for JPEG, PNG, BMP, and TIFF image formats
+  - Direct OCR processing for image files using Tesseract
+  - Integration with existing OCR enhancement and cleaning functions
+  - Full document snippet display instead of cropped portions for better context
+- **Camera Input Integration**: Added camera capture functionality for direct photo uploads
+  - Native Streamlit camera input for taking photos of medical reports
+  - Seamless integration with existing file processing pipeline
+  - Combined processing of uploaded files and camera captures
+- **Investigation Standards Creation from Reports**: New tab in Investigation Standards page for bulk creation
+  - Complete file upload and processing logic duplicated from main upload page
+  - Support for all file formats: PDF, Word, Excel, CSV, XML, and Images
+  - Automatic extraction of test types from medical reports
+  - Bulk creation of investigation standards with default reference ranges
+  - Fuzzy matching integration to avoid duplicate standards
+  - Select all/none functionality for efficient bulk operations
+
 ### July 16, 2025 - Reference Range Extraction & Display
 - **Enhanced Reference Range Extraction**: Added comprehensive reference range detection to file parser
   - Enhanced tabular patterns to capture reference ranges from various formats
