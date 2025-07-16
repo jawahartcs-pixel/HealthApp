@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 import os
+import re
 from datetime import datetime, date
 import plotly.express as px
 import plotly.graph_objects as go
@@ -2300,19 +2301,27 @@ def investigation_standards_page(investigation_standards):
                                         # Display extracted tests
                                         st.success(f"✅ Extracted {len(test_data['results'])} test types from {file_name}")
                                         
-                                        # Display extracted test types
+                                        # Store full test data with reference ranges in session state
+                                        if 'extracted_test_data' not in st.session_state:
+                                            st.session_state.extracted_test_data = {}
+                                        
+                                        # Display extracted test types and store full test data
                                         test_types_found = []
                                         for result in test_data['results']:
                                             test_type = result.get('test_type', '').strip()
                                             if test_type and test_type not in test_types_found:
                                                 test_types_found.append(test_type)
+                                                # Store the full result data for this test type
+                                                st.session_state.extracted_test_data[test_type] = result
                                         
                                         st.write(f"**Found {len(test_types_found)} investigation types:**")
                                         for test_type in test_types_found:
-                                            st.write(f"• {test_type}")
+                                            ref_range = st.session_state.extracted_test_data[test_type].get('reference_range', '')
+                                            ref_info = f" (Range: {ref_range})" if ref_range else ""
+                                            st.write(f"• {test_type}{ref_info}")
                                         
                                         if test_types_found:
-                                            st.info("👇 Each investigation below shows the document snippet with highlighted text")
+                                            st.info("👇 Each investigation below shows the document snippet with highlighted text and extracted reference ranges")
                                         
                                         # Add to all extracted tests
                                         all_extracted_tests.extend(test_types_found)
@@ -2439,8 +2448,71 @@ def investigation_standards_page(investigation_standards):
                                         # Create unique form key using test name hash to avoid duplicates
                                         form_key = f"create_form_{abs(hash(test_name)) % 1000000}"
                                         
+                                        # Get extracted test data for this test if available
+                                        extracted_data = st.session_state.get('extracted_test_data', {}).get(test_name, {})
+                                        reference_range = extracted_data.get('reference_range', '')
+                                        extracted_unit = extracted_data.get('unit', 'mg/dL')
+                                        
+                                        # Parse reference range to extract min/max values
+                                        def parse_reference_range(ref_range_str):
+                                            """Parse reference range string to extract min/max values."""
+                                            if not ref_range_str:
+                                                return 0.0, 100.0, extracted_unit
+                                            
+                                            # Clean the reference range string
+                                            ref_clean = ref_range_str.strip()
+                                            
+                                            # Try to extract numeric ranges (e.g., "5.0-15.0", "5.0 - 15.0", "5.0 to 15.0")
+                                            range_patterns = [
+                                                r'(\d+\.?\d*)\s*[-–—]\s*(\d+\.?\d*)',  # 5.0-15.0 or 5.0 - 15.0
+                                                r'(\d+\.?\d*)\s+to\s+(\d+\.?\d*)',     # 5.0 to 15.0
+                                                r'(\d+\.?\d*)\s*–\s*(\d+\.?\d*)',      # em dash
+                                                r'(\d+\.?\d*)\s*\-\s*(\d+\.?\d*)',     # regular dash
+                                            ]
+                                            
+                                            for pattern in range_patterns:
+                                                match = re.search(pattern, ref_clean, re.IGNORECASE)
+                                                if match:
+                                                    try:
+                                                        min_val = float(match.group(1))
+                                                        max_val = float(match.group(2))
+                                                        return min_val, max_val, extracted_unit
+                                                    except ValueError:
+                                                        continue
+                                            
+                                            # Try to extract single value with operator (e.g., "<10", ">5")
+                                            single_patterns = [
+                                                r'<\s*(\d+\.?\d*)',  # <10
+                                                r'>\s*(\d+\.?\d*)',  # >5
+                                                r'≤\s*(\d+\.?\d*)',  # ≤10
+                                                r'≥\s*(\d+\.?\d*)',  # ≥5
+                                            ]
+                                            
+                                            for pattern in single_patterns:
+                                                match = re.search(pattern, ref_clean)
+                                                if match:
+                                                    try:
+                                                        val = float(match.group(1))
+                                                        if '<' in pattern or '≤' in pattern:
+                                                            return 0.0, val, extracted_unit
+                                                        else:  # > or ≥
+                                                            return val, val * 2, extracted_unit
+                                                    except ValueError:
+                                                        continue
+                                            
+                                            # Default fallback
+                                            return 0.0, 100.0, extracted_unit
+                                        
+                                        # Parse the reference range
+                                        min_val, max_val, unit = parse_reference_range(reference_range)
+                                        
                                         with st.form(form_key):
                                             st.write("**Investigation Standard Details:**")
+                                            
+                                            # Show extracted reference range if available
+                                            if reference_range:
+                                                st.info(f"📋 **Extracted Reference Range:** {reference_range}")
+                                                st.caption("The values below are automatically populated from the document")
                                             
                                             # Standard name (pre-populated with extracted text)
                                             standard_name = st.text_input(
@@ -2463,15 +2535,15 @@ def investigation_standards_page(investigation_standards):
                                             
                                             with col_male:
                                                 st.write("**Male Range:**")
-                                                male_min = st.number_input("Min", value=0.0, key=f"male_min_{form_key}")
-                                                male_max = st.number_input("Max", value=100.0, key=f"male_max_{form_key}")
-                                                male_unit = st.text_input("Unit", value="mg/dL", key=f"male_unit_{form_key}")
+                                                male_min = st.number_input("Min", value=min_val, key=f"male_min_{form_key}")
+                                                male_max = st.number_input("Max", value=max_val, key=f"male_max_{form_key}")
+                                                male_unit = st.text_input("Unit", value=unit, key=f"male_unit_{form_key}")
                                             
                                             with col_female:
                                                 st.write("**Female Range:**")
-                                                female_min = st.number_input("Min", value=0.0, key=f"female_min_{form_key}")
-                                                female_max = st.number_input("Max", value=100.0, key=f"female_max_{form_key}")
-                                                female_unit = st.text_input("Unit", value="mg/dL", key=f"female_unit_{form_key}")
+                                                female_min = st.number_input("Min", value=min_val, key=f"female_min_{form_key}")
+                                                female_max = st.number_input("Max", value=max_val, key=f"female_max_{form_key}")
+                                                female_unit = st.text_input("Unit", value=unit, key=f"female_unit_{form_key}")
                                             
                                             # Description
                                             description = st.text_area(
