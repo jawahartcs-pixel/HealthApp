@@ -174,11 +174,12 @@ def upload_results_page(file_parser, data_processor, user_id):
                     # Cache extraction results to prevent reprocessing on form changes
                     cache_key = f"extraction_{uploaded_file.name}_{uploaded_file.size}_{force_ocr}"
                     
+                    # Always initialize these for consistent access
+                    progress_bar = st.progress(0)
+                    status_text = st.empty()
+                    
                     if cache_key not in st.session_state:
-                        # Show processing status only during initial extraction
-                        progress_bar = st.progress(0)
-                        status_text = st.empty()
-                        
+                        # Show processing status during initial extraction
                         status_text.text("Reading file...")
                         progress_bar.progress(25)
                         
@@ -210,7 +211,8 @@ def upload_results_page(file_parser, data_processor, user_id):
                         progress_bar.progress(100)
                     else:
                         # Use cached results
-                        st.info("ℹ️ Using cached extraction results (no reprocessing needed)")
+                        status_text.text("ℹ️ Using cached extraction results (no reprocessing needed)")
+                        progress_bar.progress(100)
                         cached_data = st.session_state[cache_key]
                         extracted_text = cached_data['extracted_text']
                         test_data = cached_data['test_data']
