@@ -45,16 +45,20 @@ def main():
     st.title("🩸 Blood Test Results Management")
     st.markdown("Upload, manage, and visualize patient blood test results")
     
-    # Initialize components
-    db, file_parser, data_processor, visualization, alert_system, auth_system, auth_ui, anomaly_detector, investigation_standards = init_components()
-    
-    # Store investigation_standards in session state for access in upload page
-    st.session_state['investigation_standards'] = investigation_standards
-    
-    # Check authentication
-    if not auth_ui.check_authentication():
-        auth_ui.login_page()
-        return
+    try:
+        # Initialize components
+        db, file_parser, data_processor, visualization, alert_system, auth_system, auth_ui, anomaly_detector, investigation_standards = init_components()
+        
+        # Store investigation_standards in session state for access in upload page
+        st.session_state['investigation_standards'] = investigation_standards
+        
+        # Check authentication
+        if not auth_ui.check_authentication():
+            auth_ui.login_page()
+            return
+    except Exception as e:
+        st.error(f"Initialization error: {str(e)}")
+        st.stop()
     
     # Sidebar navigation
     st.sidebar.title("Navigation")
@@ -424,17 +428,19 @@ Extraction Method: {result.get('source', 'regex')}""")
                                             # Store the selected test type
                                             st.session_state[f"test_name_{uploaded_file.name}_{i}"] = selected_test_type
                                             
-                                            # DEBUG: Show selection info
-                                            st.write(f"DEBUG - Selected choice: '{selected_choice}' (index: {selected_choice_index})")
-                                            st.write(f"DEBUG - Match info exists: {match_info is not None}")
-                                            st.write(f"DEBUG - Standardized name: {standardized_name}")
+                                            # Create a container for the dynamic dialog
+                                            dialog_container = st.container()
                                             
-                                            # Show "Create New Standard" dialog when using extracted data
-                                            if selected_choice == "Use Extracted":
-                                                st.success("DIALOG TRIGGERED - Use Extracted selected")
-                                                st.markdown("---")
-                                                st.markdown("### ➕ Create New Standard from Extracted Data")
-                                                st.markdown(f"**Creating standard for:** `{selected_test_type}`")
+                                            # Always check the current radio button state and show dialog accordingly
+                                            with dialog_container:
+                                                st.write(f"DEBUG - Selected choice: '{selected_choice}' (index: {selected_choice_index})")
+                                                st.write(f"DEBUG - Should show dialog: {selected_choice == 'Use Extracted'}")
+                                                
+                                                if selected_choice == "Use Extracted":
+                                                    st.success("🎯 DIALOG SHOWING - Use Extracted is selected!")
+                                                    st.markdown("---")
+                                                    st.markdown("### ➕ Create New Standard from Extracted Data")
+                                                    st.markdown(f"**Creating standard for:** `{selected_test_type}`")
                                                 
                                                 # Parse reference range from extracted data
                                                 ref_range = result.get('reference_range', '')
