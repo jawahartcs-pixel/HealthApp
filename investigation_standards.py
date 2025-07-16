@@ -32,19 +32,10 @@ class InvestigationStandards:
                     female_unit TEXT,
                     description TEXT,
                     category TEXT,
-                    gender_specific BOOLEAN DEFAULT 0,
                     created_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     updated_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
             ''')
-            
-            # Add gender_specific column to existing tables if it doesn't exist
-            try:
-                cursor.execute('ALTER TABLE investigation_standards ADD COLUMN gender_specific BOOLEAN DEFAULT 0')
-                conn.commit()
-            except sqlite3.OperationalError:
-                # Column already exists
-                pass
             conn.commit()
     
     def populate_default_standards(self):
@@ -56,8 +47,7 @@ class InvestigationStandards:
                 'male_range_min': 70, 'male_range_max': 99, 'male_unit': 'mg/dL',
                 'female_range_min': 70, 'female_range_max': 99, 'female_unit': 'mg/dL',
                 'description': 'Fasting blood glucose level',
-                'category': 'Diabetes',
-                'gender_specific': False
+                'category': 'Diabetes'
             },
             {
                 'standard_name': 'Hemoglobin',
@@ -65,8 +55,7 @@ class InvestigationStandards:
                 'male_range_min': 13.8, 'male_range_max': 17.2, 'male_unit': 'g/dL',
                 'female_range_min': 12.1, 'female_range_max': 15.1, 'female_unit': 'g/dL',
                 'description': 'Oxygen-carrying protein in red blood cells',
-                'category': 'Complete Blood Count',
-                'gender_specific': True
+                'category': 'Complete Blood Count'
             },
             {
                 'standard_name': 'Total Cholesterol',
@@ -74,8 +63,7 @@ class InvestigationStandards:
                 'male_range_min': 125, 'male_range_max': 200, 'male_unit': 'mg/dL',
                 'female_range_min': 125, 'female_range_max': 200, 'female_unit': 'mg/dL',
                 'description': 'Total cholesterol in blood',
-                'category': 'Lipid Profile',
-                'gender_specific': False
+                'category': 'Lipid Profile'
             },
             {
                 'standard_name': 'HDL Cholesterol',
@@ -83,8 +71,7 @@ class InvestigationStandards:
                 'male_range_min': 40, 'male_range_max': 60, 'male_unit': 'mg/dL',
                 'female_range_min': 50, 'female_range_max': 60, 'female_unit': 'mg/dL',
                 'description': 'High-density lipoprotein cholesterol',
-                'category': 'Lipid Profile',
-                'gender_specific': True
+                'category': 'Lipid Profile'
             },
             {
                 'standard_name': 'LDL Cholesterol',
@@ -92,8 +79,7 @@ class InvestigationStandards:
                 'male_range_min': 0, 'male_range_max': 100, 'male_unit': 'mg/dL',
                 'female_range_min': 0, 'female_range_max': 100, 'female_unit': 'mg/dL',
                 'description': 'Low-density lipoprotein cholesterol',
-                'category': 'Lipid Profile',
-                'gender_specific': False
+                'category': 'Lipid Profile'
             },
             {
                 'standard_name': 'Triglycerides',
@@ -101,8 +87,7 @@ class InvestigationStandards:
                 'male_range_min': 0, 'male_range_max': 150, 'male_unit': 'mg/dL',
                 'female_range_min': 0, 'female_range_max': 150, 'female_unit': 'mg/dL',
                 'description': 'Fat molecules in blood',
-                'category': 'Lipid Profile',
-                'gender_specific': False
+                'category': 'Lipid Profile'
             },
             {
                 'standard_name': 'Creatinine',
@@ -110,8 +95,7 @@ class InvestigationStandards:
                 'male_range_min': 0.74, 'male_range_max': 1.35, 'male_unit': 'mg/dL',
                 'female_range_min': 0.59, 'female_range_max': 1.04, 'female_unit': 'mg/dL',
                 'description': 'Kidney function marker',
-                'category': 'Kidney Function',
-                'gender_specific': True
+                'category': 'Kidney Function'
             },
             {
                 'standard_name': 'Blood Urea Nitrogen (BUN)',
@@ -119,8 +103,7 @@ class InvestigationStandards:
                 'male_range_min': 6, 'male_range_max': 24, 'male_unit': 'mg/dL',
                 'female_range_min': 6, 'female_range_max': 21, 'female_unit': 'mg/dL',
                 'description': 'Kidney function and protein metabolism marker',
-                'category': 'Kidney Function',
-                'gender_specific': True
+                'category': 'Kidney Function'
             },
             {
                 'standard_name': 'ALT (Alanine Aminotransferase)',
@@ -128,8 +111,7 @@ class InvestigationStandards:
                 'male_range_min': 10, 'male_range_max': 40, 'male_unit': 'U/L',
                 'female_range_min': 7, 'female_range_max': 35, 'female_unit': 'U/L',
                 'description': 'Liver enzyme',
-                'category': 'Liver Function',
-                'gender_specific': True
+                'category': 'Liver Function'
             },
             {
                 'standard_name': 'AST (Aspartate Aminotransferase)',
@@ -137,8 +119,7 @@ class InvestigationStandards:
                 'male_range_min': 10, 'male_range_max': 40, 'male_unit': 'U/L',
                 'female_range_min': 10, 'female_range_max': 35, 'female_unit': 'U/L',
                 'description': 'Liver enzyme',
-                'category': 'Liver Function',
-                'gender_specific': True
+                'category': 'Liver Function'
             },
             {
                 'standard_name': 'TSH (Thyroid Stimulating Hormone)',
@@ -146,8 +127,7 @@ class InvestigationStandards:
                 'male_range_min': 0.27, 'male_range_max': 4.2, 'male_unit': 'mIU/L',
                 'female_range_min': 0.27, 'female_range_max': 4.2, 'female_unit': 'mIU/L',
                 'description': 'Thyroid function hormone',
-                'category': 'Thyroid Function',
-                'gender_specific': False
+                'category': 'Thyroid Function'
             },
             {
                 'standard_name': 'White Blood Cell Count (WBC)',
@@ -155,8 +135,7 @@ class InvestigationStandards:
                 'male_range_min': 3.4, 'male_range_max': 10.8, 'male_unit': '10³/μL',
                 'female_range_min': 3.4, 'female_range_max': 10.8, 'female_unit': '10³/μL',
                 'description': 'White blood cell count',
-                'category': 'Complete Blood Count',
-                'gender_specific': False
+                'category': 'Complete Blood Count'
             },
             {
                 'standard_name': 'Red Blood Cell Count (RBC)',
@@ -164,8 +143,7 @@ class InvestigationStandards:
                 'male_range_min': 4.7, 'male_range_max': 6.1, 'male_unit': '10⁶/μL',
                 'female_range_min': 4.2, 'female_range_max': 5.4, 'female_unit': '10⁶/μL',
                 'description': 'Red blood cell count',
-                'category': 'Complete Blood Count',
-                'gender_specific': True
+                'category': 'Complete Blood Count'
             },
             {
                 'standard_name': 'Platelet Count',
@@ -173,8 +151,7 @@ class InvestigationStandards:
                 'male_range_min': 150, 'male_range_max': 450, 'male_unit': '10³/μL',
                 'female_range_min': 150, 'female_range_max': 450, 'female_unit': '10³/μL',
                 'description': 'Blood clotting cells',
-                'category': 'Complete Blood Count',
-                'gender_specific': False
+                'category': 'Complete Blood Count'
             },
             {
                 'standard_name': 'Hematocrit',
@@ -182,8 +159,7 @@ class InvestigationStandards:
                 'male_range_min': 41.0, 'male_range_max': 50.0, 'male_unit': '%',
                 'female_range_min': 36.0, 'female_range_max': 46.0, 'female_unit': '%',
                 'description': 'Percentage of blood volume occupied by red blood cells',
-                'category': 'Complete Blood Count',
-                'gender_specific': True
+                'category': 'Complete Blood Count'
             }
         ]
         
@@ -194,13 +170,13 @@ class InvestigationStandards:
                 cursor.execute('''
                     INSERT OR IGNORE INTO investigation_standards 
                     (standard_name, aliases, male_range_min, male_range_max, male_unit,
-                     female_range_min, female_range_max, female_unit, description, category, gender_specific)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                     female_range_min, female_range_max, female_unit, description, category)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ''', (
                     standard['standard_name'], standard['aliases'],
                     standard['male_range_min'], standard['male_range_max'], standard['male_unit'],
                     standard['female_range_min'], standard['female_range_max'], standard['female_unit'],
-                    standard['description'], standard['category'], standard['gender_specific']
+                    standard['description'], standard['category']
                 ))
             conn.commit()
     
@@ -210,7 +186,7 @@ class InvestigationStandards:
             cursor = conn.cursor()
             cursor.execute('''
                 SELECT id, standard_name, aliases, male_range_min, male_range_max, male_unit,
-                       female_range_min, female_range_max, female_unit, description, category, gender_specific
+                       female_range_min, female_range_max, female_unit, description, category
                 FROM investigation_standards
                 ORDER BY category, standard_name
             ''')
@@ -229,8 +205,7 @@ class InvestigationStandards:
                     'female_range_max': row[7],
                     'female_unit': row[8],
                     'description': row[9],
-                    'category': row[10],
-                    'gender_specific': bool(row[11])
+                    'category': row[10]
                 })
             return standards
     
@@ -242,13 +217,13 @@ class InvestigationStandards:
                 cursor.execute('''
                     INSERT INTO investigation_standards 
                     (standard_name, aliases, male_range_min, male_range_max, male_unit,
-                     female_range_min, female_range_max, female_unit, description, category, gender_specific)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                     female_range_min, female_range_max, female_unit, description, category)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ''', (
                     standard_data['standard_name'], standard_data['aliases'],
                     standard_data['male_range_min'], standard_data['male_range_max'], standard_data['male_unit'],
                     standard_data['female_range_min'], standard_data['female_range_max'], standard_data['female_unit'],
-                    standard_data['description'], standard_data['category'], standard_data.get('gender_specific', False)
+                    standard_data['description'], standard_data['category']
                 ))
                 conn.commit()
                 return True
@@ -264,14 +239,14 @@ class InvestigationStandards:
                 cursor.execute('''
                     UPDATE investigation_standards 
                     SET standard_name=?, aliases=?, male_range_min=?, male_range_max=?, male_unit=?,
-                        female_range_min=?, female_range_max=?, female_unit=?, description=?, category=?, gender_specific=?,
+                        female_range_min=?, female_range_max=?, female_unit=?, description=?, category=?,
                         updated_date=CURRENT_TIMESTAMP
                     WHERE id=?
                 ''', (
                     standard_data['standard_name'], standard_data['aliases'],
                     standard_data['male_range_min'], standard_data['male_range_max'], standard_data['male_unit'],
                     standard_data['female_range_min'], standard_data['female_range_max'], standard_data['female_unit'],
-                    standard_data['description'], standard_data['category'], standard_data.get('gender_specific', False), standard_id
+                    standard_data['description'], standard_data['category'], standard_id
                 ))
                 conn.commit()
                 return True
