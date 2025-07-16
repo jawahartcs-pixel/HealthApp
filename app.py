@@ -340,23 +340,35 @@ Extraction Method: {result.get('source', 'regex')}""")
                                             # Try to find fuzzy match for current test type
                                             standardized_name, match_info = investigation_standards.standardize_test_name(result['test_type'])
                                             
-                                            # Create the options list
-                                            if standardized_name in standard_names:
-                                                # If we found a match, select it by default
-                                                default_index = standard_names.index(standardized_name)
-                                                options = standard_names
-                                            else:
-                                                # If no match, add the original name to the list and select it
-                                                options = [result['test_type']] + standard_names
-                                                default_index = 0
+                                            # Create the options list with an "Edit Custom" option
+                                            options = ["(Edit Custom)"] + standard_names
                                             
-                                            selected_test_type = st.selectbox(
+                                            # Determine default selection
+                                            if standardized_name in standard_names:
+                                                default_index = standard_names.index(standardized_name) + 1  # +1 because of "Edit Custom" at index 0
+                                            else:
+                                                default_index = 0  # Select "Edit Custom" by default
+                                            
+                                            selected_option = st.selectbox(
                                                 "Investigation Type",
                                                 options=options,
                                                 index=default_index,
-                                                key=f"test_name_{uploaded_file.name}_{i}",
-                                                help="Select standardized investigation type or use extracted name"
+                                                key=f"test_dropdown_{uploaded_file.name}_{i}",
+                                                help="Select standardized investigation type or choose 'Edit Custom' to type your own"
                                             )
+                                            
+                                            # If "Edit Custom" is selected or no standard match, show text input
+                                            if selected_option == "(Edit Custom)":
+                                                final_test_name = st.text_input(
+                                                    "Custom Investigation Type",
+                                                    value=result['test_type'],
+                                                    key=f"test_name_{uploaded_file.name}_{i}",
+                                                    help="Type or edit the investigation name"
+                                                )
+                                            else:
+                                                # Store the selected standard name and show it as read-only info
+                                                st.session_state[f"test_name_{uploaded_file.name}_{i}"] = selected_option
+                                                st.info(f"Selected: {selected_option}")
                                             
                                             # Show match information if fuzzy match was found
                                             if match_info and standardized_name != result['test_type']:
@@ -431,8 +443,9 @@ Extraction Method: {result.get('source', 'regex')}""")
                                                 label_visibility="collapsed"
                                             )
                                             
-                                            # If custom option is selected, show text input
+                                            # Always show text input for editing
                                             if selected_option == "(Enter custom test name)":
+                                                # Empty text input for custom entry
                                                 custom_test_name = st.text_input(
                                                     f"Custom Test Name {i+1}",
                                                     key=f"add_test_name_{uploaded_file.name}_{i}",
@@ -440,8 +453,14 @@ Extraction Method: {result.get('source', 'regex')}""")
                                                     placeholder="Enter investigation type"
                                                 )
                                             else:
-                                                # Store the selected standard name in session state
-                                                st.session_state[f"add_test_name_{uploaded_file.name}_{i}"] = selected_option
+                                                # Pre-fill text input with selected standard name for editing
+                                                custom_test_name = st.text_input(
+                                                    f"Test Name {i+1}",
+                                                    value=selected_option,
+                                                    key=f"add_test_name_{uploaded_file.name}_{i}",
+                                                    label_visibility="collapsed",
+                                                    help="You can edit this standard name if needed"
+                                                )
                                         else:
                                             # Fallback to text input if standards not available
                                             st.text_input(
