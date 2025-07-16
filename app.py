@@ -330,7 +330,7 @@ Extraction Method: {result.get('source', 'regex')}""")
                                     with right_col:
                                         st.markdown("**✏️ Edit Before Saving:**")
                                         
-                                        # Editable investigation type with standardization dropdown
+                                        # Investigation type selection with fuzzy matching
                                         investigation_standards = st.session_state.get('investigation_standards')
                                         if investigation_standards:
                                             # Get all standard names
@@ -340,65 +340,83 @@ Extraction Method: {result.get('source', 'regex')}""")
                                             # Try to find fuzzy match for current test type
                                             standardized_name, match_info = investigation_standards.standardize_test_name(result['test_type'])
                                             
-                                            # Create options with clear labels
-                                            options = []
-                                            default_index = 0
+                                            st.markdown("**Investigation Type Options:**")
                                             
-                                            if standardized_name in standard_names and match_info:
-                                                # Found a good match - offer both original and matched
-                                                match_score = match_info.get('match_score', 0)
-                                                options = [
-                                                    f"✅ {standardized_name} (fuzzy match: {match_score:.2f})",
-                                                    f"📝 {result['test_type']} (original extracted)",
-                                                    "---",
-                                                    "🔍 Browse all standards:"
-                                                ] + standard_names
-                                                default_index = 0  # Select fuzzy match by default
+                                            # Show comparison between fuzzy match and extracted data
+                                            col_option1, col_option2 = st.columns(2)
+                                            
+                                            with col_option1:
+                                                if match_info and standardized_name in standard_names:
+                                                    match_score = match_info.get('match_score', 0)
+                                                    st.markdown(f"**🔍 Fuzzy Match (Score: {match_score:.2f})**")
+                                                    st.success(f"✅ {standardized_name}")
+                                                    if match_info.get('gender_specific', False):
+                                                        st.caption(f"Male: {match_info['male_range_min']}-{match_info['male_range_max']} {match_info['male_unit']}")
+                                                        st.caption(f"Female: {match_info['female_range_min']}-{match_info['female_range_max']} {match_info['female_unit']}")
+                                                    else:
+                                                        st.caption(f"Range: {match_info['male_range_min']}-{match_info['male_range_max']} {match_info['male_unit']}")
+                                                else:
+                                                    st.markdown("**🔍 Fuzzy Match**")
+                                                    st.warning("❌ No match found")
+                                            
+                                            with col_option2:
+                                                st.markdown("**📝 Extracted Data**")
+                                                st.info(f"📋 {result['test_type']}")
+                                                if result.get('reference_range'):
+                                                    st.caption(f"Range: {result.get('reference_range')}")
+                                                if result.get('unit'):
+                                                    st.caption(f"Unit: {result.get('unit')}")
+                                            
+                                            # Radio button for selection
+                                            if match_info and standardized_name in standard_names:
+                                                choice_options = [
+                                                    f"Use Fuzzy Match: {standardized_name}",
+                                                    f"Use Extracted: {result['test_type']}",
+                                                    "Browse all standards"
+                                                ]
+                                                default_choice = 0
                                             else:
-                                                # No good match found - offer original first
-                                                options = [
-                                                    f"📝 {result['test_type']} (original extracted)",
-                                                    "---",
-                                                    "🔍 Browse all standards:"
-                                                ] + standard_names
-                                                default_index = 0
+                                                choice_options = [
+                                                    f"Use Extracted: {result['test_type']}",
+                                                    "Browse all standards"
+                                                ]
+                                                default_choice = 0
                                             
-                                            selected_option = st.selectbox(
-                                                "Investigation Type",
-                                                options=options,
-                                                index=default_index,
-                                                key=f"test_name_option_{uploaded_file.name}_{i}",
-                                                help="Choose between fuzzy matched standard or original extracted name"
+                                            selected_choice = st.radio(
+                                                "Choose investigation type:",
+                                                choice_options,
+                                                index=default_choice,
+                                                key=f"choice_{uploaded_file.name}_{i}"
                                             )
                                             
-                                            # Extract the actual test name from the selected option
-                                            if selected_option.startswith("✅"):
+                                            # Determine the selected test type and whether it's a standard
+                                            if "Use Fuzzy Match" in selected_choice:
                                                 selected_test_type = standardized_name
                                                 is_standard = True
-                                            elif selected_option.startswith("📝"):
+                                            elif "Use Extracted" in selected_choice:
                                                 selected_test_type = result['test_type']
                                                 is_standard = False
-                                            elif selected_option not in ["---", "🔍 Browse all standards:"]:
-                                                selected_test_type = selected_option
+                                            elif "Browse all standards" in selected_choice:
+                                                # Show dropdown with all standards
+                                                selected_test_type = st.selectbox(
+                                                    "Select from all standards:",
+                                                    options=standard_names,
+                                                    key=f"browse_std_{uploaded_file.name}_{i}"
+                                                )
                                                 is_standard = True
                                             else:
                                                 selected_test_type = result['test_type']
                                                 is_standard = False
                                             
-                                            # Store the selected test type for later use
+                                            # Store the selected test type
                                             st.session_state[f"test_name_{uploaded_file.name}_{i}"] = selected_test_type
                                             
-                                            # Add "Create New Standard" option if using non-standard name
-                                            if not is_standard and selected_test_type not in standard_names:
-                                                # Use checkbox to trigger standard creation instead of button
-                                                create_standard = st.checkbox(
-                                                    f"➕ Create new standard for '{selected_test_type}'", 
-                                                    key=f"create_std_{uploaded_file.name}_{i}",
-                                                    help="Check to create a new investigation standard from this extracted test"
-                                                )
-                                                
-                                                if create_standard:
-                                                    # Parse reference range if available
+                                            # Show "Create New Standard" dialog if using extracted data
+                                            if "Use Extracted" in selected_choice:
+                                                with st.expander("➕ Create New Standard from Extracted Data", expanded=False):
+                                                    st.markdown(f"**Creating standard for:** `{selected_test_type}`")
+                                                    
+                                                    # Parse reference range from extracted data
                                                     ref_range = result.get('reference_range', '')
                                                     unit = result.get('unit', '')
                                                     
@@ -409,28 +427,97 @@ Extraction Method: {result.get('source', 'regex')}""")
                                                     # Try to parse reference range
                                                     if ref_range and '-' in ref_range:
                                                         try:
-                                                            # Extract numeric parts from range like "70-99 mg/dL"
                                                             range_part = ref_range.split()[0] if ' ' in ref_range else ref_range
                                                             if '-' in range_part:
                                                                 min_str, max_str = range_part.split('-', 1)
                                                                 range_min = float(min_str.strip())
                                                                 range_max = float(max_str.strip())
                                                                 if not unit and ' ' in ref_range:
-                                                                    # Extract unit from reference range
                                                                     unit = ref_range.split(' ', 1)[1]
                                                         except (ValueError, IndexError):
                                                             pass
                                                     
-                                                    # Store extracted data for creating standard
-                                                    st.session_state[f'new_std_data_{uploaded_file.name}_{i}'] = {
-                                                        'name': selected_test_type,
-                                                        'min': range_min,
-                                                        'max': range_max,
-                                                        'unit': unit,
-                                                        'ref_range': ref_range
-                                                    }
+                                                    col1, col2 = st.columns(2)
                                                     
-                                                    st.info(f"💡 Standard will be created for '{selected_test_type}' when you save results. Extracted range: {ref_range or 'No range found'}")
+                                                    with col1:
+                                                        new_std_name = st.text_input(
+                                                            "Standard Name:", 
+                                                            value=selected_test_type,
+                                                            key=f"new_std_name_dialog_{uploaded_file.name}_{i}"
+                                                        )
+                                                        new_std_category = st.selectbox(
+                                                            "Category:",
+                                                            options=["Complete Blood Count", "Basic Metabolic Panel", "Liver Function", "Lipid Panel", "Thyroid Function", "Kidney Function", "Other"],
+                                                            key=f"new_std_cat_dialog_{uploaded_file.name}_{i}"
+                                                        )
+                                                        new_std_description = st.text_area(
+                                                            "Description:",
+                                                            value=f"Extracted from document. Original range: {ref_range}",
+                                                            key=f"new_std_desc_dialog_{uploaded_file.name}_{i}"
+                                                        )
+                                                    
+                                                    with col2:
+                                                        st.markdown("**Reference Ranges**")
+                                                        new_gender_specific = st.checkbox(
+                                                            "Different ranges for male/female",
+                                                            key=f"new_std_gender_dialog_{uploaded_file.name}_{i}"
+                                                        )
+                                                        
+                                                        if new_gender_specific:
+                                                            st.markdown("**Male Range:**")
+                                                            col_m1, col_m2, col_m3 = st.columns(3)
+                                                            with col_m1:
+                                                                new_male_min = st.number_input("Min", value=range_min, key=f"new_std_m_min_dialog_{uploaded_file.name}_{i}")
+                                                            with col_m2:
+                                                                new_male_max = st.number_input("Max", value=range_max, key=f"new_std_m_max_dialog_{uploaded_file.name}_{i}")
+                                                            with col_m3:
+                                                                new_male_unit = st.text_input("Unit", value=unit, key=f"new_std_m_unit_dialog_{uploaded_file.name}_{i}")
+                                                            
+                                                            st.markdown("**Female Range:**")
+                                                            col_f1, col_f2, col_f3 = st.columns(3)
+                                                            with col_f1:
+                                                                new_female_min = st.number_input("Min", value=range_min, key=f"new_std_f_min_dialog_{uploaded_file.name}_{i}")
+                                                            with col_f2:
+                                                                new_female_max = st.number_input("Max", value=range_max, key=f"new_std_f_max_dialog_{uploaded_file.name}_{i}")
+                                                            with col_f3:
+                                                                new_female_unit = st.text_input("Unit", value=unit, key=f"new_std_f_unit_dialog_{uploaded_file.name}_{i}")
+                                                        else:
+                                                            st.markdown("**Reference Range (Both Genders):**")
+                                                            col_1, col_2, col_3 = st.columns(3)
+                                                            with col_1:
+                                                                new_male_min = new_female_min = st.number_input("Min", value=range_min, key=f"new_std_single_min_dialog_{uploaded_file.name}_{i}")
+                                                            with col_2:
+                                                                new_male_max = new_female_max = st.number_input("Max", value=range_max, key=f"new_std_single_max_dialog_{uploaded_file.name}_{i}")
+                                                            with col_3:
+                                                                new_male_unit = new_female_unit = st.text_input("Unit", value=unit, key=f"new_std_single_unit_dialog_{uploaded_file.name}_{i}")
+                                                    
+                                                    # Store data for creating standard when form is submitted
+                                                    create_std_data = st.checkbox(
+                                                        f"🔬 Add '{new_std_name}' to standardization table when saving",
+                                                        key=f"create_std_checkbox_{uploaded_file.name}_{i}",
+                                                        help="This standard will be created when you save the results"
+                                                    )
+                                                    
+                                                    if create_std_data:
+                                                        # Store all the standard data in session state
+                                                        st.session_state[f'new_std_data_{uploaded_file.name}_{i}'] = {
+                                                            'standard_name': new_std_name,
+                                                            'aliases': '',
+                                                            'male_range_min': new_male_min,
+                                                            'male_range_max': new_male_max,
+                                                            'male_unit': new_male_unit,
+                                                            'female_range_min': new_female_min,
+                                                            'female_range_max': new_female_max,
+                                                            'female_unit': new_female_unit,
+                                                            'description': new_std_description,
+                                                            'category': new_std_category,
+                                                            'gender_specific': new_gender_specific
+                                                        }
+                                                        st.success(f"✅ Standard '{new_std_name}' will be created when you save results")
+                                                    else:
+                                                        # Remove from session state if unchecked
+                                                        if f'new_std_data_{uploaded_file.name}_{i}' in st.session_state:
+                                                            del st.session_state[f'new_std_data_{uploaded_file.name}_{i}']
                                         else:
                                             # Fallback to text input if standards not available
                                             st.text_input(
@@ -561,31 +648,14 @@ Extraction Method: {result.get('source', 'regex')}""")
                                 investigation_standards = st.session_state.get('investigation_standards')
                                 if investigation_standards:
                                     for i, result in enumerate(test_data['results']):
-                                        create_std_key = f"create_std_{uploaded_file.name}_{i}"
-                                        if st.session_state.get(create_std_key, False):
-                                            std_data_key = f'new_std_data_{uploaded_file.name}_{i}'
-                                            if std_data_key in st.session_state:
-                                                extract_data = st.session_state[std_data_key]
-                                                
-                                                # Create the new standard with extracted data
-                                                new_standard_data = {
-                                                    'standard_name': extract_data['name'],
-                                                    'aliases': '',
-                                                    'male_range_min': extract_data['min'],
-                                                    'male_range_max': extract_data['max'],
-                                                    'male_unit': extract_data['unit'],
-                                                    'female_range_min': extract_data['min'],
-                                                    'female_range_max': extract_data['max'],
-                                                    'female_unit': extract_data['unit'],
-                                                    'description': f"Extracted from document: {extract_data['ref_range']}",
-                                                    'category': 'Other',
-                                                    'gender_specific': False
-                                                }
-                                                
-                                                if investigation_standards.add_standard(new_standard_data):
-                                                    st.success(f"✅ Created standard for '{extract_data['name']}'")
-                                                else:
-                                                    st.warning(f"⚠️ Could not create standard for '{extract_data['name']}'")
+                                        std_data_key = f'new_std_data_{uploaded_file.name}_{i}'
+                                        if std_data_key in st.session_state:
+                                            standard_data = st.session_state[std_data_key]
+                                            
+                                            if investigation_standards.add_standard(standard_data):
+                                                st.success(f"✅ Created standard for '{standard_data['standard_name']}'")
+                                            else:
+                                                st.warning(f"⚠️ Could not create standard for '{standard_data['standard_name']}'")
                                 
                                 status_text.text("Saving to database...")
                                 progress_bar.progress(90)

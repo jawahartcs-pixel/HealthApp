@@ -137,23 +137,28 @@ Preferred communication style: Simple, everyday language.
   - Default gender_specific=False for existing standards with same ranges
   - True for standards like Hemoglobin, Creatinine where ranges actually differ by gender
 
-### July 16, 2025 - Smart Investigation Type Selection with Standard Creation
-- **Enhanced Type Selection**: Users can now choose between fuzzy matched and original extracted investigation types
-  - Clear options showing "✅ Standardized Name (fuzzy match)" vs "📝 Original Extracted"
-  - Fuzzy match scores displayed to help users make informed decisions
-  - Ability to browse all available standards as alternatives
-  - Original extracted names preserved when users prefer them over fuzzy matches
-- **Direct Standard Creation**: Added ability to create new standards directly from extraction workflow
-  - "Create Standard" button appears when using non-standardized investigation types
-  - Auto-populates reference ranges and units from extracted document data
-  - Smart parsing of reference ranges from document text (e.g., "70-99 mg/dL")
-  - Gender-specific range options with pre-filled values from extraction
-  - Immediate integration of new standards into the current upload workflow
-- **Seamless Workflow Integration**: Standards creation without leaving the upload process
-  - Extracted reference ranges automatically parsed and populated
-  - Original document ranges displayed for verification
-  - New standards immediately available for selection
-  - Maintains all extraction context while creating standards
+### July 16, 2025 - Enhanced Investigation Type Selection with Inline Standard Creation
+- **Side-by-Side Comparison**: Visual comparison between fuzzy matched standards and extracted data
+  - Two-column layout showing fuzzy match details vs extracted data
+  - Match scores and reference ranges displayed for informed decision making
+  - Clear visual indicators (✅ for matches, 📝 for extracted data)
+  - Gender-specific range display in fuzzy match preview
+- **Radio Button Selection**: Clean choice interface for investigation type selection
+  - "Use Fuzzy Match" option with standardized name and score
+  - "Use Extracted" option preserving original document data
+  - "Browse all standards" option for manual standard selection
+  - Dynamic options based on fuzzy match availability
+- **Inline Standard Creation Dialog**: Full standard creation form within extraction workflow
+  - Expandable dialog for creating standards from extracted data
+  - Pre-populated fields from document extraction (name, ranges, units)
+  - Complete standard form with category, description, and gender-specific options
+  - Real-time reference range parsing from document text
+  - Checkbox to confirm standard creation during save process
+- **Seamless Integration**: Standards created automatically during result saving
+  - Standard creation happens when form is submitted
+  - Success/warning messages for standard creation attempts
+  - New standards immediately available for future uploads
+  - Clean session state management prevents conflicts
 
 ### July 15, 2025 - Document Preview & Comparison System
 - **Side-by-Side Document Verification**: Implemented comprehensive document preview feature for upload validation
