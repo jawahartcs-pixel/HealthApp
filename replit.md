@@ -146,6 +146,9 @@ Preferred communication style: Simple, everyday language.
   - Integration with image snippet extractor for PDF and image file processing
   - Three-column layout with investigation details, action status, and snippet access
   - OCR extraction enabled by default for better text recognition from images and scanned documents
+  - Side-by-side document preview showing full document image alongside extracted investigation list
+  - Enhanced image snippet extractor with support for both PDF and direct image file processing
+  - Full document display without trimming for complete context during investigation standard creation
 
 ### July 16, 2025 - Reference Range Extraction & Display
 - **Enhanced Reference Range Extraction**: Added comprehensive reference range detection to file parser

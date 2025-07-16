@@ -2283,9 +2283,9 @@ def investigation_standards_page(investigation_standards):
                                         
                                         if uploaded_file.type == "application/pdf":
                                             image_snippet_extractor.process_pdf_for_snippets(file_bytes)
-                                        else:
-                                            # For image files, we can use the image directly
-                                            pass
+                                        elif uploaded_file.type.startswith("image/"):
+                                            # For image files, process them for OCR and snippets
+                                            image_snippet_extractor.process_image_for_snippets(file_bytes)
                                     except Exception as snippet_error:
                                         st.warning(f"Could not process {file_name} for image snippets: {str(snippet_error)}")
                                 
@@ -2300,16 +2300,58 @@ def investigation_standards_page(investigation_standards):
                                         # Display extracted tests
                                         st.success(f"✅ Extracted {len(test_data['results'])} test types from {file_name}")
                                         
-                                        # Display extracted test types
-                                        test_types_found = []
-                                        for result in test_data['results']:
-                                            test_type = result.get('test_type', '').strip()
-                                            if test_type and test_type not in test_types_found:
-                                                test_types_found.append(test_type)
+                                        # Create side-by-side layout for document and extracted tests
+                                        doc_col, tests_col = st.columns([1, 1])
                                         
-                                        st.write(f"**Test Types Found ({len(test_types_found)}):**")
-                                        for test_type in test_types_found:
-                                            st.write(f"• {test_type}")
+                                        with doc_col:
+                                            st.subheader("📄 Full Document")
+                                            # Show full document image snippet
+                                            try:
+                                                # Get image snippet extractor
+                                                if hasattr(st.session_state, 'image_snippet_extractor'):
+                                                    image_snippet_extractor = st.session_state.image_snippet_extractor
+                                                else:
+                                                    from image_snippet_extractor import ImageSnippetExtractor
+                                                    image_snippet_extractor = ImageSnippetExtractor()
+                                                    st.session_state.image_snippet_extractor = image_snippet_extractor
+                                                
+                                                # Get full document snippet
+                                                full_doc_snippet = image_snippet_extractor.get_full_document()
+                                                if full_doc_snippet:
+                                                    st.image(full_doc_snippet, caption=f"Full document: {file_name}", use_column_width=True)
+                                                else:
+                                                    # Fallback: show document type and basic info
+                                                    st.info("Full document image not available for this file type")
+                                                    if hasattr(uploaded_file, 'type'):
+                                                        if uploaded_file.type.startswith('image/'):
+                                                            # For image files, display the image directly
+                                                            uploaded_file.seek(0)
+                                                            st.image(uploaded_file, caption=f"Original image: {file_name}", use_column_width=True)
+                                                        else:
+                                                            st.write(f"File type: {uploaded_file.type}")
+                                                            st.write(f"Use 'View Snippet' buttons below to see specific sections")
+                                            except Exception as e:
+                                                st.warning(f"Could not display full document: {str(e)}")
+                                                # Show basic file info as fallback
+                                                if hasattr(uploaded_file, 'type') and uploaded_file.type.startswith('image/'):
+                                                    uploaded_file.seek(0)
+                                                    st.image(uploaded_file, caption=f"Original image: {file_name}", use_column_width=True)
+                                        
+                                        with tests_col:
+                                            st.subheader("🔬 Extracted Investigations")
+                                            # Display extracted test types
+                                            test_types_found = []
+                                            for result in test_data['results']:
+                                                test_type = result.get('test_type', '').strip()
+                                                if test_type and test_type not in test_types_found:
+                                                    test_types_found.append(test_type)
+                                            
+                                            st.write(f"**Found {len(test_types_found)} investigation types:**")
+                                            for test_type in test_types_found:
+                                                st.write(f"• {test_type}")
+                                            
+                                            if test_types_found:
+                                                st.info("👇 Scroll down to create investigation standards for these items")
                                         
                                         # Add to all extracted tests
                                         all_extracted_tests.extend(test_types_found)

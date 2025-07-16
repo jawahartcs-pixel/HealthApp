@@ -12,6 +12,7 @@ class ImageSnippetExtractor:
     def __init__(self):
         self.ocr_data = []
         self.ocr_images = []
+        self.current_image = None  # Store current image for direct image files
     
     def process_pdf_for_snippets(self, pdf_bytes: bytes):
         """Process PDF and store OCR data for snippet extraction."""
@@ -39,6 +40,34 @@ class ImageSnippetExtractor:
             return True
         except Exception as e:
             print(f"Error processing PDF for snippets: {str(e)}")
+            return False
+    
+    def process_image_for_snippets(self, image_bytes: bytes):
+        """Process image file and store OCR data for snippet extraction."""
+        try:
+            # Configure tesseract for better accuracy
+            custom_config = r'--oem 3 --psm 6'
+            
+            # Load image from bytes
+            image = Image.open(io.BytesIO(image_bytes))
+            self.current_image = image
+            self.ocr_images = [image]
+            self.ocr_data = []
+            
+            # Get OCR data with position information
+            ocr_data = pytesseract.image_to_data(image, config=custom_config, output_type=pytesseract.Output.DICT)
+            
+            # Store OCR data for this image
+            page_ocr_data = {
+                'page_num': 0,
+                'image': image,
+                'text_data': ocr_data
+            }
+            self.ocr_data.append(page_ocr_data)
+            
+            return True
+        except Exception as e:
+            print(f"Error processing image for snippets: {str(e)}")
             return False
     
     def get_image_snippet_for_test(self, test_name: str, test_value: str) -> bytes:
@@ -90,6 +119,10 @@ class ImageSnippetExtractor:
         """Return full document page showing the search text."""
         if not self.ocr_data:
             return None
+            
+        # If search text is empty, return full document without highlighting
+        if not search_text.strip():
+            return self.get_full_document()
         
         for page_data in self.ocr_data:
             image = page_data['image']
@@ -119,5 +152,21 @@ class ImageSnippetExtractor:
                 img_buffer = io.BytesIO()
                 full_page.save(img_buffer, format='PNG')
                 return img_buffer.getvalue()
+        
+        return None
+    
+    def get_full_document(self) -> bytes:
+        """Return the full document image without any highlighting."""
+        if not self.ocr_data:
+            return None
+        
+        # Return the first page as full document (most medical reports are single page)
+        if self.ocr_data:
+            image = self.ocr_data[0]['image']
+            
+            # Convert to bytes
+            img_buffer = io.BytesIO()
+            image.save(img_buffer, format='PNG')
+            return img_buffer.getvalue()
         
         return None
