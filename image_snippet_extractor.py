@@ -42,7 +42,7 @@ class ImageSnippetExtractor:
             return False
     
     def get_image_snippet_for_test(self, test_name: str, test_value: str) -> bytes:
-        """Extract image snippet showing the specific test result from OCR data."""
+        """Return full document page showing the test result."""
         if not self.ocr_data:
             return None
         
@@ -69,59 +69,25 @@ class ImageSnippetExtractor:
                         found_coords.append((x, y, w, h))
             
             if found_coords:
-                # Find bounding box for all found coordinates
-                min_x = min(coord[0] for coord in found_coords)
-                min_y = min(coord[1] for coord in found_coords)
-                max_x = max(coord[0] + coord[2] for coord in found_coords)
-                max_y = max(coord[1] + coord[3] for coord in found_coords)
+                # Return full page with highlighted areas
+                full_page = image.copy()
+                draw = ImageDraw.Draw(full_page)
                 
-                # Add padding around the found area
-                padding = 100  # Increased padding for better context
-                crop_x1 = max(0, min_x - padding)
-                crop_y1 = max(0, min_y - padding)
-                crop_x2 = min(image.width, max_x + padding)
-                crop_y2 = min(image.height, max_y + padding)
-                
-                # Ensure minimum snippet size
-                min_width, min_height = 200, 100
-                if crop_x2 - crop_x1 < min_width:
-                    center_x = (crop_x1 + crop_x2) // 2
-                    crop_x1 = max(0, center_x - min_width // 2)
-                    crop_x2 = min(image.width, crop_x1 + min_width)
-                
-                if crop_y2 - crop_y1 < min_height:
-                    center_y = (crop_y1 + crop_y2) // 2
-                    crop_y1 = max(0, center_y - min_height // 2)
-                    crop_y2 = min(image.height, crop_y1 + min_height)
-                
-                # Crop the image
-                snippet = image.crop((crop_x1, crop_y1, crop_x2, crop_y2))
-                
-                # Highlight the found areas in the snippet
-                snippet_copy = snippet.copy()
-                draw = ImageDraw.Draw(snippet_copy)
-                
+                # Highlight the found areas on the full page
                 for coord in found_coords:
                     x, y, w, h = coord
-                    # Adjust coordinates to snippet space
-                    adj_x = x - crop_x1
-                    adj_y = y - crop_y1
-                    adj_x2 = adj_x + w
-                    adj_y2 = adj_y + h
-                    
                     # Draw rectangle around found text
-                    if 0 <= adj_x < snippet.width and 0 <= adj_y < snippet.height:
-                        draw.rectangle([(adj_x, adj_y), (adj_x2, adj_y2)], outline='red', width=2)
+                    draw.rectangle([(x, y), (x + w, y + h)], outline='red', width=3)
                 
                 # Convert to bytes
                 img_buffer = io.BytesIO()
-                snippet_copy.save(img_buffer, format='PNG')
+                full_page.save(img_buffer, format='PNG')
                 return img_buffer.getvalue()
         
         return None
     
     def get_context_snippet(self, search_text: str) -> bytes:
-        """Get a snippet for any search text in the document."""
+        """Return full document page showing the search text."""
         if not self.ocr_data:
             return None
         
@@ -140,29 +106,18 @@ class ImageSnippetExtractor:
                         found_coords.append((x, y, w, h))
             
             if found_coords:
-                # Get first found occurrence
-                x, y, w, h = found_coords[0]
+                # Return full page with highlighted areas
+                full_page = image.copy()
+                draw = ImageDraw.Draw(full_page)
                 
-                # Create snippet around the found text
-                padding = 150
-                crop_x1 = max(0, x - padding)
-                crop_y1 = max(0, y - padding)
-                crop_x2 = min(image.width, x + w + padding)
-                crop_y2 = min(image.height, y + h + padding)
-                
-                # Crop and highlight
-                snippet = image.crop((crop_x1, crop_y1, crop_x2, crop_y2))
-                snippet_copy = snippet.copy()
-                draw = ImageDraw.Draw(snippet_copy)
-                
-                # Highlight found text
-                adj_x = x - crop_x1
-                adj_y = y - crop_y1
-                draw.rectangle([(adj_x, adj_y), (adj_x + w, adj_y + h)], outline='blue', width=3)
+                # Highlight all found text occurrences
+                for coord in found_coords:
+                    x, y, w, h = coord
+                    draw.rectangle([(x, y), (x + w, y + h)], outline='blue', width=3)
                 
                 # Convert to bytes
                 img_buffer = io.BytesIO()
-                snippet_copy.save(img_buffer, format='PNG')
+                full_page.save(img_buffer, format='PNG')
                 return img_buffer.getvalue()
         
         return None
