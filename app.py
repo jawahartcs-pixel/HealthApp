@@ -393,9 +393,14 @@ Extraction Method: {result.get('source', 'regex')}""")
                                             if "Use Fuzzy Match" in selected_choice:
                                                 selected_test_type = standardized_name
                                                 is_standard = True
+                                                # Set default values for fuzzy match
+                                                st.session_state[f"test_name_{uploaded_file.name}_{i}"] = selected_test_type
+                                                st.session_state[f"test_value_{uploaded_file.name}_{i}"] = float(result['value'])
+                                                st.session_state[f"test_unit_{uploaded_file.name}_{i}"] = result.get('unit', '')
                                             elif "Use Extracted" in selected_choice:
                                                 selected_test_type = result['test_type']
                                                 is_standard = False
+                                                # Values will be set by the editable fields below
                                             elif "Browse all standards" in selected_choice:
                                                 # Show dropdown with all standards
                                                 selected_test_type = st.selectbox(
@@ -404,21 +409,69 @@ Extraction Method: {result.get('source', 'regex')}""")
                                                     key=f"browse_std_{uploaded_file.name}_{i}"
                                                 )
                                                 is_standard = True
+                                                # Set default values for browsed standards
+                                                st.session_state[f"test_name_{uploaded_file.name}_{i}"] = selected_test_type
+                                                st.session_state[f"test_value_{uploaded_file.name}_{i}"] = float(result['value'])
+                                                st.session_state[f"test_unit_{uploaded_file.name}_{i}"] = result.get('unit', '')
                                             else:
                                                 selected_test_type = result['test_type']
                                                 is_standard = False
+                                                # Set default values
+                                                st.session_state[f"test_name_{uploaded_file.name}_{i}"] = selected_test_type
+                                                st.session_state[f"test_value_{uploaded_file.name}_{i}"] = float(result['value'])
+                                                st.session_state[f"test_unit_{uploaded_file.name}_{i}"] = result.get('unit', '')
                                             
-                                            # Store the selected test type
-                                            st.session_state[f"test_name_{uploaded_file.name}_{i}"] = selected_test_type
+                                            # Show editable fields for extracted data
+                                            if "Use Extracted" in selected_choice:
+                                                st.markdown("**Edit Extracted Data:**")
+                                                
+                                                # Editable fields for the extracted data
+                                                col_edit1, col_edit2, col_edit3 = st.columns(3)
+                                                
+                                                with col_edit1:
+                                                    edited_test_name = st.text_input(
+                                                        "Test Name:",
+                                                        value=result['test_type'],
+                                                        key=f"edit_name_{uploaded_file.name}_{i}",
+                                                        help="Edit the test name before saving"
+                                                    )
+                                                
+                                                with col_edit2:
+                                                    edited_test_value = st.number_input(
+                                                        "Test Value:",
+                                                        value=float(result['value']),
+                                                        key=f"edit_value_{uploaded_file.name}_{i}",
+                                                        help="Edit the test value"
+                                                    )
+                                                
+                                                with col_edit3:
+                                                    edited_test_unit = st.text_input(
+                                                        "Unit:",
+                                                        value=result.get('unit', ''),
+                                                        key=f"edit_unit_{uploaded_file.name}_{i}",
+                                                        help="Edit the unit"
+                                                    )
+                                                
+                                                # Update session state with edited values
+                                                st.session_state[f"test_name_{uploaded_file.name}_{i}"] = edited_test_name
+                                                st.session_state[f"test_value_{uploaded_file.name}_{i}"] = edited_test_value
+                                                st.session_state[f"test_unit_{uploaded_file.name}_{i}"] = edited_test_unit
+                                                
+                                                # Show what will be saved
+                                                st.info(f"📋 Will save: **{edited_test_name}** = {edited_test_value} {edited_test_unit}")
                                             
                                             # Show "Create New Standard" dialog if using extracted data
                                             if "Use Extracted" in selected_choice:
-                                                with st.expander("➕ Create New Standard from Extracted Data", expanded=False):
-                                                    st.markdown(f"**Creating standard for:** `{selected_test_type}`")
+                                                with st.expander("➕ Create New Standard from Edited Data", expanded=False):
+                                                    # Use the edited values for creating the standard
+                                                    current_test_name = st.session_state.get(f"edit_name_{uploaded_file.name}_{i}", result['test_type'])
+                                                    current_test_unit = st.session_state.get(f"edit_unit_{uploaded_file.name}_{i}", result.get('unit', ''))
+                                                    
+                                                    st.markdown(f"**Creating standard for:** `{current_test_name}`")
                                                     
                                                     # Parse reference range from extracted data
                                                     ref_range = result.get('reference_range', '')
-                                                    unit = result.get('unit', '')
+                                                    unit = current_test_unit or result.get('unit', '')
                                                     
                                                     # Initialize range values
                                                     range_min = 0.0
@@ -442,7 +495,7 @@ Extraction Method: {result.get('source', 'regex')}""")
                                                     with col1:
                                                         new_std_name = st.text_input(
                                                             "Standard Name:", 
-                                                            value=selected_test_type,
+                                                            value=current_test_name,
                                                             key=f"new_std_name_dialog_{uploaded_file.name}_{i}"
                                                         )
                                                         new_std_category = st.selectbox(
