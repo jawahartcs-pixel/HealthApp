@@ -34,17 +34,17 @@ class DataProcessor:
             saved_count = 0
             for result in test_results:
                 if self._validate_test_result(result):
-                    # Standardize the test type using fuzzy matching
-                    original_test_type = result['test_type']
-                    standardized_name, match_info = self.standards.standardize_test_name(original_test_type)
+                    # Use the test type exactly as provided - no additional standardization
+                    # The UI layer has already handled standardization vs custom choice
+                    test_type_to_save = result['test_type']
                     
-                    # Use standardized name if found, otherwise keep original
-                    test_type_to_save = standardized_name
-                    
-                    # If we have match info and no reference range was provided, use standard reference range
+                    # Use provided reference range, or try to get standard one if empty
                     reference_range = result.get('reference_range', '')
-                    if not reference_range and match_info:
-                        reference_range = self.standards.get_reference_range(standardized_name, 'both')
+                    if not reference_range:
+                        # Try to get reference range for the exact test type provided
+                        _, match_info = self.standards.standardize_test_name(test_type_to_save)
+                        if match_info:
+                            reference_range = self.standards.get_reference_range(test_type_to_save, 'both')
                     
                     success = self.db.add_test_result(
                         patient_id=patient_id,
