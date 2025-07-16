@@ -390,7 +390,14 @@ Extraction Method: {result.get('source', 'regex')}""")
                                             
                                             # Add "Create New Standard" option if using non-standard name
                                             if not is_standard and selected_test_type not in standard_names:
-                                                if st.button(f"➕ Create Standard for '{selected_test_type}'", key=f"create_std_{uploaded_file.name}_{i}"):
+                                                # Use checkbox to trigger standard creation instead of button
+                                                create_standard = st.checkbox(
+                                                    f"➕ Create new standard for '{selected_test_type}'", 
+                                                    key=f"create_std_{uploaded_file.name}_{i}",
+                                                    help="Check to create a new investigation standard from this extracted test"
+                                                )
+                                                
+                                                if create_standard:
                                                     # Parse reference range if available
                                                     ref_range = result.get('reference_range', '')
                                                     unit = result.get('unit', '')
@@ -414,94 +421,16 @@ Extraction Method: {result.get('source', 'regex')}""")
                                                         except (ValueError, IndexError):
                                                             pass
                                                     
-                                                    # Store data for the new standard form
-                                                    st.session_state[f'new_std_from_extract_{i}'] = {
+                                                    # Store extracted data for creating standard
+                                                    st.session_state[f'new_std_data_{uploaded_file.name}_{i}'] = {
                                                         'name': selected_test_type,
                                                         'min': range_min,
                                                         'max': range_max,
                                                         'unit': unit,
                                                         'ref_range': ref_range
                                                     }
-                                                
-                                                # Show form to create new standard if requested
-                                                if f'new_std_from_extract_{i}' in st.session_state:
-                                                    with st.expander(f"Create New Standard for '{selected_test_type}'", expanded=True):
-                                                        extract_data = st.session_state[f'new_std_from_extract_{i}']
-                                                        
-                                                        col1, col2 = st.columns(2)
-                                                        with col1:
-                                                            new_name = st.text_input("Standard Name", value=extract_data['name'], key=f"new_std_name_{i}")
-                                                            new_category = st.selectbox("Category", 
-                                                                options=["Complete Blood Count", "Basic Metabolic Panel", "Liver Function", "Lipid Panel", "Thyroid Function", "Kidney Function", "Other"],
-                                                                key=f"new_std_cat_{i}")
-                                                            new_description = st.text_area("Description", key=f"new_std_desc_{i}")
-                                                        
-                                                        with col2:
-                                                            st.markdown("**Reference Ranges**")
-                                                            new_gender_specific = st.checkbox("Different ranges for male/female", key=f"new_std_gender_{i}")
-                                                            
-                                                            if new_gender_specific:
-                                                                st.markdown("**Male Range:**")
-                                                                col_m1, col_m2, col_m3 = st.columns(3)
-                                                                with col_m1:
-                                                                    new_male_min = st.number_input("Min", value=extract_data['min'], key=f"new_std_m_min_{i}")
-                                                                with col_m2:
-                                                                    new_male_max = st.number_input("Max", value=extract_data['max'], key=f"new_std_m_max_{i}")
-                                                                with col_m3:
-                                                                    new_male_unit = st.text_input("Unit", value=extract_data['unit'], key=f"new_std_m_unit_{i}")
-                                                                
-                                                                st.markdown("**Female Range:**")
-                                                                col_f1, col_f2, col_f3 = st.columns(3)
-                                                                with col_f1:
-                                                                    new_female_min = st.number_input("Min", value=extract_data['min'], key=f"new_std_f_min_{i}")
-                                                                with col_f2:
-                                                                    new_female_max = st.number_input("Max", value=extract_data['max'], key=f"new_std_f_max_{i}")
-                                                                with col_f3:
-                                                                    new_female_unit = st.text_input("Unit", value=extract_data['unit'], key=f"new_std_f_unit_{i}")
-                                                            else:
-                                                                st.markdown("**Reference Range (Both Genders):**")
-                                                                col_1, col_2, col_3 = st.columns(3)
-                                                                with col_1:
-                                                                    new_male_min = new_female_min = st.number_input("Min", value=extract_data['min'], key=f"new_std_single_min_{i}")
-                                                                with col_2:
-                                                                    new_male_max = new_female_max = st.number_input("Max", value=extract_data['max'], key=f"new_std_single_max_{i}")
-                                                                with col_3:
-                                                                    new_male_unit = new_female_unit = st.text_input("Unit", value=extract_data['unit'], key=f"new_std_single_unit_{i}")
-                                                        
-                                                        if extract_data['ref_range']:
-                                                            st.info(f"**Original reference range from document:** {extract_data['ref_range']}")
-                                                        
-                                                        col_save, col_cancel = st.columns(2)
-                                                        with col_save:
-                                                            if st.button("💾 Save Standard", key=f"save_std_{i}"):
-                                                                new_standard_data = {
-                                                                    'standard_name': new_name,
-                                                                    'aliases': '',
-                                                                    'male_range_min': new_male_min,
-                                                                    'male_range_max': new_male_max,
-                                                                    'male_unit': new_male_unit,
-                                                                    'female_range_min': new_female_min,
-                                                                    'female_range_max': new_female_max,
-                                                                    'female_unit': new_female_unit,
-                                                                    'description': new_description,
-                                                                    'category': new_category,
-                                                                    'gender_specific': new_gender_specific
-                                                                }
-                                                                
-                                                                if investigation_standards.add_standard(new_standard_data):
-                                                                    st.success(f"✅ Standard '{new_name}' created successfully!")
-                                                                    # Update the selected test type to use the new standard
-                                                                    st.session_state[f"test_name_{uploaded_file.name}_{i}"] = new_name
-                                                                    # Remove the form data
-                                                                    del st.session_state[f'new_std_from_extract_{i}']
-                                                                    st.rerun()
-                                                                else:
-                                                                    st.error("Failed to create standard")
-                                                        
-                                                        with col_cancel:
-                                                            if st.button("❌ Cancel", key=f"cancel_std_{i}"):
-                                                                del st.session_state[f'new_std_from_extract_{i}']
-                                                                st.rerun()
+                                                    
+                                                    st.info(f"💡 Standard will be created for '{selected_test_type}' when you save results. Extracted range: {ref_range or 'No range found'}")
                                         else:
                                             # Fallback to text input if standards not available
                                             st.text_input(
@@ -625,6 +554,39 @@ Extraction Method: {result.get('source', 'regex')}""")
                         
                         if save_clicked and patient_name:
                             with st.spinner("Saving results..."):
+                                status_text.text("Creating new standards...")
+                                progress_bar.progress(80)
+                                
+                                # First, create any new standards that were requested
+                                investigation_standards = st.session_state.get('investigation_standards')
+                                if investigation_standards:
+                                    for i, result in enumerate(test_data['results']):
+                                        create_std_key = f"create_std_{uploaded_file.name}_{i}"
+                                        if st.session_state.get(create_std_key, False):
+                                            std_data_key = f'new_std_data_{uploaded_file.name}_{i}'
+                                            if std_data_key in st.session_state:
+                                                extract_data = st.session_state[std_data_key]
+                                                
+                                                # Create the new standard with extracted data
+                                                new_standard_data = {
+                                                    'standard_name': extract_data['name'],
+                                                    'aliases': '',
+                                                    'male_range_min': extract_data['min'],
+                                                    'male_range_max': extract_data['max'],
+                                                    'male_unit': extract_data['unit'],
+                                                    'female_range_min': extract_data['min'],
+                                                    'female_range_max': extract_data['max'],
+                                                    'female_unit': extract_data['unit'],
+                                                    'description': f"Extracted from document: {extract_data['ref_range']}",
+                                                    'category': 'Other',
+                                                    'gender_specific': False
+                                                }
+                                                
+                                                if investigation_standards.add_standard(new_standard_data):
+                                                    st.success(f"✅ Created standard for '{extract_data['name']}'")
+                                                else:
+                                                    st.warning(f"⚠️ Could not create standard for '{extract_data['name']}'")
+                                
                                 status_text.text("Saving to database...")
                                 progress_bar.progress(90)
                                 
@@ -675,6 +637,15 @@ Extraction Method: {result.get('source', 'regex')}""")
                                     extracted_count = len([r for i, r in enumerate(test_data['results']) if st.session_state.get(f"include_{uploaded_file.name}_{i}", True)])
                                     st.success(f"Successfully saved {len(final_results)} test results for {patient_name}")
                                     st.info(f"Extracted: {extracted_count} tests, Additional: {additional_count} tests")
+                                    
+                                    # Clear all session state keys related to this upload
+                                    keys_to_remove = []
+                                    for key in st.session_state.keys():
+                                        if uploaded_file.name in key:
+                                            keys_to_remove.append(key)
+                                    
+                                    for key in keys_to_remove:
+                                        del st.session_state[key]
                                     
                                     # Show extraction debug info
                                     with st.expander("Debug: Extraction details"):
