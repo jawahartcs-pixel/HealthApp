@@ -2581,18 +2581,20 @@ def investigation_standards_page(investigation_standards):
                                                     if test_name not in aliases_list:
                                                         aliases_list.append(test_name)
                                                     
-                                                    success = investigation_standards.add_standard(
-                                                        standard_name=standard_name,
-                                                        category=category,
-                                                        male_range_min=male_min,
-                                                        male_range_max=male_max,
-                                                        male_unit=male_unit,
-                                                        female_range_min=female_min,
-                                                        female_range_max=female_max,
-                                                        female_unit=female_unit,
-                                                        description=description,
-                                                        aliases=", ".join(aliases_list)
-                                                    )
+                                                    standard_data = {
+                                                        'standard_name': standard_name,
+                                                        'category': category,
+                                                        'male_range_min': male_min,
+                                                        'male_range_max': male_max,
+                                                        'male_unit': male_unit,
+                                                        'female_range_min': female_min,
+                                                        'female_range_max': female_max,
+                                                        'female_unit': female_unit,
+                                                        'description': description,
+                                                        'aliases': ", ".join(aliases_list)
+                                                    }
+                                                    
+                                                    success = investigation_standards.add_standard(standard_data)
                                                     
                                                     if success:
                                                         st.success(f"✅ Successfully created standard for {test_name}!")
