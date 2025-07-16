@@ -333,8 +333,6 @@ Extraction Method: {result.get('source', 'regex')}""")
                                         # Investigation type selection with fuzzy matching
                                         investigation_standards = st.session_state.get('investigation_standards')
                                         if investigation_standards:
-                                            # Debug: Show which test we're processing
-                                            st.caption(f"Processing test #{i+1}: {result['test_type']}")
                                             # Get all standard names
                                             all_standards = investigation_standards.get_all_standards()
                                             standard_names = [std['standard_name'] for std in all_standards]
@@ -369,39 +367,49 @@ Extraction Method: {result.get('source', 'regex')}""")
                                                 if result.get('unit'):
                                                     st.caption(f"Unit: {result.get('unit')}")
                                             
-                                            # Radio button for selection
+                                            # Always show all three options for every test
+                                            choice_options = ["Use Fuzzy Match", "Use Extracted", "Browse all standards"]
+                                            choice_labels = []
+                                            
                                             if match_info and standardized_name in standard_names:
-                                                choice_options = [
-                                                    f"Use Fuzzy Match: {standardized_name}",
+                                                choice_labels = [
+                                                    f"Use Fuzzy Match: {standardized_name} (Score: {match_info.get('match_score', 0):.2f})",
                                                     f"Use Extracted: {result['test_type']}",
                                                     "Browse all standards"
                                                 ]
                                                 default_choice = 0
                                             else:
-                                                choice_options = [
+                                                choice_labels = [
+                                                    "Use Fuzzy Match: No match found",
                                                     f"Use Extracted: {result['test_type']}",
                                                     "Browse all standards"
                                                 ]
-                                                default_choice = 0
+                                                default_choice = 1  # Default to extracted when no fuzzy match
                                             
-                                            selected_choice = st.radio(
+                                            selected_choice_index = st.radio(
                                                 "Choose investigation type:",
-                                                choice_options,
+                                                range(len(choice_labels)),
                                                 index=default_choice,
+                                                format_func=lambda x: choice_labels[x],
                                                 key=f"choice_{uploaded_file.name}_{i}"
                                             )
                                             
-                                            # Debug: Show selected choice
-                                            st.caption(f"Selected: {selected_choice}")
+                                            selected_choice = choice_options[selected_choice_index]
                                             
                                             # Determine the selected test type and whether it's a standard
-                                            if "Use Fuzzy Match" in selected_choice:
-                                                selected_test_type = standardized_name
-                                                is_standard = True
-                                            elif "Use Extracted" in selected_choice:
+                                            if selected_choice == "Use Fuzzy Match":
+                                                if match_info and standardized_name in standard_names:
+                                                    selected_test_type = standardized_name
+                                                    is_standard = True
+                                                else:
+                                                    # No fuzzy match available, fall back to extracted
+                                                    st.warning("No fuzzy match available, using extracted data instead")
+                                                    selected_test_type = result['test_type']
+                                                    is_standard = False
+                                            elif selected_choice == "Use Extracted":
                                                 selected_test_type = result['test_type']
                                                 is_standard = False
-                                            elif "Browse all standards" in selected_choice:
+                                            elif selected_choice == "Browse all standards":
                                                 # Show dropdown with all standards
                                                 selected_test_type = st.selectbox(
                                                     "Select from all standards:",
@@ -416,9 +424,13 @@ Extraction Method: {result.get('source', 'regex')}""")
                                             # Store the selected test type
                                             st.session_state[f"test_name_{uploaded_file.name}_{i}"] = selected_test_type
                                             
-                                            # Show "Create New Standard" dialog if using extracted data
-                                            if "Use Extracted" in selected_choice:
-                                                st.info(f"DEBUG: Showing dialog for '{selected_test_type}' (choice: {selected_choice})")
+                                            # Show "Create New Standard" dialog when using extracted data
+                                            show_create_dialog = (
+                                                selected_choice == "Use Extracted" or 
+                                                (selected_choice == "Use Fuzzy Match" and not (match_info and standardized_name in standard_names))
+                                            )
+                                            
+                                            if show_create_dialog:
                                                 st.markdown("---")
                                                 st.markdown("### ➕ Create New Standard from Extracted Data")
                                                 st.markdown(f"**Creating standard for:** `{selected_test_type}`")
