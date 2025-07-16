@@ -1955,25 +1955,43 @@ def investigation_standards_page(investigation_standards):
                     with col2:
                         st.markdown("**🚹🚺 Reference Ranges**")
                         
-                        # Male ranges
-                        st.markdown("**Male Range:**")
-                        col_m1, col_m2, col_m3 = st.columns(3)
-                        with col_m1:
-                            male_min = st.number_input("Min", value=float(standard['male_range_min']) if standard['male_range_min'] else 0.0, key=f"m_min_{standard['id']}")
-                        with col_m2:
-                            male_max = st.number_input("Max", value=float(standard['male_range_max']) if standard['male_range_max'] else 0.0, key=f"m_max_{standard['id']}")
-                        with col_m3:
-                            male_unit = st.text_input("Unit", value=standard['male_unit'] or '', key=f"m_unit_{standard['id']}")
+                        # Gender-specific checkbox
+                        gender_specific = st.checkbox(
+                            "Different ranges for male/female", 
+                            value=standard.get('gender_specific', False), 
+                            key=f"gender_specific_{standard['id']}"
+                        )
                         
-                        # Female ranges
-                        st.markdown("**Female Range:**")
-                        col_f1, col_f2, col_f3 = st.columns(3)
-                        with col_f1:
-                            female_min = st.number_input("Min", value=float(standard['female_range_min']) if standard['female_range_min'] else 0.0, key=f"f_min_{standard['id']}")
-                        with col_f2:
-                            female_max = st.number_input("Max", value=float(standard['female_range_max']) if standard['female_range_max'] else 0.0, key=f"f_max_{standard['id']}")
-                        with col_f3:
-                            female_unit = st.text_input("Unit", value=standard['female_unit'] or '', key=f"f_unit_{standard['id']}")
+                        if gender_specific:
+                            # Male ranges
+                            st.markdown("**Male Range:**")
+                            col_m1, col_m2, col_m3 = st.columns(3)
+                            with col_m1:
+                                male_min = st.number_input("Min", value=float(standard['male_range_min']) if standard['male_range_min'] else 0.0, key=f"m_min_{standard['id']}")
+                            with col_m2:
+                                male_max = st.number_input("Max", value=float(standard['male_range_max']) if standard['male_range_max'] else 0.0, key=f"m_max_{standard['id']}")
+                            with col_m3:
+                                male_unit = st.text_input("Unit", value=standard['male_unit'] or '', key=f"m_unit_{standard['id']}")
+                            
+                            # Female ranges
+                            st.markdown("**Female Range:**")
+                            col_f1, col_f2, col_f3 = st.columns(3)
+                            with col_f1:
+                                female_min = st.number_input("Min", value=float(standard['female_range_min']) if standard['female_range_min'] else 0.0, key=f"f_min_{standard['id']}")
+                            with col_f2:
+                                female_max = st.number_input("Max", value=float(standard['female_range_max']) if standard['female_range_max'] else 0.0, key=f"f_max_{standard['id']}")
+                            with col_f3:
+                                female_unit = st.text_input("Unit", value=standard['female_unit'] or '', key=f"f_unit_{standard['id']}")
+                        else:
+                            # Single range for both genders
+                            st.markdown("**Reference Range (Both Genders):**")
+                            col_1, col_2, col_3 = st.columns(3)
+                            with col_1:
+                                male_min = female_min = st.number_input("Min", value=float(standard['male_range_min']) if standard['male_range_min'] else 0.0, key=f"single_min_{standard['id']}")
+                            with col_2:
+                                male_max = female_max = st.number_input("Max", value=float(standard['male_range_max']) if standard['male_range_max'] else 0.0, key=f"single_max_{standard['id']}")
+                            with col_3:
+                                male_unit = female_unit = st.text_input("Unit", value=standard['male_unit'] or '', key=f"single_unit_{standard['id']}")
                     
                     # Action buttons
                     col1, col2, col3 = st.columns(3)
@@ -1990,7 +2008,8 @@ def investigation_standards_page(investigation_standards):
                                 'female_range_max': female_max,
                                 'female_unit': female_unit,
                                 'description': edit_description,
-                                'category': edit_category
+                                'category': edit_category,
+                                'gender_specific': gender_specific
                             }
                             
                             if investigation_standards.update_standard(standard['id'], update_data):
@@ -2009,7 +2028,10 @@ def investigation_standards_page(investigation_standards):
                     
                     with col3:
                         # Show current reference ranges
-                        st.info(f"M: {male_min}-{male_max} {male_unit}\nF: {female_min}-{female_max} {female_unit}")
+                        if gender_specific:
+                            st.info(f"M: {male_min}-{male_max} {male_unit}\nF: {female_min}-{female_max} {female_unit}")
+                        else:
+                            st.info(f"Both: {male_min}-{male_max} {male_unit}")
         
         else:
             st.info("No investigation standards found. Add some standards to get started.")
@@ -2032,25 +2054,39 @@ def investigation_standards_page(investigation_standards):
             with col2:
                 st.markdown("**Reference Ranges**")
                 
-                # Male ranges
-                st.markdown("**Male Range:**")
-                col_m1, col_m2, col_m3 = st.columns(3)
-                with col_m1:
-                    new_male_min = st.number_input("Min Value", value=0.0, key="new_m_min")
-                with col_m2:
-                    new_male_max = st.number_input("Max Value", value=0.0, key="new_m_max")
-                with col_m3:
-                    new_male_unit = st.text_input("Unit", placeholder="mg/dL", key="new_m_unit")
+                # Gender-specific checkbox
+                new_gender_specific = st.checkbox("Different ranges for male/female", value=False, key="new_gender_specific")
                 
-                # Female ranges
-                st.markdown("**Female Range:**")
-                col_f1, col_f2, col_f3 = st.columns(3)
-                with col_f1:
-                    new_female_min = st.number_input("Min Value", value=0.0, key="new_f_min")
-                with col_f2:
-                    new_female_max = st.number_input("Max Value", value=0.0, key="new_f_max")
-                with col_f3:
-                    new_female_unit = st.text_input("Unit", placeholder="mg/dL", key="new_f_unit")
+                if new_gender_specific:
+                    # Male ranges
+                    st.markdown("**Male Range:**")
+                    col_m1, col_m2, col_m3 = st.columns(3)
+                    with col_m1:
+                        new_male_min = st.number_input("Min Value", value=0.0, key="new_m_min")
+                    with col_m2:
+                        new_male_max = st.number_input("Max Value", value=0.0, key="new_m_max")
+                    with col_m3:
+                        new_male_unit = st.text_input("Unit", placeholder="mg/dL", key="new_m_unit")
+                    
+                    # Female ranges
+                    st.markdown("**Female Range:**")
+                    col_f1, col_f2, col_f3 = st.columns(3)
+                    with col_f1:
+                        new_female_min = st.number_input("Min Value", value=0.0, key="new_f_min")
+                    with col_f2:
+                        new_female_max = st.number_input("Max Value", value=0.0, key="new_f_max")
+                    with col_f3:
+                        new_female_unit = st.text_input("Unit", placeholder="mg/dL", key="new_f_unit")
+                else:
+                    # Single range for both genders
+                    st.markdown("**Reference Range (Both Genders):**")
+                    col_1, col_2, col_3 = st.columns(3)
+                    with col_1:
+                        new_male_min = new_female_min = st.number_input("Min Value", value=0.0, key="new_single_min")
+                    with col_2:
+                        new_male_max = new_female_max = st.number_input("Max Value", value=0.0, key="new_single_max")
+                    with col_3:
+                        new_male_unit = new_female_unit = st.text_input("Unit", placeholder="mg/dL", key="new_single_unit")
             
             if st.form_submit_button("🔬 Add Standard"):
                 if new_name and new_category:
@@ -2064,7 +2100,8 @@ def investigation_standards_page(investigation_standards):
                         'female_range_max': new_female_max,
                         'female_unit': new_female_unit,
                         'description': new_description,
-                        'category': new_category
+                        'category': new_category,
+                        'gender_specific': new_gender_specific
                     }
                     
                     if investigation_standards.add_standard(new_standard):
@@ -2099,8 +2136,17 @@ def investigation_standards_page(investigation_standards):
                     if match_info:
                         match_score = match_info.get('match_score', 0)
                         category = match_info.get('category', 'Unknown')
-                        male_range = f"{match_info['male_range_min']}-{match_info['male_range_max']} {match_info['male_unit']}"
-                        female_range = f"{match_info['female_range_min']}-{match_info['female_range_max']} {match_info['female_unit']}"
+                        gender_specific = match_info.get('gender_specific', False)
+                        
+                        if gender_specific:
+                            male_range = f"{match_info['male_range_min']}-{match_info['male_range_max']} {match_info['male_unit']}"
+                            female_range = f"{match_info['female_range_min']}-{match_info['female_range_max']} {match_info['female_unit']}"
+                        else:
+                            # Same range for both genders
+                            range_text = f"{match_info['male_range_min']}-{match_info['male_range_max']} {match_info['male_unit']}"
+                            male_range = f"{range_text} (shared)"
+                            female_range = f"{range_text} (shared)"
+                        
                         status = "✅ Matched"
                     else:
                         match_score = 0

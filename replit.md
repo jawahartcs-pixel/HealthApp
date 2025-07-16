@@ -121,6 +121,22 @@ Preferred communication style: Simple, everyday language.
 
 ## Recent Changes
 
+### July 16, 2025 - Gender-Specific Reference Ranges
+- **Flexible Range Configuration**: Added gender-specific flag to control reference range display
+  - Optional gender differentiation for investigation standards with checkbox control
+  - When enabled: Shows separate male and female reference ranges with independent min/max/unit values
+  - When disabled: Shows single reference range applied to both genders with "(shared)" indicator
+  - Existing standards automatically configured based on actual range differences
+- **Enhanced Standards Management**: Updated investigation standards interface
+  - Gender-specific checkbox in both view/edit and add new standard forms
+  - Dynamic UI that shows appropriate range inputs based on gender-specific setting
+  - Smart range display in preview showing "(shared)" for unified ranges
+  - Database schema updated to include gender_specific boolean column
+- **Backward Compatibility**: Seamless integration with existing data
+  - Automatic column addition to existing investigation_standards table
+  - Default gender_specific=False for existing standards with same ranges
+  - True for standards like Hemoglobin, Creatinine where ranges actually differ by gender
+
 ### July 16, 2025 - Investigation Type Dropdown with Fuzzy Matching
 - **Smart Investigation Selection**: Replaced text inputs with intelligent dropdown selections in extraction details
   - Investigation type selectboxes display all standardized investigation names from the standards table
