@@ -127,10 +127,11 @@ Preferred communication style: Simple, everyday language.
   - Direct OCR processing for image files using Tesseract
   - Integration with existing OCR enhancement and cleaning functions
   - Full document snippet display instead of cropped portions for better context
-- **Camera Input Integration**: Added camera capture functionality for direct photo uploads
-  - Native Streamlit camera input for taking photos of medical reports
-  - Seamless integration with existing file processing pipeline
-  - Combined processing of uploaded files and camera captures
+- **Main Upload Page Image Integration**: Added image format support to primary upload functionality
+  - All image formats (JPG, JPEG, PNG, BMP, TIFF) now supported in main upload page
+  - Automatic OCR processing for image files with enhanced text extraction
+  - Updated file uploader help text to include image format instructions
+  - Seamless integration with existing extraction and editing workflow
 - **Investigation Standards Creation from Reports**: New tab in Investigation Standards page for bulk creation
   - Complete file upload and processing logic duplicated from main upload page
   - Support for all file formats: PDF, Word, Excel, CSV, XML, and Images
