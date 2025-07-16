@@ -132,13 +132,15 @@ Preferred communication style: Simple, everyday language.
   - Automatic OCR processing for image files with enhanced text extraction
   - Updated file uploader help text to include image format instructions
   - Seamless integration with existing extraction and editing workflow
-- **Investigation Standards Creation from Reports**: New tab in Investigation Standards page for bulk creation
-  - Complete file upload and processing logic duplicated from main upload page
+- **Investigation Standards Creation from Reports**: Enhanced tab with individual creation dialogs
+  - Complete file upload and processing logic for all supported formats
   - Support for all file formats: PDF, Word, Excel, CSV, XML, and Images
-  - Automatic extraction of test types from medical reports
-  - Bulk creation of investigation standards with default reference ranges
-  - Fuzzy matching integration to avoid duplicate standards
-  - Select all/none functionality for efficient bulk operations
+  - Removed camera access prompt from standards page
+  - Individual inline creation forms for each extracted investigation type
+  - Automatic alias checking without fuzzy matching logging
+  - Create checkbox enabled only for new investigation types not found in existing aliases
+  - Extracted test name automatically added to aliases during standard creation
+  - Expandable sections for each investigation with pre-populated forms
 
 ### July 16, 2025 - Reference Range Extraction & Display
 - **Enhanced Reference Range Extraction**: Added comprehensive reference range detection to file parser
