@@ -411,113 +411,113 @@ Extraction Method: {result.get('source', 'regex')}""")
                                             # Store the selected test type
                                             st.session_state[f"test_name_{uploaded_file.name}_{i}"] = selected_test_type
                                             
-                                            # Show "Create New Standard" dialog if using extracted data
-                                            if "Use Extracted" in selected_choice:
-                                                with st.expander("➕ Create New Standard from Extracted Data", expanded=False):
-                                                    st.markdown(f"**Creating standard for:** `{selected_test_type}`")
-                                                    
-                                                    # Parse reference range from extracted data
-                                                    ref_range = result.get('reference_range', '')
-                                                    unit = result.get('unit', '')
-                                                    
-                                                    # Initialize range values
-                                                    range_min = 0.0
-                                                    range_max = 0.0
-                                                    
-                                                    # Try to parse reference range
-                                                    if ref_range and '-' in ref_range:
-                                                        try:
-                                                            range_part = ref_range.split()[0] if ' ' in ref_range else ref_range
-                                                            if '-' in range_part:
-                                                                min_str, max_str = range_part.split('-', 1)
-                                                                range_min = float(min_str.strip())
-                                                                range_max = float(max_str.strip())
-                                                                if not unit and ' ' in ref_range:
-                                                                    unit = ref_range.split(' ', 1)[1]
-                                                        except (ValueError, IndexError):
-                                                            pass
-                                                    
-                                                    col1, col2 = st.columns(2)
-                                                    
-                                                    with col1:
-                                                        new_std_name = st.text_input(
-                                                            "Standard Name:", 
-                                                            value=selected_test_type,
-                                                            key=f"new_std_name_dialog_{uploaded_file.name}_{i}"
-                                                        )
-                                                        new_std_category = st.selectbox(
-                                                            "Category:",
-                                                            options=["Complete Blood Count", "Basic Metabolic Panel", "Liver Function", "Lipid Panel", "Thyroid Function", "Kidney Function", "Other"],
-                                                            key=f"new_std_cat_dialog_{uploaded_file.name}_{i}"
-                                                        )
-                                                        new_std_description = st.text_area(
-                                                            "Description:",
-                                                            value=f"Extracted from document. Original range: {ref_range}",
-                                                            key=f"new_std_desc_dialog_{uploaded_file.name}_{i}"
-                                                        )
-                                                    
-                                                    with col2:
-                                                        st.markdown("**Reference Ranges**")
-                                                        new_gender_specific = st.checkbox(
-                                                            "Different ranges for male/female",
-                                                            key=f"new_std_gender_dialog_{uploaded_file.name}_{i}"
-                                                        )
-                                                        
-                                                        if new_gender_specific:
-                                                            st.markdown("**Male Range:**")
-                                                            col_m1, col_m2, col_m3 = st.columns(3)
-                                                            with col_m1:
-                                                                new_male_min = st.number_input("Min", value=range_min, key=f"new_std_m_min_dialog_{uploaded_file.name}_{i}")
-                                                            with col_m2:
-                                                                new_male_max = st.number_input("Max", value=range_max, key=f"new_std_m_max_dialog_{uploaded_file.name}_{i}")
-                                                            with col_m3:
-                                                                new_male_unit = st.text_input("Unit", value=unit, key=f"new_std_m_unit_dialog_{uploaded_file.name}_{i}")
-                                                            
-                                                            st.markdown("**Female Range:**")
-                                                            col_f1, col_f2, col_f3 = st.columns(3)
-                                                            with col_f1:
-                                                                new_female_min = st.number_input("Min", value=range_min, key=f"new_std_f_min_dialog_{uploaded_file.name}_{i}")
-                                                            with col_f2:
-                                                                new_female_max = st.number_input("Max", value=range_max, key=f"new_std_f_max_dialog_{uploaded_file.name}_{i}")
-                                                            with col_f3:
-                                                                new_female_unit = st.text_input("Unit", value=unit, key=f"new_std_f_unit_dialog_{uploaded_file.name}_{i}")
-                                                        else:
-                                                            st.markdown("**Reference Range (Both Genders):**")
-                                                            col_1, col_2, col_3 = st.columns(3)
-                                                            with col_1:
-                                                                new_male_min = new_female_min = st.number_input("Min", value=range_min, key=f"new_std_single_min_dialog_{uploaded_file.name}_{i}")
-                                                            with col_2:
-                                                                new_male_max = new_female_max = st.number_input("Max", value=range_max, key=f"new_std_single_max_dialog_{uploaded_file.name}_{i}")
-                                                            with col_3:
-                                                                new_male_unit = new_female_unit = st.text_input("Unit", value=unit, key=f"new_std_single_unit_dialog_{uploaded_file.name}_{i}")
-                                                    
-                                                    # Store data for creating standard when form is submitted
-                                                    create_std_data = st.checkbox(
-                                                        f"🔬 Add '{new_std_name}' to standardization table when saving",
-                                                        key=f"create_std_checkbox_{uploaded_file.name}_{i}",
-                                                        help="This standard will be created when you save the results"
+                                            # Always show "Create New Standard" dialog for extracted data
+                                            with st.expander("➕ Create New Standard from Extracted Data", expanded=False):
+                                                st.markdown(f"**Creating standard from original extracted data:** `{result['test_type']}`")
+                                                st.caption("Note: This creates a standard from the original extracted data, regardless of your selection above")
+                                                
+                                                # Parse reference range from extracted data (always use original data)
+                                                ref_range = result.get('reference_range', '')
+                                                unit = result.get('unit', '')
+                                                
+                                                # Initialize range values
+                                                range_min = 0.0
+                                                range_max = 0.0
+                                                
+                                                # Try to parse reference range
+                                                if ref_range and '-' in ref_range:
+                                                    try:
+                                                        range_part = ref_range.split()[0] if ' ' in ref_range else ref_range
+                                                        if '-' in range_part:
+                                                            min_str, max_str = range_part.split('-', 1)
+                                                            range_min = float(min_str.strip())
+                                                            range_max = float(max_str.strip())
+                                                            if not unit and ' ' in ref_range:
+                                                                unit = ref_range.split(' ', 1)[1]
+                                                    except (ValueError, IndexError):
+                                                        pass
+                                                
+                                                col1, col2 = st.columns(2)
+                                                
+                                                with col1:
+                                                    new_std_name = st.text_input(
+                                                        "Standard Name:", 
+                                                        value=result['test_type'],  # Always use original extracted name
+                                                        key=f"new_std_name_dialog_{uploaded_file.name}_{i}"
+                                                    )
+                                                    new_std_category = st.selectbox(
+                                                        "Category:",
+                                                        options=["Complete Blood Count", "Basic Metabolic Panel", "Liver Function", "Lipid Panel", "Thyroid Function", "Kidney Function", "Other"],
+                                                        key=f"new_std_cat_dialog_{uploaded_file.name}_{i}"
+                                                    )
+                                                    new_std_description = st.text_area(
+                                                        "Description:",
+                                                        value=f"Extracted from document. Original range: {ref_range}",
+                                                        key=f"new_std_desc_dialog_{uploaded_file.name}_{i}"
+                                                    )
+                                                
+                                                with col2:
+                                                    st.markdown("**Reference Ranges**")
+                                                    new_gender_specific = st.checkbox(
+                                                        "Different ranges for male/female",
+                                                        key=f"new_std_gender_dialog_{uploaded_file.name}_{i}"
                                                     )
                                                     
-                                                    if create_std_data:
-                                                        # Store all the standard data in session state
-                                                        st.session_state[f'new_std_data_{uploaded_file.name}_{i}'] = {
-                                                            'standard_name': new_std_name,
-                                                            'aliases': '',
-                                                            'male_range_min': new_male_min,
-                                                            'male_range_max': new_male_max,
-                                                            'male_unit': new_male_unit,
-                                                            'female_range_min': new_female_min,
-                                                            'female_range_max': new_female_max,
-                                                            'female_unit': new_female_unit,
-                                                            'description': new_std_description,
-                                                            'category': new_std_category,
-                                                            'gender_specific': new_gender_specific
-                                                        }
-                                                        st.success(f"✅ Standard '{new_std_name}' will be created when you save results")
+                                                    if new_gender_specific:
+                                                        st.markdown("**Male Range:**")
+                                                        col_m1, col_m2, col_m3 = st.columns(3)
+                                                        with col_m1:
+                                                            new_male_min = st.number_input("Min", value=range_min, key=f"new_std_m_min_dialog_{uploaded_file.name}_{i}")
+                                                        with col_m2:
+                                                            new_male_max = st.number_input("Max", value=range_max, key=f"new_std_m_max_dialog_{uploaded_file.name}_{i}")
+                                                        with col_m3:
+                                                            new_male_unit = st.text_input("Unit", value=unit, key=f"new_std_m_unit_dialog_{uploaded_file.name}_{i}")
+                                                        
+                                                        st.markdown("**Female Range:**")
+                                                        col_f1, col_f2, col_f3 = st.columns(3)
+                                                        with col_f1:
+                                                            new_female_min = st.number_input("Min", value=range_min, key=f"new_std_f_min_dialog_{uploaded_file.name}_{i}")
+                                                        with col_f2:
+                                                            new_female_max = st.number_input("Max", value=range_max, key=f"new_std_f_max_dialog_{uploaded_file.name}_{i}")
+                                                        with col_f3:
+                                                            new_female_unit = st.text_input("Unit", value=unit, key=f"new_std_f_unit_dialog_{uploaded_file.name}_{i}")
                                                     else:
-                                                        # Remove from session state if unchecked
-                                                        if f'new_std_data_{uploaded_file.name}_{i}' in st.session_state:
-                                                            del st.session_state[f'new_std_data_{uploaded_file.name}_{i}']
+                                                        st.markdown("**Reference Range (Both Genders):**")
+                                                        col_1, col_2, col_3 = st.columns(3)
+                                                        with col_1:
+                                                            new_male_min = new_female_min = st.number_input("Min", value=range_min, key=f"new_std_single_min_dialog_{uploaded_file.name}_{i}")
+                                                        with col_2:
+                                                            new_male_max = new_female_max = st.number_input("Max", value=range_max, key=f"new_std_single_max_dialog_{uploaded_file.name}_{i}")
+                                                        with col_3:
+                                                            new_male_unit = new_female_unit = st.text_input("Unit", value=unit, key=f"new_std_single_unit_dialog_{uploaded_file.name}_{i}")
+                                                
+                                                # Store data for creating standard when form is submitted
+                                                create_std_data = st.checkbox(
+                                                    f"🔬 Add '{new_std_name}' to standardization table when saving",
+                                                    key=f"create_std_checkbox_{uploaded_file.name}_{i}",
+                                                    help="This standard will be created when you save the results"
+                                                )
+                                                
+                                                if create_std_data:
+                                                    # Store all the standard data in session state
+                                                    st.session_state[f'new_std_data_{uploaded_file.name}_{i}'] = {
+                                                        'standard_name': new_std_name,
+                                                        'aliases': '',
+                                                        'male_range_min': new_male_min,
+                                                        'male_range_max': new_male_max,
+                                                        'male_unit': new_male_unit,
+                                                        'female_range_min': new_female_min,
+                                                        'female_range_max': new_female_max,
+                                                        'female_unit': new_female_unit,
+                                                        'description': new_std_description,
+                                                        'category': new_std_category,
+                                                        'gender_specific': new_gender_specific
+                                                    }
+                                                    st.success(f"✅ Standard '{new_std_name}' will be created when you save results")
+                                                else:
+                                                    # Remove from session state if unchecked
+                                                    if f'new_std_data_{uploaded_file.name}_{i}' in st.session_state:
+                                                        del st.session_state[f'new_std_data_{uploaded_file.name}_{i}']
                                         else:
                                             # Fallback to text input if standards not available
                                             st.text_input(
