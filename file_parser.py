@@ -1131,11 +1131,19 @@ class FileParser:
             # Brackets: [5.0-15.0]
             r'\[([^\]]+)\]',
             # Reference/Normal: Reference: 5.0-15.0, Normal: 5.0-15.0
-            r'(?:reference|normal|ref)[\s\:]*([^\s]+(?:\s*[-–]\s*[^\s]+)?)',
-            # Range patterns: 5.0-15.0, 5.0 - 15.0
-            r'(\d+(?:\.\d+)?\s*[-–]\s*\d+(?:\.\d+)?)',
-            # Less than/greater than: <10, >5
-            r'([<>]\s*\d+(?:\.\d+)?)',
+            r'(?:reference|normal|ref|range)[\s\:]*([^\s]+(?:\s*[-–]\s*[^\s]+)?)',
+            # Range patterns: 5.0-15.0, 5.0 - 15.0, 5.0 to 15.0
+            r'(\d+(?:\.\d+)?\s*[-–to]\s*\d+(?:\.\d+)?)',
+            # Less than/greater than: <10, >5, ≤10, ≥5
+            r'([<>≤≥]\s*\d+(?:\.\d+)?)',
+            # Range with units: 5.0-15.0 mg/dL
+            r'(\d+(?:\.\d+)?\s*[-–]\s*\d+(?:\.\d+)?\s*[a-zA-Z\/\%\^µμmM]+)',
+            # Additional patterns for medical ranges
+            r'(\d+(?:\.\d+)?\s*[-–]\s*\d+(?:\.\d+)?\s*[a-zA-Z\/]*)',
+            # Up to patterns: up to 10
+            r'(?:up\s+to|upto)\s+(\d+(?:\.\d+)?)',
+            # Below patterns: below 5
+            r'(?:below|under)\s+(\d+(?:\.\d+)?)',
         ]
         
         for pattern in ref_patterns:
@@ -1152,6 +1160,7 @@ class FileParser:
         # Enhanced tabular patterns to capture test results with reference ranges
         tabular_patterns = [
             # Tab-separated values with reference range
+            r'([a-zA-Z][a-zA-Z\s\(\)\/\-\.]+?)\s+(\d+(?:\.\d+)?)\s+([a-zA-Z\/\%\^µμmM]*)\s+([^\n\r\t]*)',
             r'([a-zA-Z][a-zA-Z\s\(\)\/\-\.]+?)\t+(\d+(?:\.\d+)?)\t*([a-zA-Z\/\%\^µμmM]*)\t*([^\n\r\t]*)',
             # Multiple spaces with reference range
             r'([a-zA-Z][a-zA-Z\s\(\)\/\-\.]+?)\s{3,}(\d+(?:\.\d+)?)\s*([a-zA-Z\/\%\^µμmM]*)\s*([^\n\r]*)',
@@ -1280,6 +1289,10 @@ class FileParser:
                         # Try to extract reference range from the remainder of line
                         remainder = line[match.end():].strip()
                         ref_range = self._extract_reference_range_from_line(remainder)
+                        
+                        # If no range found in remainder, try looking in the entire line
+                        if not ref_range:
+                            ref_range = self._extract_reference_range_from_line(line)
                         
                         result = {
                             'test_type': test_name.title(),
@@ -1415,11 +1428,22 @@ class FileParser:
                     if value < 0 or value > 50000:
                         continue
                     
+                    # Try to extract reference range from the line containing this result
+                    line_with_result = None
+                    for line in text.split('\n'):
+                        if test_name in line and str(value) in line:
+                            line_with_result = line
+                            break
+                    
+                    ref_range = ''
+                    if line_with_result:
+                        ref_range = self._extract_reference_range_from_line(line_with_result)
+                    
                     result = {
                         'test_type': test_name.title(),
                         'value': value,
                         'unit': unit,
-                        'reference_range': '',
+                        'reference_range': ref_range,
                         'source': 'generic'
                     }
                     

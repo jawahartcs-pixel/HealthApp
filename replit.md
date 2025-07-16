@@ -132,6 +132,10 @@ Preferred communication style: Simple, everyday language.
   - Fallback handling for unparseable ranges with sensible defaults
   - Enhanced test display showing reference ranges alongside investigation names during extraction
   - Streamlined form experience reducing manual data entry for investigation standard creation
+  - Added comprehensive debugging interface showing extracted test data structure for troubleshooting
+  - Enhanced reference range patterns to handle medical report formats including parentheses, brackets, and comparison operators
+  - Improved contextual scanning around test results for better reference range detection
+  - Extended pattern matching for "up to", "below", and other medical range expressions
 
 ### July 16, 2025 - Image Upload Support & Standards Creation from Reports
 - **Image File Support**: Added comprehensive support for image uploads in file parser
