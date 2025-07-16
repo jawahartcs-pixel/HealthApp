@@ -121,6 +121,25 @@ Preferred communication style: Simple, everyday language.
 
 ## Recent Changes
 
+### July 16, 2025 - Streamlined Investigation Type Workflow
+- **Simplified Interface**: Removed radio button choices entirely for cleaner user experience
+  - No more choice between "Use Fuzzy Match", "Use Extracted", or "Browse all standards"
+  - Eliminated complex decision points that interrupted the workflow
+  - Direct editing approach focusing on standardization rather than choice selection
+- **Always-On Standardization Dialog**: Inline standard creation is now always available
+  - Create new standard dialog appears for all extracted data regardless of fuzzy match status
+  - Users can add extracted investigation types directly to standardization table
+  - Streamlined workflow from extraction to standardization in single interface
+- **Universal Editing Fields**: Consistent editing experience across all scenarios
+  - Same three-column layout (Test Name, Test Value, Unit) for all tests
+  - Pre-populated with extracted data but fully editable
+  - Real-time preview showing what will be saved
+  - Eliminated duplicate fields and interface complexity
+- **Enhanced Fuzzy Match Display**: Simplified presentation of similar standards
+  - Shows fuzzy match information as reference without forcing choice
+  - Side-by-side comparison remains for context
+  - Focus shifted from selection to direct standardization workflow
+
 ### July 16, 2025 - Gender-Specific Reference Ranges
 - **Flexible Range Configuration**: Added gender-specific flag to control reference range display
   - Optional gender differentiation for investigation standards with checkbox control

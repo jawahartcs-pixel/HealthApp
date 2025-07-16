@@ -367,48 +367,7 @@ Extraction Method: {result.get('source', 'regex')}""")
                                                 if result.get('unit'):
                                                     st.caption(f"Unit: {result.get('unit')}")
                                             
-                                            # Radio button for selection
-                                            if match_info and standardized_name in standard_names:
-                                                choice_options = [
-                                                    f"Use Fuzzy Match: {standardized_name}",
-                                                    f"Use Extracted: {result['test_type']}",
-                                                    "Browse all standards"
-                                                ]
-                                                default_choice = 0
-                                            else:
-                                                choice_options = [
-                                                    f"Use Extracted: {result['test_type']}",
-                                                    "Browse all standards"
-                                                ]
-                                                default_choice = 0
-                                            
-                                            selected_choice = st.radio(
-                                                "Choose investigation type:",
-                                                choice_options,
-                                                index=default_choice,
-                                                key=f"choice_{uploaded_file.name}_{i}"
-                                            )
-                                            
-                                            # Determine the selected test type and whether it's a standard
-                                            if "Use Fuzzy Match" in selected_choice:
-                                                selected_test_type = standardized_name
-                                                is_standard = True
-                                            elif "Use Extracted" in selected_choice:
-                                                selected_test_type = result['test_type']
-                                                is_standard = False
-                                            elif "Browse all standards" in selected_choice:
-                                                # Show dropdown with all standards
-                                                selected_test_type = st.selectbox(
-                                                    "Select from all standards:",
-                                                    options=standard_names,
-                                                    key=f"browse_std_{uploaded_file.name}_{i}"
-                                                )
-                                                is_standard = True
-                                            else:
-                                                selected_test_type = result['test_type']
-                                                is_standard = False
-                                            
-                                            # Show editable fields for all choices (fuzzy match, extracted, or browsed)
+                                            # Always show editable fields for extracted data
                                             st.markdown("**Edit Test Data:**")
                                             
                                             # Editable fields for all investigation types
@@ -417,7 +376,7 @@ Extraction Method: {result.get('source', 'regex')}""")
                                             with col_edit1:
                                                 edited_test_name = st.text_input(
                                                     "Test Name:",
-                                                    value=selected_test_type,
+                                                    value=result['test_type'],
                                                     key=f"edit_name_{uploaded_file.name}_{i}",
                                                     help="Edit the test name before saving"
                                                 )
@@ -443,7 +402,7 @@ Extraction Method: {result.get('source', 'regex')}""")
                                             # Show what will be saved
                                             st.info(f"📋 Will save: **{edited_test_name}** = {edited_test_value} {edited_test_unit}")
                                             
-                                            # Show "Create New Standard" dialog if the edited name is not in standards
+                                            # Always show "Create New Standard" dialog for extracted data
                                             if edited_test_name not in standard_names:
                                                 with st.expander("➕ Create New Standard from Edited Data", expanded=False):
                                                     # Use the edited values for creating the standard
@@ -555,15 +514,35 @@ Extraction Method: {result.get('source', 'regex')}""")
                                                         if f'new_std_data_{uploaded_file.name}_{i}' in st.session_state:
                                                             del st.session_state[f'new_std_data_{uploaded_file.name}_{i}']
                                         else:
-                                            # If investigation standards not available, use simple text input for test name
-                                            st.text_input(
-                                                "Test Name (standards not available):",
-                                                value=result['test_type'],
-                                                key=f"edit_name_{uploaded_file.name}_{i}",
-                                                help="Edit the test name"
-                                            )
+                                            # If investigation standards not available, still show editable fields
+                                            st.markdown("**Edit Test Data:**")
                                             
-                                            # The value and unit fields are handled above in the universal editing section
+                                            col_edit1, col_edit2, col_edit3 = st.columns(3)
+                                            
+                                            with col_edit1:
+                                                st.text_input(
+                                                    "Test Name:",
+                                                    value=result['test_type'],
+                                                    key=f"edit_name_{uploaded_file.name}_{i}",
+                                                    help="Edit the test name"
+                                                )
+                                            
+                                            with col_edit2:
+                                                current_value = st.session_state.get(f"edit_value_{uploaded_file.name}_{i}", float(result['value']))
+                                                st.number_input(
+                                                    "Test Value:",
+                                                    value=current_value,
+                                                    key=f"edit_value_{uploaded_file.name}_{i}",
+                                                    help="Edit the test value"
+                                                )
+                                            
+                                            with col_edit3:
+                                                st.text_input(
+                                                    "Unit:",
+                                                    value=result.get('unit', ''),
+                                                    key=f"edit_unit_{uploaded_file.name}_{i}",
+                                                    help="Edit the unit"
+                                                )
                                         
                                         # Include checkbox
                                         st.checkbox(
