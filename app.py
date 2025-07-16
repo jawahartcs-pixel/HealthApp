@@ -2315,9 +2315,17 @@ def investigation_standards_page(investigation_standards):
                                                 st.session_state.extracted_test_data[test_type] = result
                                         
                                         st.write(f"**Found {len(test_types_found)} investigation types:**")
+                                        
+                                        # Debug: Show all extracted test data
+                                        with st.expander("🔍 Debug: View Extracted Test Data", expanded=False):
+                                            for test_type in test_types_found:
+                                                test_info = st.session_state.extracted_test_data[test_type]
+                                                st.write(f"**{test_type}:**")
+                                                st.json(test_info)
+                                        
                                         for test_type in test_types_found:
                                             ref_range = st.session_state.extracted_test_data[test_type].get('reference_range', '')
-                                            ref_info = f" (Range: {ref_range})" if ref_range else ""
+                                            ref_info = f" (Range: {ref_range})" if ref_range else " (No range extracted)"
                                             st.write(f"• {test_type}{ref_info}")
                                         
                                         if test_types_found:
