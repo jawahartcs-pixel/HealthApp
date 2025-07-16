@@ -408,47 +408,43 @@ Extraction Method: {result.get('source', 'regex')}""")
                                                 selected_test_type = result['test_type']
                                                 is_standard = False
                                             
-                                            # Show editable fields for extracted data
-                                            if "Use Extracted" in selected_choice:
-                                                st.markdown("**Edit Extracted Data:**")
-                                                
-                                                # Editable fields for the extracted data
-                                                col_edit1, col_edit2, col_edit3 = st.columns(3)
-                                                
-                                                with col_edit1:
-                                                    edited_test_name = st.text_input(
-                                                        "Test Name:",
-                                                        value=result['test_type'],
-                                                        key=f"edit_name_{uploaded_file.name}_{i}",
-                                                        help="Edit the test name before saving"
-                                                    )
-                                                
-                                                with col_edit2:
-                                                    # Use session state value if available, otherwise use original
-                                                    current_value = st.session_state.get(f"edit_value_{uploaded_file.name}_{i}", float(result['value']))
-                                                    edited_test_value = st.number_input(
-                                                        "Test Value:",
-                                                        value=current_value,
-                                                        key=f"edit_value_{uploaded_file.name}_{i}",
-                                                        help="Edit the test value"
-                                                    )
-                                                
-                                                with col_edit3:
-                                                    edited_test_unit = st.text_input(
-                                                        "Unit:",
-                                                        value=result.get('unit', ''),
-                                                        key=f"edit_unit_{uploaded_file.name}_{i}",
-                                                        help="Edit the unit"
-                                                    )
-                                                
-                                                # Store the current values (widgets automatically update session state)
-                                                # No need to manually set session state here as widgets handle it
-                                                
-                                                # Show what will be saved
-                                                st.info(f"📋 Will save: **{edited_test_name}** = {edited_test_value} {edited_test_unit}")
+                                            # Show editable fields for all choices (fuzzy match, extracted, or browsed)
+                                            st.markdown("**Edit Test Data:**")
                                             
-                                            # Show "Create New Standard" dialog if using extracted data
-                                            if "Use Extracted" in selected_choice:
+                                            # Editable fields for all investigation types
+                                            col_edit1, col_edit2, col_edit3 = st.columns(3)
+                                            
+                                            with col_edit1:
+                                                edited_test_name = st.text_input(
+                                                    "Test Name:",
+                                                    value=selected_test_type,
+                                                    key=f"edit_name_{uploaded_file.name}_{i}",
+                                                    help="Edit the test name before saving"
+                                                )
+                                            
+                                            with col_edit2:
+                                                # Use session state value if available, otherwise use original
+                                                current_value = st.session_state.get(f"edit_value_{uploaded_file.name}_{i}", float(result['value']))
+                                                edited_test_value = st.number_input(
+                                                    "Test Value:",
+                                                    value=current_value,
+                                                    key=f"edit_value_{uploaded_file.name}_{i}",
+                                                    help="Edit the test value"
+                                                )
+                                            
+                                            with col_edit3:
+                                                edited_test_unit = st.text_input(
+                                                    "Unit:",
+                                                    value=result.get('unit', ''),
+                                                    key=f"edit_unit_{uploaded_file.name}_{i}",
+                                                    help="Edit the unit"
+                                                )
+                                            
+                                            # Show what will be saved
+                                            st.info(f"📋 Will save: **{edited_test_name}** = {edited_test_value} {edited_test_unit}")
+                                            
+                                            # Show "Create New Standard" dialog if the edited name is not in standards
+                                            if edited_test_name not in standard_names:
                                                 with st.expander("➕ Create New Standard from Edited Data", expanded=False):
                                                     # Use the edited values for creating the standard
                                                     current_test_name = st.session_state.get(f"edit_name_{uploaded_file.name}_{i}", result['test_type'])
