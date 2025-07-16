@@ -393,14 +393,9 @@ Extraction Method: {result.get('source', 'regex')}""")
                                             if "Use Fuzzy Match" in selected_choice:
                                                 selected_test_type = standardized_name
                                                 is_standard = True
-                                                # Set default values for fuzzy match
-                                                st.session_state[f"test_name_{uploaded_file.name}_{i}"] = selected_test_type
-                                                st.session_state[f"test_value_{uploaded_file.name}_{i}"] = float(result['value'])
-                                                st.session_state[f"test_unit_{uploaded_file.name}_{i}"] = result.get('unit', '')
                                             elif "Use Extracted" in selected_choice:
                                                 selected_test_type = result['test_type']
                                                 is_standard = False
-                                                # Values will be set by the editable fields below
                                             elif "Browse all standards" in selected_choice:
                                                 # Show dropdown with all standards
                                                 selected_test_type = st.selectbox(
@@ -409,17 +404,9 @@ Extraction Method: {result.get('source', 'regex')}""")
                                                     key=f"browse_std_{uploaded_file.name}_{i}"
                                                 )
                                                 is_standard = True
-                                                # Set default values for browsed standards
-                                                st.session_state[f"test_name_{uploaded_file.name}_{i}"] = selected_test_type
-                                                st.session_state[f"test_value_{uploaded_file.name}_{i}"] = float(result['value'])
-                                                st.session_state[f"test_unit_{uploaded_file.name}_{i}"] = result.get('unit', '')
                                             else:
                                                 selected_test_type = result['test_type']
                                                 is_standard = False
-                                                # Set default values
-                                                st.session_state[f"test_name_{uploaded_file.name}_{i}"] = selected_test_type
-                                                st.session_state[f"test_value_{uploaded_file.name}_{i}"] = float(result['value'])
-                                                st.session_state[f"test_unit_{uploaded_file.name}_{i}"] = result.get('unit', '')
                                             
                                             # Show editable fields for extracted data
                                             if "Use Extracted" in selected_choice:
@@ -437,9 +424,11 @@ Extraction Method: {result.get('source', 'regex')}""")
                                                     )
                                                 
                                                 with col_edit2:
+                                                    # Use session state value if available, otherwise use original
+                                                    current_value = st.session_state.get(f"edit_value_{uploaded_file.name}_{i}", float(result['value']))
                                                     edited_test_value = st.number_input(
                                                         "Test Value:",
-                                                        value=float(result['value']),
+                                                        value=current_value,
                                                         key=f"edit_value_{uploaded_file.name}_{i}",
                                                         help="Edit the test value"
                                                     )
@@ -452,10 +441,8 @@ Extraction Method: {result.get('source', 'regex')}""")
                                                         help="Edit the unit"
                                                     )
                                                 
-                                                # Update session state with edited values
-                                                st.session_state[f"test_name_{uploaded_file.name}_{i}"] = edited_test_name
-                                                st.session_state[f"test_value_{uploaded_file.name}_{i}"] = edited_test_value
-                                                st.session_state[f"test_unit_{uploaded_file.name}_{i}"] = edited_test_unit
+                                                # Store the current values (widgets automatically update session state)
+                                                # No need to manually set session state here as widgets handle it
                                                 
                                                 # Show what will be saved
                                                 st.info(f"📋 Will save: **{edited_test_name}** = {edited_test_value} {edited_test_unit}")
@@ -580,19 +567,21 @@ Extraction Method: {result.get('source', 'regex')}""")
                                                 help="Edit the test name if needed"
                                             )
                                         
-                                        # Editable value
+                                        # Editable value (use current session state value if available)
+                                        current_value = st.session_state.get(f"test_value_{uploaded_file.name}_{i}", float(result['value']))
                                         st.number_input(
                                             "Value",
-                                            value=float(result['value']),
+                                            value=current_value,
                                             key=f"test_value_{uploaded_file.name}_{i}",
                                             format="%.2f",
                                             help="Edit the test value if needed"
                                         )
                                         
-                                        # Editable unit
+                                        # Editable unit (use current session state value if available)
+                                        current_unit = st.session_state.get(f"test_unit_{uploaded_file.name}_{i}", result.get('unit', ''))
                                         st.text_input(
                                             "Unit",
-                                            value=result.get('unit', ''),
+                                            value=current_unit,
                                             key=f"test_unit_{uploaded_file.name}_{i}",
                                             help="Edit the unit if needed"
                                         )
@@ -717,10 +706,32 @@ Extraction Method: {result.get('source', 'regex')}""")
                                 final_results = []
                                 for i, result in enumerate(test_data['results']):
                                     if st.session_state.get(f"include_{uploaded_file.name}_{i}", True):
+                                        # Get values from different possible keys depending on choice made
+                                        test_name = (
+                                            st.session_state.get(f"edit_name_{uploaded_file.name}_{i}") or
+                                            st.session_state.get(f"test_name_{uploaded_file.name}_{i}") or
+                                            st.session_state.get(f"fallback_name_{uploaded_file.name}_{i}") or
+                                            result['test_type']
+                                        )
+                                        
+                                        test_value = (
+                                            st.session_state.get(f"edit_value_{uploaded_file.name}_{i}") or
+                                            st.session_state.get(f"test_value_{uploaded_file.name}_{i}") or
+                                            st.session_state.get(f"fallback_value_{uploaded_file.name}_{i}") or
+                                            result['value']
+                                        )
+                                        
+                                        test_unit = (
+                                            st.session_state.get(f"edit_unit_{uploaded_file.name}_{i}") or
+                                            st.session_state.get(f"test_unit_{uploaded_file.name}_{i}") or
+                                            st.session_state.get(f"fallback_unit_{uploaded_file.name}_{i}") or
+                                            result.get('unit', '')
+                                        )
+                                        
                                         final_results.append({
-                                            'test_type': st.session_state.get(f"test_name_{uploaded_file.name}_{i}", result['test_type']),
-                                            'value': st.session_state.get(f"test_value_{uploaded_file.name}_{i}", result['value']),
-                                            'unit': st.session_state.get(f"test_unit_{uploaded_file.name}_{i}", result.get('unit', '')),
+                                            'test_type': test_name,
+                                            'value': test_value,
+                                            'unit': test_unit,
                                             'reference_range': result.get('reference_range', '')
                                         })
                                 
