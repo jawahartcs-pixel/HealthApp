@@ -994,16 +994,6 @@ class FileParser:
         # Check if any variation of name1 matches any variation of name2
         return bool(variations1 & variations2) or name1 in variations2 or name2 in variations1
     
-    def _clean_test_name(self, test_name: str) -> str:
-        """Clean test name by replacing # with Absolute and other standardizations."""
-        if not test_name:
-            return test_name
-        
-        # Replace # with Absolute when found near test types
-        cleaned_name = test_name.replace('#', 'Absolute')
-        
-        return cleaned_name.strip()
-
     def _get_display_name(self, test_key: str) -> str:
         """Convert test key to display name."""
         display_names = {
@@ -1039,10 +1029,7 @@ class FileParser:
             'ferritin': 'Ferritin'
         }
         
-        # Clean the test key before processing
-        cleaned_key = self._clean_test_name(test_key)
-        
-        return display_names.get(test_key, cleaned_key.replace('_', ' ').title())
+        return display_names.get(test_key, test_key.replace('_', ' ').title())
     
     def _clean_reference_range(self, ref_range: str) -> str:
         """Clean and format reference range text."""
@@ -1174,9 +1161,6 @@ class FileParser:
                     test_name = re.sub(r'\s+', ' ', test_name)
                     test_name = test_name.strip('.,()[]{}')
                     
-                    # Apply test name cleaning (replace # with Absolute)
-                    test_name = self._clean_test_name(test_name)
-                    
                     # Skip if test name is too short or looks invalid
                     if len(test_name) < 2 or len(test_name) > 60:
                         continue
@@ -1249,9 +1233,6 @@ class FileParser:
                         test_name = re.sub(r'\s+', ' ', test_name)
                         test_name = test_name.strip('.,()[]{}')
                         
-                        # Apply test name cleaning (replace # with Absolute)
-                        test_name = self._clean_test_name(test_name)
-                        
                         # Skip if looks like header or non-test
                         if len(test_name) < 3 or len(test_name) > 50:
                             continue
@@ -1322,9 +1303,6 @@ class FileParser:
                     test_name = re.sub(r'\s+', ' ', test_name)
                     test_name = test_name.strip('.,()[]{}')
                     
-                    # Apply test name cleaning (replace # with Absolute)
-                    test_name = self._clean_test_name(test_name)
-                    
                     # Skip if test name is too short or looks invalid
                     if len(test_name) < 3 or len(test_name) > 40:
                         continue
@@ -1394,9 +1372,6 @@ class FileParser:
                     # Clean up test name
                     test_name = re.sub(r'\s+', ' ', test_name)
                     test_name = test_name.strip('.,()[]{}')
-                    
-                    # Apply test name cleaning (replace # with Absolute)
-                    test_name = self._clean_test_name(test_name)
                     
                     # Only include if test name contains known test keywords
                     if not any(keyword in test_name.lower() for keyword in common_test_keywords):
