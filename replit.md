@@ -121,6 +121,21 @@ Preferred communication style: Simple, everyday language.
 
 ## Recent Changes
 
+### July 16, 2025 - Investigation Type Dropdown with Fuzzy Matching
+- **Smart Investigation Selection**: Replaced text inputs with intelligent dropdown selections in extraction details
+  - Investigation type selectboxes display all standardized investigation names from the standards table
+  - Automatic fuzzy matching pre-selects the best match when extraction finds similar test names
+  - If no match found, original extracted name appears first in dropdown with all standards below
+  - Match score and standardization information displayed when fuzzy matching occurs
+- **Additional Test Enhancement**: Enhanced manual test addition with same dropdown approach
+  - Additional tests can be selected from standardized investigation types
+  - Custom test name option available when standard types don't match
+  - Seamless integration with standardization system for consistent data entry
+- **Session State Integration**: Investigation standards available throughout upload workflow
+  - Standards component stored in session state for access across upload pages
+  - Real-time fuzzy matching during extraction preview and editing
+  - Consistent standardization whether tests are extracted or manually added
+
 ### July 15, 2025 - Document Preview & Comparison System
 - **Side-by-Side Document Verification**: Implemented comprehensive document preview feature for upload validation
   - Real-time document text extraction and display alongside parsed results
