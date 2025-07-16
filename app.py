@@ -555,32 +555,15 @@ Extraction Method: {result.get('source', 'regex')}""")
                                                         if f'new_std_data_{uploaded_file.name}_{i}' in st.session_state:
                                                             del st.session_state[f'new_std_data_{uploaded_file.name}_{i}']
                                         else:
-                                            # Fallback to text input if standards not available
+                                            # If investigation standards not available, use simple text input for test name
                                             st.text_input(
-                                                "Investigation Type",
+                                                "Test Name (standards not available):",
                                                 value=result['test_type'],
-                                                key=f"test_name_{uploaded_file.name}_{i}",
-                                                help="Edit the test name if needed"
+                                                key=f"edit_name_{uploaded_file.name}_{i}",
+                                                help="Edit the test name"
                                             )
-                                        
-                                        # Editable value (use current session state value if available)
-                                        current_value = st.session_state.get(f"test_value_{uploaded_file.name}_{i}", float(result['value']))
-                                        st.number_input(
-                                            "Value",
-                                            value=current_value,
-                                            key=f"test_value_{uploaded_file.name}_{i}",
-                                            format="%.2f",
-                                            help="Edit the test value if needed"
-                                        )
-                                        
-                                        # Editable unit (use current session state value if available)
-                                        current_unit = st.session_state.get(f"test_unit_{uploaded_file.name}_{i}", result.get('unit', ''))
-                                        st.text_input(
-                                            "Unit",
-                                            value=current_unit,
-                                            key=f"test_unit_{uploaded_file.name}_{i}",
-                                            help="Edit the unit if needed"
-                                        )
+                                            
+                                            # The value and unit fields are handled above in the universal editing section
                                         
                                         # Include checkbox
                                         st.checkbox(
