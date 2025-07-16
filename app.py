@@ -201,42 +201,23 @@ def upload_results_page(file_parser, data_processor, user_id):
                     st.subheader("Preview Extracted Data")
                     
                     # Patient information section
-                    with st.container():
-                        col1, col2 = st.columns(2)
-                        
-                        with col1:
-                            # Initialize patient name in session state if not already set
-                            name_key = f"name_{uploaded_file.name}"
-                            if name_key not in st.session_state:
-                                st.session_state[name_key] = test_data.get('patient_name', '')
-                            
-                            patient_name = st.text_input(
-                                f"Patient Name for {uploaded_file.name}",
-                                value=st.session_state[name_key],
-                                key=f"name_input_{uploaded_file.name}",
-                                help="Edit the patient name if needed"
-                            )
-                            
-                            # Update session state when name changes
-                            if f"name_input_{uploaded_file.name}" in st.session_state:
-                                st.session_state[name_key] = st.session_state[f"name_input_{uploaded_file.name}"]
-                        
-                        with col2:
-                            # Initialize date in session state if not already set
-                            date_key = f"date_{uploaded_file.name}"
-                            if date_key not in st.session_state:
-                                st.session_state[date_key] = test_data.get('test_date', date.today())
-                            
-                            test_date = st.date_input(
-                                f"Test Date for {uploaded_file.name}",
-                                value=st.session_state[date_key],
-                                key=f"date_input_{uploaded_file.name}",
-                                help="Edit the test date if needed"
-                            )
-                            
-                            # Update session state when date changes
-                            if f"date_input_{uploaded_file.name}" in st.session_state:
-                                st.session_state[date_key] = st.session_state[f"date_input_{uploaded_file.name}"]
+                    col1, col2 = st.columns(2)
+                    
+                    with col1:
+                        patient_name = st.text_input(
+                            f"Patient Name for {uploaded_file.name}",
+                            value=test_data.get('patient_name', ''),
+                            key=f"name_{uploaded_file.name}",
+                            help="Edit the patient name if needed"
+                        )
+                    
+                    with col2:
+                        test_date = st.date_input(
+                            f"Test Date for {uploaded_file.name}",
+                            value=test_data.get('test_date', date.today()),
+                            key=f"date_{uploaded_file.name}",
+                            help="Edit the test date if needed"
+                        )
                     
                     # Test results preview and editing
                     if test_data.get('results'):
@@ -515,11 +496,7 @@ Extraction Method: {result.get('source', 'regex')}""")
                             # Save button
                             save_clicked = st.form_submit_button("💾 Save Results", type="primary")
                         
-                        # Get the current patient name and date from session state
-                        current_patient_name = st.session_state.get(f"name_{uploaded_file.name}", patient_name)
-                        current_test_date = st.session_state.get(f"date_{uploaded_file.name}", test_date)
-                        
-                        if save_clicked and current_patient_name:
+                        if save_clicked and patient_name:
                             with st.spinner("Saving results..."):
                                 status_text.text("Saving to database...")
                                 progress_bar.progress(90)
@@ -576,10 +553,10 @@ Extraction Method: {result.get('source', 'regex')}""")
                                                 })
                                                 additional_count += 1
                                 
-                                # Save all results using the current values from session state
+                                # Save all results using the form values
                                 success = data_processor.save_test_results(
-                                    patient_name=current_patient_name,
-                                    test_date=current_test_date,
+                                    patient_name=patient_name,
+                                    test_date=test_date,
                                     test_results=final_results,
                                     user_id=user_id
                                 )
@@ -589,7 +566,7 @@ Extraction Method: {result.get('source', 'regex')}""")
                                 if success:
                                     status_text.text("✅ Successfully processed!")
                                     extracted_count = len([r for i, r in enumerate(test_data['results']) if st.session_state.get(f"include_{uploaded_file.name}_{i}", True)])
-                                    st.success(f"Successfully saved {len(final_results)} test results for {current_patient_name}")
+                                    st.success(f"Successfully saved {len(final_results)} test results for {patient_name}")
                                     st.info(f"Extracted: {extracted_count} tests, Additional: {additional_count} tests")
                                     
                                     # Show extraction debug info
