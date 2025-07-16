@@ -2363,21 +2363,25 @@ def investigation_standards_page(investigation_standards):
                                     st.warning("🆕 New investigation type - not found in existing aliases")
                                     
                                     # Show inline creation form for new investigations
+                                    checkbox_key = f"create_{abs(hash(test_name)) % 1000000}"
                                     create_checkbox = st.checkbox(
                                         "Create new investigation standard", 
-                                        key=f"create_{i}_{test_name}", 
+                                        key=checkbox_key, 
                                         value=True
                                     )
                                     
                                     if create_checkbox:
-                                        with st.form(f"create_form_{i}_{test_name}"):
+                                        # Create unique form key using test name hash to avoid duplicates
+                                        form_key = f"create_form_{abs(hash(test_name)) % 1000000}"
+                                        
+                                        with st.form(form_key):
                                             st.write("**Investigation Standard Details:**")
                                             
                                             # Standard name (pre-populated with extracted text)
                                             standard_name = st.text_input(
                                                 "Standard Investigation Name", 
                                                 value=test_name,
-                                                key=f"name_{i}"
+                                                key=f"name_{form_key}"
                                             )
                                             
                                             # Category
@@ -2386,7 +2390,7 @@ def investigation_standards_page(investigation_standards):
                                                 ["Blood Chemistry", "Hematology", "Lipid Profile", "Liver Function", 
                                                  "Kidney Function", "Thyroid Function", "Cardiac Markers", "Diabetes Markers",
                                                  "Electrolytes", "Vitamins", "Hormones", "Other"],
-                                                key=f"category_{i}"
+                                                key=f"category_{form_key}"
                                             )
                                             
                                             # Reference ranges
@@ -2394,21 +2398,21 @@ def investigation_standards_page(investigation_standards):
                                             
                                             with col_male:
                                                 st.write("**Male Range:**")
-                                                male_min = st.number_input("Min", value=0.0, key=f"male_min_{i}")
-                                                male_max = st.number_input("Max", value=100.0, key=f"male_max_{i}")
-                                                male_unit = st.text_input("Unit", value="mg/dL", key=f"male_unit_{i}")
+                                                male_min = st.number_input("Min", value=0.0, key=f"male_min_{form_key}")
+                                                male_max = st.number_input("Max", value=100.0, key=f"male_max_{form_key}")
+                                                male_unit = st.text_input("Unit", value="mg/dL", key=f"male_unit_{form_key}")
                                             
                                             with col_female:
                                                 st.write("**Female Range:**")
-                                                female_min = st.number_input("Min", value=0.0, key=f"female_min_{i}")
-                                                female_max = st.number_input("Max", value=100.0, key=f"female_max_{i}")
-                                                female_unit = st.text_input("Unit", value="mg/dL", key=f"female_unit_{i}")
+                                                female_min = st.number_input("Min", value=0.0, key=f"female_min_{form_key}")
+                                                female_max = st.number_input("Max", value=100.0, key=f"female_max_{form_key}")
+                                                female_unit = st.text_input("Unit", value="mg/dL", key=f"female_unit_{form_key}")
                                             
                                             # Description
                                             description = st.text_area(
                                                 "Description", 
                                                 value="Investigation standard created from medical report extraction",
-                                                key=f"desc_{i}"
+                                                key=f"desc_{form_key}"
                                             )
                                             
                                             # Aliases (automatically include the extracted text)
@@ -2416,7 +2420,7 @@ def investigation_standards_page(investigation_standards):
                                                 "Aliases (comma-separated)", 
                                                 value=test_name,
                                                 help="The extracted test name will be automatically added to aliases",
-                                                key=f"aliases_{i}"
+                                                key=f"aliases_{form_key}"
                                             )
                                             
                                             # Submit button
