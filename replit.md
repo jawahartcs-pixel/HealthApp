@@ -141,9 +141,10 @@ Preferred communication style: Simple, everyday language.
   - Create checkbox enabled only for new investigation types not found in existing aliases
   - Extracted test name automatically added to aliases during standard creation
   - Expandable sections for each investigation with pre-populated forms
-  - Full document snippet display with search functionality and extraction method breakdown
-  - Side-by-side document preview and extracted results for verification
-  - Interactive search buttons for each extracted test type to locate in document
+  - Image snippet display functionality for each extracted investigation type
+  - "View Snippet" buttons next to each investigation showing document context
+  - Integration with image snippet extractor for PDF and image file processing
+  - Three-column layout with investigation details, action status, and snippet access
 
 ### July 16, 2025 - Reference Range Extraction & Display
 - **Enhanced Reference Range Extraction**: Added comprehensive reference range detection to file parser
