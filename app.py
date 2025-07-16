@@ -1987,7 +1987,7 @@ def investigation_standards_page(investigation_standards):
     st.markdown("Manage standardized investigation types with reference ranges for male and female patients")
     
     # Create tabs for different operations
-    tab1, tab2, tab3 = st.tabs(["📋 View Standards", "➕ Add New Standard", "📊 Standardization Preview"])
+    tab1, tab2, tab3, tab4 = st.tabs(["📋 View Standards", "➕ Add New Standard", "📊 Standardization Preview", "📄 Extract from Reports"])
     
     with tab1:
         st.subheader("Current Investigation Standards")
@@ -2207,6 +2207,259 @@ def investigation_standards_page(investigation_standards):
                 # Summary
                 matched_count = len([r for r in results_data if "✅" in r['Status']])
                 st.metric("Standardization Success Rate", f"{matched_count}/{len(results_data)} ({matched_count/len(results_data)*100:.1f}%)")
+    
+    with tab4:
+        st.subheader("📄 Extract Standards from Medical Reports")
+        st.markdown("Upload medical reports to extract test types and automatically create investigation standards")
+        
+        # File upload section
+        st.write("**📁 Upload Medical Reports**")
+        uploaded_files = st.file_uploader(
+            "Choose files to extract investigation types from",
+            type=['pdf', 'doc', 'docx', 'txt', 'xlsx', 'xls', 'csv', 'xml', 'jpg', 'jpeg', 'png', 'bmp', 'tiff'],
+            accept_multiple_files=True,
+            help="Supported formats: PDF, Word, Text, Excel, CSV, XML, and Images (JPG, PNG, BMP, TIFF)"
+        )
+        
+        # Camera input for direct photo capture
+        st.write("**📸 Or Take a Photo**")
+        camera_image = st.camera_input("Take a photo of your medical report")
+        
+        # Initialize session state for extraction results
+        if 'standards_extraction_results' not in st.session_state:
+            st.session_state.standards_extraction_results = {}
+        
+        # Process uploaded files
+        if uploaded_files or camera_image:
+            # Combine file uploads and camera input
+            all_files = []
+            if uploaded_files:
+                all_files.extend(uploaded_files)
+            if camera_image:
+                all_files.append(camera_image)
+            
+            if all_files:
+                st.subheader("📊 Processing Results")
+                
+                # Get file parser and data processor from session state
+                file_parser = st.session_state.get('file_parser')
+                data_processor = st.session_state.get('data_processor')
+                
+                if not file_parser:
+                    from file_parser import FileParser
+                    file_parser = FileParser()
+                    st.session_state.file_parser = file_parser
+                
+                # Process each file
+                all_extracted_tests = []
+                processing_summary = []
+                
+                for i, uploaded_file in enumerate(all_files):
+                    file_name = uploaded_file.name if hasattr(uploaded_file, 'name') else f"camera_photo_{i+1}.jpg"
+                    
+                    with st.expander(f"📄 {file_name}", expanded=True):
+                        try:
+                            # Show file info
+                            col1, col2 = st.columns(2)
+                            with col1:
+                                st.write(f"**File:** {file_name}")
+                                if hasattr(uploaded_file, 'size'):
+                                    st.write(f"**Size:** {uploaded_file.size:,} bytes")
+                                if hasattr(uploaded_file, 'type'):
+                                    st.write(f"**Type:** {uploaded_file.type}")
+                            
+                            # Force OCR option for images and scanned documents
+                            force_ocr = st.checkbox(f"Force OCR for {file_name}", key=f"force_ocr_{i}")
+                            
+                            with st.spinner(f"Processing {file_name}..."):
+                                # Extract text from file
+                                extracted_text = file_parser.parse_file(uploaded_file, force_ocr=force_ocr)
+                                
+                                if extracted_text and "Error" not in extracted_text:
+                                    # Extract test data
+                                    test_data = file_parser.extract_test_data(extracted_text)
+                                    
+                                    if test_data.get('results'):
+                                        # Display extracted tests
+                                        st.success(f"✅ Extracted {len(test_data['results'])} test types from {file_name}")
+                                        
+                                        # Show preview of extracted text
+                                        with st.expander("Preview Extracted Text"):
+                                            st.text_area("Raw text", extracted_text[:1000] + "..." if len(extracted_text) > 1000 else extracted_text, height=200)
+                                        
+                                        # Display extracted test types
+                                        test_types_found = []
+                                        for result in test_data['results']:
+                                            test_type = result.get('test_type', '').strip()
+                                            if test_type and test_type not in test_types_found:
+                                                test_types_found.append(test_type)
+                                        
+                                        st.write(f"**Test Types Found ({len(test_types_found)}):**")
+                                        for test_type in test_types_found:
+                                            st.write(f"• {test_type}")
+                                        
+                                        # Add to all extracted tests
+                                        all_extracted_tests.extend(test_types_found)
+                                        processing_summary.append({
+                                            'file': file_name,
+                                            'tests_found': len(test_types_found),
+                                            'status': 'Success'
+                                        })
+                                    else:
+                                        st.warning(f"⚠️ No test results found in {file_name}")
+                                        processing_summary.append({
+                                            'file': file_name,
+                                            'tests_found': 0,
+                                            'status': 'No tests found'
+                                        })
+                                else:
+                                    st.error(f"❌ Failed to extract text from {file_name}")
+                                    processing_summary.append({
+                                        'file': file_name,
+                                        'tests_found': 0,
+                                        'status': 'Extraction failed'
+                                    })
+                        
+                        except Exception as e:
+                            st.error(f"❌ Error processing {file_name}: {str(e)}")
+                            processing_summary.append({
+                                'file': file_name,
+                                'tests_found': 0,
+                                'status': f'Error: {str(e)}'
+                            })
+                
+                # Show processing summary
+                if processing_summary:
+                    st.subheader("📋 Processing Summary")
+                    summary_df = pd.DataFrame(processing_summary)
+                    st.dataframe(summary_df, use_container_width=True, hide_index=True)
+                
+                # Create standards from extracted tests
+                if all_extracted_tests:
+                    st.subheader("🔬 Create Investigation Standards")
+                    
+                    # Remove duplicates and sort
+                    unique_tests = sorted(list(set(all_extracted_tests)))
+                    
+                    st.write(f"**Found {len(unique_tests)} unique investigation types across all files:**")
+                    
+                    # Display with checkboxes to select which ones to create standards for
+                    selected_tests = []
+                    
+                    # Select all/none buttons
+                    col1, col2 = st.columns(2)
+                    with col1:
+                        if st.button("Select All"):
+                            for test in unique_tests:
+                                st.session_state[f"create_standard_{test}"] = True
+                    with col2:
+                        if st.button("Select None"):
+                            for test in unique_tests:
+                                st.session_state[f"create_standard_{test}"] = False
+                    
+                    # Display tests with checkboxes
+                    for test_name in unique_tests:
+                        # Check if this test already exists in standards
+                        existing_standards = investigation_standards.get_all_standards()
+                        is_duplicate = any(std['standard_name'].lower() == test_name.lower() for std in existing_standards)
+                        
+                        col1, col2 = st.columns([3, 1])
+                        with col1:
+                            # Try to find fuzzy match
+                            standardized_name, match_info = investigation_standards.standardize_test_name(test_name)
+                            
+                            if match_info and standardized_name != test_name:
+                                st.write(f"• {test_name} → 🔍 **{standardized_name}** (match score: {match_info.get('match_score', 0):.2f})")
+                            elif is_duplicate:
+                                st.write(f"• {test_name} → ⚠️ **Already exists**")
+                            else:
+                                st.write(f"• {test_name}")
+                        
+                        with col2:
+                            if not is_duplicate:
+                                if st.checkbox("Create", key=f"create_standard_{test_name}", value=True):
+                                    selected_tests.append(test_name)
+                            else:
+                                st.write("Exists")
+                    
+                    # Bulk creation form
+                    if selected_tests:
+                        st.write(f"**Creating standards for {len(selected_tests)} investigation types:**")
+                        
+                        with st.form("bulk_create_standards"):
+                            # Default category for all
+                            default_category = st.selectbox("Default Category", 
+                                                          ["Blood Chemistry", "Hematology", "Lipid Profile", "Liver Function", 
+                                                           "Kidney Function", "Thyroid Function", "Cardiac Markers", "Diabetes Markers",
+                                                           "Electrolytes", "Vitamins", "Hormones", "Other"])
+                            
+                            # Default reference ranges
+                            st.write("**Default Reference Ranges (will be applied to all selected tests):**")
+                            col1, col2 = st.columns(2)
+                            
+                            with col1:
+                                st.write("**Male Range:**")
+                                male_min = st.number_input("Male Min", value=0.0, key="bulk_male_min")
+                                male_max = st.number_input("Male Max", value=100.0, key="bulk_male_max")
+                                male_unit = st.text_input("Male Unit", value="mg/dL", key="bulk_male_unit")
+                            
+                            with col2:
+                                st.write("**Female Range:**")
+                                female_min = st.number_input("Female Min", value=0.0, key="bulk_female_min")
+                                female_max = st.number_input("Female Max", value=100.0, key="bulk_female_max")
+                                female_unit = st.text_input("Female Unit", value="mg/dL", key="bulk_female_unit")
+                            
+                            default_description = st.text_area("Default Description", 
+                                                             value="Investigation standard created from medical report extraction")
+                            
+                            submit_button = st.form_submit_button("🔬 Create All Standards", type="primary")
+                        
+                        if submit_button:
+                            with st.spinner("Creating investigation standards..."):
+                                created_count = 0
+                                failed_count = 0
+                                
+                                for test_name in selected_tests:
+                                    try:
+                                        # Create aliases from the original test name variations
+                                        aliases = [test_name]
+                                        
+                                        # Add the test standard
+                                        success = investigation_standards.add_standard(
+                                            standard_name=test_name,
+                                            category=default_category,
+                                            male_range_min=male_min,
+                                            male_range_max=male_max,
+                                            male_unit=male_unit,
+                                            female_range_min=female_min,
+                                            female_range_max=female_max,
+                                            female_unit=female_unit,
+                                            description=default_description,
+                                            aliases=", ".join(aliases)
+                                        )
+                                        
+                                        if success:
+                                            created_count += 1
+                                        else:
+                                            failed_count += 1
+                                    
+                                    except Exception as e:
+                                        st.error(f"Failed to create standard for {test_name}: {str(e)}")
+                                        failed_count += 1
+                                
+                                # Show results
+                                if created_count > 0:
+                                    st.success(f"✅ Successfully created {created_count} investigation standards!")
+                                
+                                if failed_count > 0:
+                                    st.error(f"❌ Failed to create {failed_count} standards")
+                                
+                                # Clear session state
+                                for test_name in unique_tests:
+                                    if f"create_standard_{test_name}" in st.session_state:
+                                        del st.session_state[f"create_standard_{test_name}"]
+                                
+                                st.rerun()
 
 if __name__ == "__main__":
     main()

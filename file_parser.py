@@ -184,6 +184,8 @@ class FileParser:
                 return self._parse_csv(uploaded_file)
             elif uploaded_file.type in ["application/xml", "text/xml"]:
                 return self._parse_xml(uploaded_file)
+            elif uploaded_file.type in ["image/jpeg", "image/jpg", "image/png", "image/bmp", "image/tiff"]:
+                return self._parse_image(uploaded_file)
             else:
                 raise ValueError(f"Unsupported file type: {uploaded_file.type}")
         except Exception as e:
@@ -629,6 +631,32 @@ class FileParser:
                 text += elem.tail.strip() + "\n"
         
         return text
+    
+    def _parse_image(self, uploaded_file) -> str:
+        """Extract text from image file using OCR."""
+        try:
+            # Reset file pointer to beginning
+            uploaded_file.seek(0)
+            
+            # Open image with PIL
+            image = Image.open(uploaded_file)
+            
+            # Convert to RGB if necessary (for JPEG compatibility)
+            if image.mode != 'RGB':
+                image = image.convert('RGB')
+            
+            # Configure tesseract for better accuracy
+            custom_config = r'--oem 3 --psm 6'
+            
+            # Extract text using OCR
+            extracted_text = pytesseract.image_to_string(image, config=custom_config)
+            
+            # Clean and enhance OCR text
+            enhanced_text = self._enhance_ocr_text(extracted_text)
+            
+            return enhanced_text
+        except Exception as e:
+            raise Exception(f"Error processing image with OCR: {str(e)}")
     
     def extract_test_data(self, text: str) -> Dict[str, Any]:
         """Extract test data from text content."""
