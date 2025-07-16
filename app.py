@@ -431,6 +431,14 @@ Extraction Method: {result.get('source', 'regex')}""")
                                             help="Edit the unit if needed"
                                         )
                                         
+                                        # Editable reference range
+                                        st.text_input(
+                                            "Reference Range",
+                                            value=result.get('reference_range', ''),
+                                            key=f"test_ref_range_{uploaded_file.name}_{i}",
+                                            help="Edit the reference range if needed"
+                                        )
+                                        
                                         # Include checkbox
                                         st.checkbox(
                                             "Include this test in results",
@@ -454,7 +462,7 @@ Extraction Method: {result.get('source', 'regex')}""")
                             # Additional test inputs
                             if num_additional > 0:
                                 for i in range(num_additional):
-                                    col1, col2, col3, col4, col5 = st.columns([3, 2, 2, 1, 1])
+                                    col1, col2, col3, col4, col5, col6 = st.columns([3, 2, 2, 2, 1, 1])
                                     
                                     with col1:
                                         # Investigation type dropdown for additional tests
@@ -513,6 +521,14 @@ Extraction Method: {result.get('source', 'regex')}""")
                                         )
                                     
                                     with col4:
+                                        st.text_input(
+                                            f"Additional Ref Range {i+1}",
+                                            key=f"add_test_ref_range_{uploaded_file.name}_{i}",
+                                            label_visibility="collapsed",
+                                            placeholder="5.0-15.0"
+                                        )
+                                    
+                                    with col5:
                                         st.checkbox(
                                             f"Add {i+1}",
                                             value=True,
@@ -520,7 +536,7 @@ Extraction Method: {result.get('source', 'regex')}""")
                                             label_visibility="collapsed"
                                         )
                                     
-                                    with col5:
+                                    with col6:
                                         # Empty column to maintain layout
                                         st.write("")
                             
@@ -551,7 +567,7 @@ Extraction Method: {result.get('source', 'regex')}""")
                                             'test_type': final_test_type,
                                             'value': st.session_state.get(f"test_value_{uploaded_file.name}_{i}", result['value']),
                                             'unit': st.session_state.get(f"test_unit_{uploaded_file.name}_{i}", result.get('unit', '')),
-                                            'reference_range': result.get('reference_range', '')
+                                            'reference_range': st.session_state.get(f"test_ref_range_{uploaded_file.name}_{i}", result.get('reference_range', ''))
                                         })
                                 
                                 # Add additional manual tests
@@ -573,6 +589,7 @@ Extraction Method: {result.get('source', 'regex')}""")
                                             
                                             test_value = st.session_state.get(f"add_test_value_{uploaded_file.name}_{i}", 0.0)
                                             test_unit = st.session_state.get(f"add_test_unit_{uploaded_file.name}_{i}", "").strip()
+                                            test_ref_range = st.session_state.get(f"add_test_ref_range_{uploaded_file.name}_{i}", "").strip()
                                             
                                             # Only add if test name is provided and value is not zero
                                             if test_name and test_value != 0.0:
@@ -580,7 +597,7 @@ Extraction Method: {result.get('source', 'regex')}""")
                                                     'test_type': test_name,
                                                     'value': test_value,
                                                     'unit': test_unit,
-                                                    'reference_range': ''
+                                                    'reference_range': test_ref_range
                                                 })
                                                 additional_count += 1
                                 

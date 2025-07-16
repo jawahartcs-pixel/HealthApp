@@ -1031,34 +1031,120 @@ class FileParser:
         
         return display_names.get(test_key, test_key.replace('_', ' ').title())
     
+    def _clean_reference_range(self, ref_range: str) -> str:
+        """Clean and format reference range text."""
+        if not ref_range:
+            return ''
+        
+        # Remove extra whitespace and common unwanted characters
+        ref_range = re.sub(r'\s+', ' ', ref_range.strip())
+        ref_range = ref_range.strip('.,;:|()[]{}')
+        
+        # Common reference range patterns to extract
+        range_patterns = [
+            # Numeric ranges like "5.0-15.0", "5.0 - 15.0", "5.0 to 15.0"
+            r'(\d+(?:\.\d+)?)\s*(?:[-–to]|to)\s*(\d+(?:\.\d+)?)',
+            # Ranges with units like "5.0-15.0 mg/dL"
+            r'(\d+(?:\.\d+)?)\s*(?:[-–]|to)\s*(\d+(?:\.\d+)?)\s*([a-zA-Z\/\%\^µμmM]+)',
+            # Less than patterns like "<10", "< 10"
+            r'<\s*(\d+(?:\.\d+)?)',
+            # Greater than patterns like ">5", "> 5"
+            r'>\s*(\d+(?:\.\d+)?)',
+            # Between patterns like "between 5 and 15"
+            r'between\s+(\d+(?:\.\d+)?)\s+and\s+(\d+(?:\.\d+)?)',
+            # Normal/reference patterns
+            r'(?:normal|reference|ref)[\s\:]*(\d+(?:\.\d+)?)\s*(?:[-–]|to)\s*(\d+(?:\.\d+)?)',
+        ]
+        
+        # Try to extract structured range information
+        for pattern in range_patterns:
+            match = re.search(pattern, ref_range, re.IGNORECASE)
+            if match:
+                if pattern.startswith(r'<'):
+                    return f"< {match.group(1)}"
+                elif pattern.startswith(r'>'):
+                    return f"> {match.group(1)}"
+                elif len(match.groups()) >= 2:
+                    low_val = match.group(1)
+                    high_val = match.group(2)
+                    if len(match.groups()) >= 3 and match.group(3):
+                        unit = match.group(3)
+                        return f"{low_val} - {high_val} {unit}"
+                    else:
+                        return f"{low_val} - {high_val}"
+        
+        # If no structured pattern found, clean the text but keep it
+        # Remove common noise words while preserving meaningful content
+        noise_words = ['normal', 'reference', 'ref', 'range', 'values', 'level', 'levels']
+        words = ref_range.split()
+        cleaned_words = []
+        
+        for word in words:
+            if word.lower() not in noise_words and len(word) > 1:
+                cleaned_words.append(word)
+        
+        cleaned_range = ' '.join(cleaned_words)
+        
+        # Return cleaned range if it looks meaningful, otherwise empty
+        if len(cleaned_range) > 2 and not cleaned_range.isspace():
+            return cleaned_range[:50]  # Limit length
+        
+        return ''
+    
+    def _extract_reference_range_from_line(self, line_remainder: str) -> str:
+        """Extract reference range from the remainder of a line."""
+        if not line_remainder:
+            return ''
+        
+        # Look for common reference range patterns in the remainder
+        ref_patterns = [
+            # Parentheses: (5.0-15.0)
+            r'\(([^)]+)\)',
+            # Brackets: [5.0-15.0]
+            r'\[([^\]]+)\]',
+            # Reference/Normal: Reference: 5.0-15.0, Normal: 5.0-15.0
+            r'(?:reference|normal|ref)[\s\:]*([^\s]+(?:\s*[-–]\s*[^\s]+)?)',
+            # Range patterns: 5.0-15.0, 5.0 - 15.0
+            r'(\d+(?:\.\d+)?\s*[-–]\s*\d+(?:\.\d+)?)',
+            # Less than/greater than: <10, >5
+            r'([<>]\s*\d+(?:\.\d+)?)',
+        ]
+        
+        for pattern in ref_patterns:
+            match = re.search(pattern, line_remainder, re.IGNORECASE)
+            if match:
+                return self._clean_reference_range(match.group(1))
+        
+        return ''
+    
     def _extract_tabular_results(self, text: str) -> List[Dict[str, Any]]:
         """Extract test results from tabular format commonly found in lab reports."""
         results = []
         
-        # Enhanced tabular patterns to capture more variations including decimal numbers
+        # Enhanced tabular patterns to capture test results with reference ranges
         tabular_patterns = [
-            # Tab-separated values with decimal support
+            # Tab-separated values with reference range
             r'([a-zA-Z][a-zA-Z\s\(\)\/\-\.]+?)\t+(\d+(?:\.\d+)?)\t*([a-zA-Z\/\%\^µμmM]*)\t*([^\n\r\t]*)',
-            # Multiple spaces with flexible spacing and decimal support
+            # Multiple spaces with reference range
             r'([a-zA-Z][a-zA-Z\s\(\)\/\-\.]+?)\s{3,}(\d+(?:\.\d+)?)\s*([a-zA-Z\/\%\^µμmM]*)\s*([^\n\r]*)',
-            # Values at end of line with decimal support
-            r'([a-zA-Z][a-zA-Z\s\(\)\/\-\.]+?)\s+(\d+(?:\.\d+)?)\s*([a-zA-Z\/\%\^µμmM]*)\s*$',
-            # Pattern with vertical bars, pipes, or dashes with decimal support
-            r'([a-zA-Z][a-zA-Z\s\(\)\/\-\.]+?)\s*[\|\-]\s*(\d+(?:\.\d+)?)\s*[\|\-]?\s*([a-zA-Z\/\%\^µμmM]*)\s*[\|\-]?\s*([^\n\r]*)',
-            # Pattern with colons and decimal support
+            # Pattern with vertical bars/pipes capturing reference range
+            r'([a-zA-Z][a-zA-Z\s\(\)\/\-\.]+?)\s*[\|]\s*(\d+(?:\.\d+)?)\s*[\|]?\s*([a-zA-Z\/\%\^µμmM]*)\s*[\|]?\s*([^\n\r]*)',
+            # Pattern with colons and reference range
             r'([a-zA-Z][a-zA-Z\s\(\)\/\-\.]+?):\s*(\d+(?:\.\d+)?)\s*([a-zA-Z\/\%\^µμmM]*)\s*([^\n\r]*)',
-            # Pattern with dots or dashes leading to values with decimal support
-            r'([a-zA-Z][a-zA-Z\s\(\)\/\-\.]+?)[\.\-]{2,}\s*(\d+(?:\.\d+)?)\s*([a-zA-Z\/\%\^µμmM]*)\s*([^\n\r]*)',
-            # Pattern for values in parentheses or brackets with decimal support
-            r'([a-zA-Z][a-zA-Z\s\(\)\/\-\.]+?)\s*[\(\[]\s*(\d+(?:\.\d+)?)\s*[\)\]]\s*([a-zA-Z\/\%\^µμmM]*)',
-            # Pattern for scientific notation values
+            # Pattern specifically for reference ranges in parentheses after value
+            r'([a-zA-Z][a-zA-Z\s\(\)\/\-\.]+?)\s+(\d+(?:\.\d+)?)\s*([a-zA-Z\/\%\^µμmM]*)\s*\(([^)]+)\)',
+            # Pattern for reference ranges with "Normal" or "Ref" keywords
+            r'([a-zA-Z][a-zA-Z\s\(\)\/\-\.]+?)\s+(\d+(?:\.\d+)?)\s*([a-zA-Z\/\%\^µμmM]*)\s*(?:normal|ref|reference)[\s\:]*([^\n\r]*)',
+            # Pattern for ranges like "Test Name 10.5 mg/dL (5.0-15.0)"
+            r'([a-zA-Z][a-zA-Z\s\(\)\/\-\.]+?)\s+(\d+(?:\.\d+)?)\s*([a-zA-Z\/\%\^µμmM]*)\s*\(([0-9\.\-\s]+)\)',
+            # Pattern for scientific notation with reference range
             r'([a-zA-Z][a-zA-Z\s\(\)\/\-\.]+?)\s+(\d+(?:\.\d+)?(?:[eE][\+\-]?\d+)?)\s*([a-zA-Z\/\%\^µμmM]*)\s*([^\n\r]*)',
-            # Pattern for ranges like "Test Name 10.5 - 15.2" (capture first value)
-            r'([a-zA-Z][a-zA-Z\s\(\)\/\-\.]+?)\s+(\d+(?:\.\d+)?)\s*[\-\–]\s*\d+(?:\.\d+)?\s*([a-zA-Z\/\%\^µμmM]*)',
-            # Pattern for values followed by reference ranges in parentheses
-            r'([a-zA-Z][a-zA-Z\s\(\)\/\-\.]+?)\s+(\d+(?:\.\d+)?)\s*([a-zA-Z\/\%\^µμmM]*)\s*\([^)]*\)',
-            # Simple pattern for test name followed by number anywhere in line
-            r'^([a-zA-Z][a-zA-Z\s\(\)\/\-\.]{2,40}?)\s.*?(\d+(?:\.\d+))\s*([a-zA-Z\/\%\^µμmM]*)'
+            # Pattern for ranges following the value on same line
+            r'([a-zA-Z][a-zA-Z\s\(\)\/\-\.]+?)\s+(\d+(?:\.\d+)?)\s*([a-zA-Z\/\%\^µμmM]*)\s*[\-\–]\s*(\d+(?:\.\d+)?\s*[\-\–]\s*\d+(?:\.\d+)?.*?)(?:\n|\r|$)',
+            # Pattern for reference range with brackets
+            r'([a-zA-Z][a-zA-Z\s\(\)\/\-\.]+?)\s+(\d+(?:\.\d+)?)\s*([a-zA-Z\/\%\^µμmM]*)\s*\[([^\]]+)\]',
+            # Generic pattern for any additional text after unit (likely reference range)
+            r'([a-zA-Z][a-zA-Z\s\(\)\/\-\.]+?)\s+(\d+(?:\.\d+)?)\s*([a-zA-Z\/\%\^µμmM]*)\s+([^\n\r]+)',
         ]
         
         for pattern in tabular_patterns:
@@ -1089,6 +1175,9 @@ class FileParser:
                     # Validate value range
                     if value < 0 or value > 100000:
                         continue
+                    
+                    # Clean and enhance reference range
+                    ref_range = self._clean_reference_range(ref_range)
                     
                     result = {
                         'test_type': test_name.title(),
@@ -1160,11 +1249,15 @@ class FileParser:
                         unit_match = re.search(r'(\d+(?:\.\d+)?)\s*([a-zA-Z\/\%\^µμ]+)', line)
                         unit = unit_match.group(2) if unit_match else ''
                         
+                        # Try to extract reference range from the remainder of line
+                        remainder = line[match.end():].strip()
+                        ref_range = self._extract_reference_range_from_line(remainder)
+                        
                         result = {
                             'test_type': test_name.title(),
                             'value': value,
                             'unit': unit,
-                            'reference_range': '',
+                            'reference_range': ref_range,
                             'source': 'line_analysis'
                         }
                         
