@@ -2276,20 +2276,68 @@ def investigation_standards_page(investigation_standards):
                                         # Display extracted tests
                                         st.success(f"✅ Extracted {len(test_data['results'])} test types from {file_name}")
                                         
-                                        # Show preview of extracted text
-                                        with st.expander("Preview Extracted Text"):
-                                            st.text_area("Raw text", extracted_text[:1000] + "..." if len(extracted_text) > 1000 else extracted_text, height=200)
+                                        # Document preview section
+                                        col_preview1, col_preview2 = st.columns(2)
                                         
-                                        # Display extracted test types
-                                        test_types_found = []
-                                        for result in test_data['results']:
-                                            test_type = result.get('test_type', '').strip()
-                                            if test_type and test_type not in test_types_found:
-                                                test_types_found.append(test_type)
+                                        with col_preview1:
+                                            with st.expander("📄 Document Preview", expanded=True):
+                                                st.write("**Full Document Text:**")
+                                                
+                                                # Search functionality within document
+                                                search_term = st.text_input(
+                                                    "Search in document", 
+                                                    placeholder="Enter text to search...",
+                                                    key=f"search_{file_name}_{i}"
+                                                )
+                                                
+                                                if search_term:
+                                                    # Count occurrences
+                                                    search_count = extracted_text.lower().count(search_term.lower())
+                                                    if search_count > 0:
+                                                        st.write(f"Found **{search_count}** occurrence(s) of '{search_term}'")
+                                                    else:
+                                                        st.write(f"No occurrences of '{search_term}' found")
+                                                
+                                                # Display document text in scrollable area
+                                                st.text_area(
+                                                    "Document content", 
+                                                    extracted_text, 
+                                                    height=400,
+                                                    key=f"doc_content_{file_name}_{i}"
+                                                )
+                                                
+                                                # File information
+                                                st.write("**File Information:**")
+                                                st.write(f"• Characters: {len(extracted_text):,}")
+                                                st.write(f"• Lines: {len(extracted_text.splitlines()):,}")
+                                                if hasattr(uploaded_file, 'size'):
+                                                    st.write(f"• File size: {uploaded_file.size:,} bytes")
                                         
-                                        st.write(f"**Test Types Found ({len(test_types_found)}):**")
-                                        for test_type in test_types_found:
-                                            st.write(f"• {test_type}")
+                                        with col_preview2:
+                                            with st.expander("🔍 Extracted Results", expanded=True):
+                                                # Display extracted test types
+                                                test_types_found = []
+                                                for result in test_data['results']:
+                                                    test_type = result.get('test_type', '').strip()
+                                                    if test_type and test_type not in test_types_found:
+                                                        test_types_found.append(test_type)
+                                                
+                                                st.write(f"**Test Types Found ({len(test_types_found)}):**")
+                                                for test_type in test_types_found:
+                                                    col_test, col_search = st.columns([3, 1])
+                                                    with col_test:
+                                                        st.write(f"• {test_type}")
+                                                    with col_search:
+                                                        if st.button(f"🔍", key=f"search_btn_{test_type}_{i}", help=f"Search for '{test_type}' in document"):
+                                                            st.session_state[f"search_{file_name}_{i}"] = test_type
+                                                            st.rerun()
+                                                
+                                                # Show extraction method breakdown
+                                                extraction_methods = test_data.get('extraction_methods', {})
+                                                if extraction_methods:
+                                                    st.write("**Extraction Methods Used:**")
+                                                    for method, count in extraction_methods.items():
+                                                        st.write(f"• {method}: {count} test(s)")
                                         
                                         # Add to all extracted tests
                                         all_extracted_tests.extend(test_types_found)
