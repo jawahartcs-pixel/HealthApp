@@ -152,6 +152,9 @@ Preferred communication style: Simple, everyday language.
   - Text highlighting functionality showing blue boxes around extracted investigation types in document images
   - Highlighted document snippets for both full document view and individual investigation snippets
   - Visual indicators with blue rectangles around found text similar to main upload page functionality
+  - Side-by-side layout for each extracted investigation showing document snippet with highlighted text alongside investigation details and creation form
+  - Removed global document preview in favor of individual snippet displays for each investigation type
+  - Streamlined interface with document snippets directly integrated into each investigation expandable section
 
 ### July 16, 2025 - Reference Range Extraction & Display
 - **Enhanced Reference Range Extraction**: Added comprehensive reference range detection to file parser
