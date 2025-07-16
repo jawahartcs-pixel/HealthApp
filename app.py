@@ -424,13 +424,14 @@ Extraction Method: {result.get('source', 'regex')}""")
                                             # Store the selected test type
                                             st.session_state[f"test_name_{uploaded_file.name}_{i}"] = selected_test_type
                                             
-                                            # Show "Create New Standard" dialog when using extracted data
-                                            show_create_dialog = (
-                                                selected_choice == "Use Extracted" or 
-                                                (selected_choice == "Use Fuzzy Match" and not (match_info and standardized_name in standard_names))
-                                            )
+                                            # DEBUG: Show selection info
+                                            st.write(f"DEBUG - Selected choice: '{selected_choice}' (index: {selected_choice_index})")
+                                            st.write(f"DEBUG - Match info exists: {match_info is not None}")
+                                            st.write(f"DEBUG - Standardized name: {standardized_name}")
                                             
-                                            if show_create_dialog:
+                                            # Show "Create New Standard" dialog when using extracted data
+                                            if selected_choice == "Use Extracted":
+                                                st.success("DIALOG TRIGGERED - Use Extracted selected")
                                                 st.markdown("---")
                                                 st.markdown("### ➕ Create New Standard from Extracted Data")
                                                 st.markdown(f"**Creating standard for:** `{selected_test_type}`")
