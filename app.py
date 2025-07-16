@@ -14,6 +14,7 @@ from auth_ui import AuthUI
 from anomaly_detection import AnomalyDetector
 from utils import validate_date, format_test_value
 from image_snippet_extractor import ImageSnippetExtractor
+from investigation_standards import InvestigationStandards
 
 # Initialize database and components
 @st.cache_resource
@@ -30,7 +31,8 @@ def init_components():
     auth_system = AuthSystem()
     auth_ui = AuthUI(auth_system)
     anomaly_detector = AnomalyDetector(db)
-    return db, file_parser, data_processor, visualization, alert_system, auth_system, auth_ui, anomaly_detector
+    investigation_standards = InvestigationStandards()
+    return db, file_parser, data_processor, visualization, alert_system, auth_system, auth_ui, anomaly_detector, investigation_standards
 
 def main():
     st.set_page_config(
@@ -44,7 +46,7 @@ def main():
     st.markdown("Upload, manage, and visualize patient blood test results")
     
     # Initialize components
-    db, file_parser, data_processor, visualization, alert_system, auth_system, auth_ui, anomaly_detector = init_components()
+    db, file_parser, data_processor, visualization, alert_system, auth_system, auth_ui, anomaly_detector, investigation_standards = init_components()
     
     # Check authentication
     if not auth_ui.check_authentication():
@@ -58,7 +60,7 @@ def main():
     auth_ui.sidebar_user_info()
     
     # Page selection
-    pages = ["Upload Results", "View Patients", "Patient Dashboard", "Search & Filter", "Export Data", "Manage Data", "Alert Dashboard", "AI Anomaly Detection"]
+    pages = ["Upload Results", "View Patients", "Patient Dashboard", "Search & Filter", "Export Data", "Manage Data", "Alert Dashboard", "AI Anomaly Detection", "Investigation Standards"]
     
     # Add profile page for logged-in users
     if st.session_state.get('user_id'):
@@ -85,6 +87,8 @@ def main():
         alert_dashboard_page(alert_system, current_user_id)
     elif page == "AI Anomaly Detection":
         ai_anomaly_detection_page(anomaly_detector, current_user_id)
+    elif page == "Investigation Standards":
+        investigation_standards_page(investigation_standards)
     elif page == "Profile":
         auth_ui.user_profile_page()
 
@@ -1829,6 +1833,233 @@ def display_trends_analysis(results):
     
     else:
         st.info("No trend data available for the selected period.")
+
+def investigation_standards_page(investigation_standards):
+    """Investigation Standards Management Page."""
+    st.header("🔬 Investigation Standards Management")
+    st.markdown("Manage standardized investigation types with reference ranges for male and female patients")
+    
+    # Create tabs for different operations
+    tab1, tab2, tab3 = st.tabs(["📋 View Standards", "➕ Add New Standard", "📊 Standardization Preview"])
+    
+    with tab1:
+        st.subheader("Current Investigation Standards")
+        
+        # Get all standards
+        standards = investigation_standards.get_all_standards()
+        
+        if standards:
+            # Convert to DataFrame for better display
+            standards_df = pd.DataFrame(standards)
+            
+            # Display summary metrics
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                st.metric("Total Standards", len(standards))
+            with col2:
+                categories = standards_df['category'].nunique()
+                st.metric("Categories", categories)
+            with col3:
+                avg_aliases = standards_df['aliases'].str.split(',').str.len().mean()
+                st.metric("Avg Aliases", f"{avg_aliases:.1f}")
+            
+            # Filter by category
+            categories = ['All'] + sorted(standards_df['category'].unique().tolist())
+            selected_category = st.selectbox("Filter by Category", categories)
+            
+            if selected_category != 'All':
+                filtered_standards = standards_df[standards_df['category'] == selected_category]
+            else:
+                filtered_standards = standards_df
+            
+            # Display standards in an editable table-like format
+            st.subheader("Standards Details")
+            
+            for idx, standard in filtered_standards.iterrows():
+                with st.expander(f"🧪 {standard['standard_name']} ({standard['category']})"):
+                    col1, col2 = st.columns(2)
+                    
+                    with col1:
+                        st.markdown("**📝 Basic Information**")
+                        edit_name = st.text_input("Standard Name", value=standard['standard_name'], key=f"name_{standard['id']}")
+                        edit_category = st.text_input("Category", value=standard['category'], key=f"cat_{standard['id']}")
+                        edit_description = st.text_area("Description", value=standard['description'] or '', key=f"desc_{standard['id']}")
+                        edit_aliases = st.text_area("Aliases (comma-separated)", value=standard['aliases'] or '', key=f"alias_{standard['id']}")
+                    
+                    with col2:
+                        st.markdown("**🚹🚺 Reference Ranges**")
+                        
+                        # Male ranges
+                        st.markdown("**Male Range:**")
+                        col_m1, col_m2, col_m3 = st.columns(3)
+                        with col_m1:
+                            male_min = st.number_input("Min", value=float(standard['male_range_min']) if standard['male_range_min'] else 0.0, key=f"m_min_{standard['id']}")
+                        with col_m2:
+                            male_max = st.number_input("Max", value=float(standard['male_range_max']) if standard['male_range_max'] else 0.0, key=f"m_max_{standard['id']}")
+                        with col_m3:
+                            male_unit = st.text_input("Unit", value=standard['male_unit'] or '', key=f"m_unit_{standard['id']}")
+                        
+                        # Female ranges
+                        st.markdown("**Female Range:**")
+                        col_f1, col_f2, col_f3 = st.columns(3)
+                        with col_f1:
+                            female_min = st.number_input("Min", value=float(standard['female_range_min']) if standard['female_range_min'] else 0.0, key=f"f_min_{standard['id']}")
+                        with col_f2:
+                            female_max = st.number_input("Max", value=float(standard['female_range_max']) if standard['female_range_max'] else 0.0, key=f"f_max_{standard['id']}")
+                        with col_f3:
+                            female_unit = st.text_input("Unit", value=standard['female_unit'] or '', key=f"f_unit_{standard['id']}")
+                    
+                    # Action buttons
+                    col1, col2, col3 = st.columns(3)
+                    
+                    with col1:
+                        if st.button("💾 Update", key=f"update_{standard['id']}"):
+                            update_data = {
+                                'standard_name': edit_name,
+                                'aliases': edit_aliases,
+                                'male_range_min': male_min,
+                                'male_range_max': male_max,
+                                'male_unit': male_unit,
+                                'female_range_min': female_min,
+                                'female_range_max': female_max,
+                                'female_unit': female_unit,
+                                'description': edit_description,
+                                'category': edit_category
+                            }
+                            
+                            if investigation_standards.update_standard(standard['id'], update_data):
+                                st.success("Standard updated successfully!")
+                                st.rerun()
+                            else:
+                                st.error("Failed to update standard")
+                    
+                    with col2:
+                        if st.button("🗑️ Delete", key=f"delete_{standard['id']}"):
+                            if investigation_standards.delete_standard(standard['id']):
+                                st.success("Standard deleted successfully!")
+                                st.rerun()
+                            else:
+                                st.error("Failed to delete standard")
+                    
+                    with col3:
+                        # Show current reference ranges
+                        st.info(f"M: {male_min}-{male_max} {male_unit}\nF: {female_min}-{female_max} {female_unit}")
+        
+        else:
+            st.info("No investigation standards found. Add some standards to get started.")
+    
+    with tab2:
+        st.subheader("Add New Investigation Standard")
+        
+        with st.form("add_standard_form"):
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                new_name = st.text_input("Standard Name*", placeholder="e.g., Total Bilirubin")
+                new_category = st.selectbox("Category*", 
+                    ["Complete Blood Count", "Lipid Profile", "Liver Function", "Kidney Function", 
+                     "Thyroid Function", "Diabetes", "Electrolytes", "Cardiac Markers", "Other"])
+                new_description = st.text_area("Description", placeholder="Brief description of the test")
+                new_aliases = st.text_area("Aliases (comma-separated)", 
+                    placeholder="bilirubin, total bil, tbil")
+            
+            with col2:
+                st.markdown("**Reference Ranges**")
+                
+                # Male ranges
+                st.markdown("**Male Range:**")
+                col_m1, col_m2, col_m3 = st.columns(3)
+                with col_m1:
+                    new_male_min = st.number_input("Min Value", value=0.0, key="new_m_min")
+                with col_m2:
+                    new_male_max = st.number_input("Max Value", value=0.0, key="new_m_max")
+                with col_m3:
+                    new_male_unit = st.text_input("Unit", placeholder="mg/dL", key="new_m_unit")
+                
+                # Female ranges
+                st.markdown("**Female Range:**")
+                col_f1, col_f2, col_f3 = st.columns(3)
+                with col_f1:
+                    new_female_min = st.number_input("Min Value", value=0.0, key="new_f_min")
+                with col_f2:
+                    new_female_max = st.number_input("Max Value", value=0.0, key="new_f_max")
+                with col_f3:
+                    new_female_unit = st.text_input("Unit", placeholder="mg/dL", key="new_f_unit")
+            
+            if st.form_submit_button("🔬 Add Standard"):
+                if new_name and new_category:
+                    new_standard = {
+                        'standard_name': new_name,
+                        'aliases': new_aliases,
+                        'male_range_min': new_male_min,
+                        'male_range_max': new_male_max,
+                        'male_unit': new_male_unit,
+                        'female_range_min': new_female_min,
+                        'female_range_max': new_female_max,
+                        'female_unit': new_female_unit,
+                        'description': new_description,
+                        'category': new_category
+                    }
+                    
+                    if investigation_standards.add_standard(new_standard):
+                        st.success(f"✅ Successfully added '{new_name}' to investigation standards!")
+                        st.rerun()
+                    else:
+                        st.error("❌ Failed to add standard. Name might already exist.")
+                else:
+                    st.error("❌ Please fill in at least the Standard Name and Category.")
+    
+    with tab3:
+        st.subheader("Test Standardization Preview")
+        st.markdown("Enter test names to see how they would be standardized using fuzzy matching")
+        
+        # Test input
+        test_names_input = st.text_area(
+            "Enter test names (one per line)",
+            placeholder="glucose\nhaemoglobin\nchol\ncreat",
+            height=100
+        )
+        
+        if test_names_input:
+            test_names = [name.strip() for name in test_names_input.split('\n') if name.strip()]
+            
+            if test_names:
+                st.subheader("Standardization Results")
+                
+                results_data = []
+                for test_name in test_names:
+                    standardized_name, match_info = investigation_standards.standardize_test_name(test_name)
+                    
+                    if match_info:
+                        match_score = match_info.get('match_score', 0)
+                        category = match_info.get('category', 'Unknown')
+                        male_range = f"{match_info['male_range_min']}-{match_info['male_range_max']} {match_info['male_unit']}"
+                        female_range = f"{match_info['female_range_min']}-{match_info['female_range_max']} {match_info['female_unit']}"
+                        status = "✅ Matched"
+                    else:
+                        match_score = 0
+                        category = "No match"
+                        male_range = "N/A"
+                        female_range = "N/A"
+                        status = "❌ No match"
+                    
+                    results_data.append({
+                        'Original Name': test_name,
+                        'Standardized Name': standardized_name,
+                        'Status': status,
+                        'Match Score': f"{match_score:.2f}" if match_score else "0.00",
+                        'Category': category,
+                        'Male Range': male_range,
+                        'Female Range': female_range
+                    })
+                
+                # Display results in a table
+                results_df = pd.DataFrame(results_data)
+                st.dataframe(results_df, use_container_width=True)
+                
+                # Summary
+                matched_count = len([r for r in results_data if "✅" in r['Status']])
+                st.metric("Standardization Success Rate", f"{matched_count}/{len(results_data)} ({matched_count/len(results_data)*100:.1f}%)")
 
 if __name__ == "__main__":
     main()

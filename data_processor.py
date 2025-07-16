@@ -2,11 +2,13 @@ from datetime import date
 from typing import List, Dict, Any, Optional
 import streamlit as st
 from database import Database
+from investigation_standards import InvestigationStandards
 
 class DataProcessor:
     def __init__(self, database: Database):
         """Initialize data processor with database connection."""
         self.db = database
+        self.standards = InvestigationStandards()
     
     def save_test_results(self, patient_name: str, test_date: date, test_results: List[Dict[str, Any]], user_id: int = None) -> bool:
         """Save test results for a patient."""
@@ -32,13 +34,25 @@ class DataProcessor:
             saved_count = 0
             for result in test_results:
                 if self._validate_test_result(result):
+                    # Standardize the test type using fuzzy matching
+                    original_test_type = result['test_type']
+                    standardized_name, match_info = self.standards.standardize_test_name(original_test_type)
+                    
+                    # Use standardized name if found, otherwise keep original
+                    test_type_to_save = standardized_name
+                    
+                    # If we have match info and no reference range was provided, use standard reference range
+                    reference_range = result.get('reference_range', '')
+                    if not reference_range and match_info:
+                        reference_range = self.standards.get_reference_range(standardized_name, 'both')
+                    
                     success = self.db.add_test_result(
                         patient_id=patient_id,
                         test_date=test_date,
-                        test_type=result['test_type'],
+                        test_type=test_type_to_save,
                         test_value=result['value'],
                         unit=result.get('unit', ''),
-                        reference_range=result.get('reference_range', ''),
+                        reference_range=reference_range,
                         user_id=user_id
                     )
                     if success:
