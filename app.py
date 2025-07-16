@@ -2221,22 +2221,15 @@ def investigation_standards_page(investigation_standards):
             help="Supported formats: PDF, Word, Text, Excel, CSV, XML, and Images (JPG, PNG, BMP, TIFF)"
         )
         
-        # Camera input for direct photo capture
-        st.write("**📸 Or Take a Photo**")
-        camera_image = st.camera_input("Take a photo of your medical report")
+
         
         # Initialize session state for extraction results
         if 'standards_extraction_results' not in st.session_state:
             st.session_state.standards_extraction_results = {}
         
         # Process uploaded files
-        if uploaded_files or camera_image:
-            # Combine file uploads and camera input
-            all_files = []
-            if uploaded_files:
-                all_files.extend(uploaded_files)
-            if camera_image:
-                all_files.append(camera_image)
+        if uploaded_files:
+            all_files = uploaded_files
             
             if all_files:
                 st.subheader("📊 Processing Results")
@@ -2343,123 +2336,129 @@ def investigation_standards_page(investigation_standards):
                     
                     st.write(f"**Found {len(unique_tests)} unique investigation types across all files:**")
                     
-                    # Display with checkboxes to select which ones to create standards for
-                    selected_tests = []
+                    # Get all existing aliases from standards
+                    existing_standards = investigation_standards.get_all_standards()
+                    all_aliases = []
+                    for standard in existing_standards:
+                        if standard.get('aliases'):
+                            aliases = [alias.strip().lower() for alias in standard['aliases'].split(',')]
+                            all_aliases.extend(aliases)
+                        # Also add the standard name itself
+                        all_aliases.append(standard['standard_name'].lower())
                     
-                    # Select all/none buttons
-                    col1, col2 = st.columns(2)
-                    with col1:
-                        if st.button("Select All"):
-                            for test in unique_tests:
-                                st.session_state[f"create_standard_{test}"] = True
-                    with col2:
-                        if st.button("Select None"):
-                            for test in unique_tests:
-                                st.session_state[f"create_standard_{test}"] = False
-                    
-                    # Display tests with checkboxes
-                    for test_name in unique_tests:
-                        # Check if this test already exists in standards
-                        existing_standards = investigation_standards.get_all_standards()
-                        is_duplicate = any(std['standard_name'].lower() == test_name.lower() for std in existing_standards)
+                    # Process each unique test individually
+                    for i, test_name in enumerate(unique_tests):
+                        # Check if this test exists in aliases
+                        test_name_lower = test_name.lower()
+                        exists_in_aliases = test_name_lower in all_aliases
                         
-                        col1, col2 = st.columns([3, 1])
-                        with col1:
-                            # Try to find fuzzy match
-                            standardized_name, match_info = investigation_standards.standardize_test_name(test_name)
-                            
-                            if match_info and standardized_name != test_name:
-                                st.write(f"• {test_name} → 🔍 **{standardized_name}** (match score: {match_info.get('match_score', 0):.2f})")
-                            elif is_duplicate:
-                                st.write(f"• {test_name} → ⚠️ **Already exists**")
-                            else:
-                                st.write(f"• {test_name}")
-                        
-                        with col2:
-                            if not is_duplicate:
-                                if st.checkbox("Create", key=f"create_standard_{test_name}", value=True):
-                                    selected_tests.append(test_name)
-                            else:
-                                st.write("Exists")
-                    
-                    # Bulk creation form
-                    if selected_tests:
-                        st.write(f"**Creating standards for {len(selected_tests)} investigation types:**")
-                        
-                        with st.form("bulk_create_standards"):
-                            # Default category for all
-                            default_category = st.selectbox("Default Category", 
-                                                          ["Blood Chemistry", "Hematology", "Lipid Profile", "Liver Function", 
-                                                           "Kidney Function", "Thyroid Function", "Cardiac Markers", "Diabetes Markers",
-                                                           "Electrolytes", "Vitamins", "Hormones", "Other"])
-                            
-                            # Default reference ranges
-                            st.write("**Default Reference Ranges (will be applied to all selected tests):**")
-                            col1, col2 = st.columns(2)
+                        with st.expander(f"{'✅' if exists_in_aliases else '➕'} {test_name}", expanded=not exists_in_aliases):
+                            col1, col2 = st.columns([2, 1])
                             
                             with col1:
-                                st.write("**Male Range:**")
-                                male_min = st.number_input("Male Min", value=0.0, key="bulk_male_min")
-                                male_max = st.number_input("Male Max", value=100.0, key="bulk_male_max")
-                                male_unit = st.text_input("Male Unit", value="mg/dL", key="bulk_male_unit")
+                                if exists_in_aliases:
+                                    st.info("📋 This investigation type already exists in the system")
+                                    st.write("**Status:** Found in existing aliases")
+                                else:
+                                    st.warning("🆕 New investigation type - not found in existing aliases")
+                                    
+                                    # Show inline creation form for new investigations
+                                    create_checkbox = st.checkbox(
+                                        "Create new investigation standard", 
+                                        key=f"create_{i}_{test_name}", 
+                                        value=True
+                                    )
+                                    
+                                    if create_checkbox:
+                                        with st.form(f"create_form_{i}_{test_name}"):
+                                            st.write("**Investigation Standard Details:**")
+                                            
+                                            # Standard name (pre-populated with extracted text)
+                                            standard_name = st.text_input(
+                                                "Standard Investigation Name", 
+                                                value=test_name,
+                                                key=f"name_{i}"
+                                            )
+                                            
+                                            # Category
+                                            category = st.selectbox(
+                                                "Category", 
+                                                ["Blood Chemistry", "Hematology", "Lipid Profile", "Liver Function", 
+                                                 "Kidney Function", "Thyroid Function", "Cardiac Markers", "Diabetes Markers",
+                                                 "Electrolytes", "Vitamins", "Hormones", "Other"],
+                                                key=f"category_{i}"
+                                            )
+                                            
+                                            # Reference ranges
+                                            col_male, col_female = st.columns(2)
+                                            
+                                            with col_male:
+                                                st.write("**Male Range:**")
+                                                male_min = st.number_input("Min", value=0.0, key=f"male_min_{i}")
+                                                male_max = st.number_input("Max", value=100.0, key=f"male_max_{i}")
+                                                male_unit = st.text_input("Unit", value="mg/dL", key=f"male_unit_{i}")
+                                            
+                                            with col_female:
+                                                st.write("**Female Range:**")
+                                                female_min = st.number_input("Min", value=0.0, key=f"female_min_{i}")
+                                                female_max = st.number_input("Max", value=100.0, key=f"female_max_{i}")
+                                                female_unit = st.text_input("Unit", value="mg/dL", key=f"female_unit_{i}")
+                                            
+                                            # Description
+                                            description = st.text_area(
+                                                "Description", 
+                                                value="Investigation standard created from medical report extraction",
+                                                key=f"desc_{i}"
+                                            )
+                                            
+                                            # Aliases (automatically include the extracted text)
+                                            aliases_input = st.text_input(
+                                                "Aliases (comma-separated)", 
+                                                value=test_name,
+                                                help="The extracted test name will be automatically added to aliases",
+                                                key=f"aliases_{i}"
+                                            )
+                                            
+                                            # Submit button
+                                            submit_individual = st.form_submit_button(
+                                                f"✅ Create Standard for {test_name}", 
+                                                type="primary"
+                                            )
+                                            
+                                            if submit_individual:
+                                                try:
+                                                    # Ensure extracted test name is in aliases
+                                                    aliases_list = [alias.strip() for alias in aliases_input.split(',') if alias.strip()]
+                                                    if test_name not in aliases_list:
+                                                        aliases_list.append(test_name)
+                                                    
+                                                    success = investigation_standards.add_standard(
+                                                        standard_name=standard_name,
+                                                        category=category,
+                                                        male_range_min=male_min,
+                                                        male_range_max=male_max,
+                                                        male_unit=male_unit,
+                                                        female_range_min=female_min,
+                                                        female_range_max=female_max,
+                                                        female_unit=female_unit,
+                                                        description=description,
+                                                        aliases=", ".join(aliases_list)
+                                                    )
+                                                    
+                                                    if success:
+                                                        st.success(f"✅ Successfully created standard for {test_name}!")
+                                                        st.rerun()
+                                                    else:
+                                                        st.error(f"❌ Failed to create standard for {test_name}")
+                                                
+                                                except Exception as e:
+                                                    st.error(f"Error creating standard: {str(e)}")
                             
                             with col2:
-                                st.write("**Female Range:**")
-                                female_min = st.number_input("Female Min", value=0.0, key="bulk_female_min")
-                                female_max = st.number_input("Female Max", value=100.0, key="bulk_female_max")
-                                female_unit = st.text_input("Female Unit", value="mg/dL", key="bulk_female_unit")
-                            
-                            default_description = st.text_area("Default Description", 
-                                                             value="Investigation standard created from medical report extraction")
-                            
-                            submit_button = st.form_submit_button("🔬 Create All Standards", type="primary")
-                        
-                        if submit_button:
-                            with st.spinner("Creating investigation standards..."):
-                                created_count = 0
-                                failed_count = 0
-                                
-                                for test_name in selected_tests:
-                                    try:
-                                        # Create aliases from the original test name variations
-                                        aliases = [test_name]
-                                        
-                                        # Add the test standard
-                                        success = investigation_standards.add_standard(
-                                            standard_name=test_name,
-                                            category=default_category,
-                                            male_range_min=male_min,
-                                            male_range_max=male_max,
-                                            male_unit=male_unit,
-                                            female_range_min=female_min,
-                                            female_range_max=female_max,
-                                            female_unit=female_unit,
-                                            description=default_description,
-                                            aliases=", ".join(aliases)
-                                        )
-                                        
-                                        if success:
-                                            created_count += 1
-                                        else:
-                                            failed_count += 1
-                                    
-                                    except Exception as e:
-                                        st.error(f"Failed to create standard for {test_name}: {str(e)}")
-                                        failed_count += 1
-                                
-                                # Show results
-                                if created_count > 0:
-                                    st.success(f"✅ Successfully created {created_count} investigation standards!")
-                                
-                                if failed_count > 0:
-                                    st.error(f"❌ Failed to create {failed_count} standards")
-                                
-                                # Clear session state
-                                for test_name in unique_tests:
-                                    if f"create_standard_{test_name}" in st.session_state:
-                                        del st.session_state[f"create_standard_{test_name}"]
-                                
-                                st.rerun()
+                                if exists_in_aliases:
+                                    st.write("**Action:** None needed")
+                                else:
+                                    st.write("**Action:** Create new")
 
 if __name__ == "__main__":
     main()
