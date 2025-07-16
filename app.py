@@ -2397,6 +2397,22 @@ def investigation_standards_page(investigation_standards):
                                         st.caption("🔵 Blue boxes highlight the investigation type")
                                     else:
                                         st.info(f"No visual snippet available for '{test_name}'")
+                                        
+                                        # Debug: Show what text was extracted for troubleshooting
+                                        if hasattr(image_snippet_extractor, 'ocr_data') and image_snippet_extractor.ocr_data:
+                                            ocr_texts = []
+                                            for page_data in image_snippet_extractor.ocr_data:
+                                                for text in page_data['text_data']['text']:
+                                                    if text.strip() and len(text.strip()) > 2:
+                                                        ocr_texts.append(text.strip())
+                                            
+                                            if ocr_texts:
+                                                with st.expander("🔍 Debug: OCR Text Found", expanded=False):
+                                                    st.write("OCR extracted the following text from the document:")
+                                                    st.text_area("", value="\n".join(ocr_texts[:50]), height=150)  # Show first 50 text items
+                                                    st.caption(f"Showing first 50 items out of {len(ocr_texts)} total text elements")
+                                            else:
+                                                st.warning("No OCR text was extracted from the document")
                                 except Exception as e:
                                     st.error(f"Error getting snippet: {str(e)}")
                             

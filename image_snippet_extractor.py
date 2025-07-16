@@ -124,36 +124,69 @@ class ImageSnippetExtractor:
         if not search_text.strip():
             return self.get_full_document()
         
-        for page_data in self.ocr_data:
-            image = page_data['image']
-            text_data = page_data['text_data']
-            
-            # Find search text in OCR data
-            found_coords = []
-            search_lower = search_text.lower()
-            
-            for i, text in enumerate(text_data['text']):
-                if text.strip() and search_lower in text.lower():
+        page_data = self.ocr_data[0]  # First page
+        image = page_data['image']
+        text_data = page_data['text_data']
+        
+        # Find search text in OCR data with improved matching
+        found_coords = []
+        search_lower = search_text.lower()
+        
+        # Extract key words from search text (ignore short words and common terms)
+        search_words = []
+        for word in search_lower.split():
+            clean_word = word.strip('().,;:')
+            if len(clean_word) > 2 and clean_word not in ['the', 'and', 'for', 'with']:
+                search_words.append(clean_word)
+        
+        # Search through OCR text
+        for i, text in enumerate(text_data['text']):
+            if text.strip():
+                text_lower = text.lower().strip()
+                
+                # Direct match
+                if search_lower in text_lower:
                     x, y, w, h = text_data['left'][i], text_data['top'][i], text_data['width'][i], text_data['height'][i]
                     if w > 0 and h > 0:
                         found_coords.append((x, y, w, h))
-            
-            if found_coords:
-                # Return full page with highlighted areas
-                full_page = image.copy()
-                draw = ImageDraw.Draw(full_page)
                 
-                # Highlight all found text occurrences
-                for coord in found_coords:
-                    x, y, w, h = coord
-                    draw.rectangle([(x, y), (x + w, y + h)], outline='blue', width=3)
-                
-                # Convert to bytes
-                img_buffer = io.BytesIO()
-                full_page.save(img_buffer, format='PNG')
-                return img_buffer.getvalue()
+                # Partial word matches for complex medical terms
+                elif search_words:
+                    for search_word in search_words:
+                        if search_word in text_lower:
+                            x, y, w, h = text_data['left'][i], text_data['top'][i], text_data['width'][i], text_data['height'][i]
+                            if w > 0 and h > 0:
+                                found_coords.append((x, y, w, h))
+                            break
         
-        return None
+        # If no matches found with current approach, try more lenient matching
+        if not found_coords:
+            # Try matching individual significant words
+            for word in search_words:
+                if len(word) > 3:  # Only for longer words
+                    for i, text in enumerate(text_data['text']):
+                        if text.strip() and word in text.lower():
+                            x, y, w, h = text_data['left'][i], text_data['top'][i], text_data['width'][i], text_data['height'][i]
+                            if w > 0 and h > 0:
+                                found_coords.append((x, y, w, h))
+        
+        if found_coords:
+            # Return full page with highlighted areas
+            full_page = image.copy()
+            draw = ImageDraw.Draw(full_page)
+            
+            # Highlight all found text occurrences
+            for coord in found_coords:
+                x, y, w, h = coord
+                draw.rectangle([(x-2, y-2), (x + w + 2, y + h + 2)], outline='blue', width=3)
+            
+            # Convert to bytes
+            img_buffer = io.BytesIO()
+            full_page.save(img_buffer, format='PNG')
+            return img_buffer.getvalue()
+        
+        # If still no matches, return full document without highlighting
+        return self.get_full_document()
     
     def get_full_document(self) -> bytes:
         """Return the full document image without any highlighting."""
@@ -188,21 +221,32 @@ class ImageSnippetExtractor:
         found_coords = []
         for test_name in test_names:
             test_name_lower = test_name.lower()
-            test_words = [word for word in test_name_lower.split() if len(word) > 2]
+            
+            # Extract key words from test name (ignore short words and common terms)
+            test_words = []
+            for word in test_name_lower.split():
+                clean_word = word.strip('().,;:')
+                if len(clean_word) > 2 and clean_word not in ['the', 'and', 'for', 'with']:
+                    test_words.append(clean_word)
             
             for i, text in enumerate(text_data['text']):
                 if text.strip():
-                    text_lower = text.lower()
-                    # Check for partial matches of test name words
-                    if any(word in text_lower for word in test_words):
-                        x, y, w, h = text_data['left'][i], text_data['top'][i], text_data['width'][i], text_data['height'][i]
-                        if w > 0 and h > 0:  # Valid coordinates
-                            found_coords.append((x, y, w, h))
-                    # Also check for exact test name match
-                    elif test_name_lower in text_lower:
+                    text_lower = text.lower().strip()
+                    
+                    # Direct match
+                    if test_name_lower in text_lower:
                         x, y, w, h = text_data['left'][i], text_data['top'][i], text_data['width'][i], text_data['height'][i]
                         if w > 0 and h > 0:
                             found_coords.append((x, y, w, h))
+                    
+                    # Partial word matches for complex medical terms
+                    elif test_words:
+                        for test_word in test_words:
+                            if test_word in text_lower:
+                                x, y, w, h = text_data['left'][i], text_data['top'][i], text_data['width'][i], text_data['height'][i]
+                                if w > 0 and h > 0:
+                                    found_coords.append((x, y, w, h))
+                                break
         
         # Draw highlights for all found coordinates
         for coord in found_coords:

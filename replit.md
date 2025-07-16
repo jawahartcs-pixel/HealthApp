@@ -155,6 +155,9 @@ Preferred communication style: Simple, everyday language.
   - Side-by-side layout for each extracted investigation showing document snippet with highlighted text alongside investigation details and creation form
   - Removed global document preview in favor of individual snippet displays for each investigation type
   - Streamlined interface with document snippets directly integrated into each investigation expandable section
+  - Enhanced text matching algorithm for better OCR text recognition with partial word matching and medical term handling
+  - Debug functionality showing OCR extracted text when visual snippets are not available for troubleshooting
+  - Improved fallback behavior returning full document when specific text highlighting fails
 
 ### July 16, 2025 - Reference Range Extraction & Display
 - **Enhanced Reference Range Extraction**: Added comprehensive reference range detection to file parser
