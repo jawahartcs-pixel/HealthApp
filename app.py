@@ -370,14 +370,7 @@ Extraction Method: {result.get('source', 'regex')}""")
                                                 help="Original extracted text - edit if needed"
                                             )
                                             
-                                            # Store which type will be used in session state for database storage
-                                            if selected_option == "(Use custom text below)":
-                                                # Use the custom text input value
-                                                st.session_state[f"final_test_type_{uploaded_file.name}_{i}"] = "custom"
-                                            else:
-                                                # Use the selected standardized value
-                                                st.session_state[f"final_test_type_{uploaded_file.name}_{i}"] = "standard"
-                                                st.session_state[f"standard_name_{uploaded_file.name}_{i}"] = selected_option
+
                                             
                                         else:
                                             # Fallback to text input if standards not available
@@ -387,7 +380,7 @@ Extraction Method: {result.get('source', 'regex')}""")
                                                 key=f"test_name_{uploaded_file.name}_{i}",
                                                 help="Edit the test name if needed"
                                             )
-                                            st.session_state[f"final_test_type_{uploaded_file.name}_{i}"] = "custom"
+
                                         
                                         # Editable value
                                         st.number_input(
@@ -458,12 +451,7 @@ Extraction Method: {result.get('source', 'regex')}""")
                                                 placeholder="Enter investigation type"
                                             )
                                             
-                                            # Store which type will be used for additional tests
-                                            if selected_option == "(Use custom text below)":
-                                                st.session_state[f"add_final_test_type_{uploaded_file.name}_{i}"] = "custom"
-                                            else:
-                                                st.session_state[f"add_final_test_type_{uploaded_file.name}_{i}"] = "standard"
-                                                st.session_state[f"add_standard_name_{uploaded_file.name}_{i}"] = selected_option
+
                                                 
                                         else:
                                             # Fallback to text input if standards not available
@@ -473,7 +461,7 @@ Extraction Method: {result.get('source', 'regex')}""")
                                                 label_visibility="collapsed",
                                                 placeholder="Enter investigation type"
                                             )
-                                            st.session_state[f"add_final_test_type_{uploaded_file.name}_{i}"] = "custom"
+
                                     
                                     with col2:
                                         st.number_input(
@@ -517,14 +505,14 @@ Extraction Method: {result.get('source', 'regex')}""")
                                 for i, result in enumerate(test_data['results']):
                                     if st.session_state.get(f"include_{uploaded_file.name}_{i}", True):
                                         # Determine which test type to use based on user selection
-                                        test_type_source = st.session_state.get(f"final_test_type_{uploaded_file.name}_{i}", "custom")
+                                        dropdown_selection = st.session_state.get(f"test_dropdown_{uploaded_file.name}_{i}", "(Use custom text below)")
                                         
-                                        if test_type_source == "standard":
-                                            # Use the standardized name from dropdown
-                                            final_test_type = st.session_state.get(f"standard_name_{uploaded_file.name}_{i}", result['test_type'])
-                                        else:
-                                            # Use the custom text input value
+                                        if dropdown_selection == "(Use custom text below)":
+                                            # User chose to use custom text - ignore fuzzy match, use custom input
                                             final_test_type = st.session_state.get(f"test_name_{uploaded_file.name}_{i}", result['test_type'])
+                                        else:
+                                            # User selected a standard from dropdown - use that standard
+                                            final_test_type = dropdown_selection
                                         
                                         final_results.append({
                                             'test_type': final_test_type,
@@ -541,14 +529,14 @@ Extraction Method: {result.get('source', 'regex')}""")
                                     for i in range(num_additional):
                                         if st.session_state.get(f"add_include_{uploaded_file.name}_{i}", True):
                                             # Determine which test type to use for additional tests
-                                            add_test_type_source = st.session_state.get(f"add_final_test_type_{uploaded_file.name}_{i}", "custom")
+                                            add_dropdown_selection = st.session_state.get(f"add_test_dropdown_{uploaded_file.name}_{i}", "(Use custom text below)")
                                             
-                                            if add_test_type_source == "standard":
-                                                # Use the standardized name from dropdown
-                                                test_name = st.session_state.get(f"add_standard_name_{uploaded_file.name}_{i}", "").strip()
-                                            else:
-                                                # Use the custom text input value
+                                            if add_dropdown_selection == "(Use custom text below)":
+                                                # User chose to use custom text - use custom input
                                                 test_name = st.session_state.get(f"add_test_name_{uploaded_file.name}_{i}", "").strip()
+                                            else:
+                                                # User selected a standard from dropdown - use that standard
+                                                test_name = add_dropdown_selection
                                             
                                             test_value = st.session_state.get(f"add_test_value_{uploaded_file.name}_{i}", 0.0)
                                             test_unit = st.session_state.get(f"add_test_unit_{uploaded_file.name}_{i}", "").strip()
