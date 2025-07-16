@@ -121,6 +121,18 @@ Preferred communication style: Simple, everyday language.
 
 ## Recent Changes
 
+### July 16, 2025 - Automatic Reference Range Extraction for Investigation Standards
+- **Enhanced Investigation Standards Creation**: Added automatic reference range extraction and form population
+  - Full test extraction data stored in session state with reference ranges, units, and values
+  - Intelligent reference range parsing supporting multiple formats (5.0-15.0, <10, >5, etc.)
+  - Automatic population of minimum and maximum values for both male and female ranges
+  - Unit extraction and auto-population from document data
+  - Visual indicator showing extracted reference range with caption explaining auto-population
+  - Support for various range formats including numeric ranges, single value operators, and text descriptions
+  - Fallback handling for unparseable ranges with sensible defaults
+  - Enhanced test display showing reference ranges alongside investigation names during extraction
+  - Streamlined form experience reducing manual data entry for investigation standard creation
+
 ### July 16, 2025 - Image Upload Support & Standards Creation from Reports
 - **Image File Support**: Added comprehensive support for image uploads in file parser
   - Support for JPEG, PNG, BMP, and TIFF image formats
