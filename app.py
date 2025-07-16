@@ -48,6 +48,9 @@ def main():
     # Initialize components
     db, file_parser, data_processor, visualization, alert_system, auth_system, auth_ui, anomaly_detector, investigation_standards = init_components()
     
+    # Store investigation_standards in session state for access in upload page
+    st.session_state['investigation_standards'] = investigation_standards
+    
     # Check authentication
     if not auth_ui.check_authentication():
         auth_ui.login_page()
@@ -327,13 +330,46 @@ Extraction Method: {result.get('source', 'regex')}""")
                                     with right_col:
                                         st.markdown("**✏️ Edit Before Saving:**")
                                         
-                                        # Editable investigation type
-                                        st.text_input(
-                                            "Investigation Type",
-                                            value=result['test_type'],
-                                            key=f"test_name_{uploaded_file.name}_{i}",
-                                            help="Edit the test name if needed"
-                                        )
+                                        # Editable investigation type with standardization dropdown
+                                        investigation_standards = st.session_state.get('investigation_standards')
+                                        if investigation_standards:
+                                            # Get all standard names
+                                            all_standards = investigation_standards.get_all_standards()
+                                            standard_names = [std['standard_name'] for std in all_standards]
+                                            
+                                            # Try to find fuzzy match for current test type
+                                            standardized_name, match_info = investigation_standards.standardize_test_name(result['test_type'])
+                                            
+                                            # Create the options list
+                                            if standardized_name in standard_names:
+                                                # If we found a match, select it by default
+                                                default_index = standard_names.index(standardized_name)
+                                                options = standard_names
+                                            else:
+                                                # If no match, add the original name to the list and select it
+                                                options = [result['test_type']] + standard_names
+                                                default_index = 0
+                                            
+                                            selected_test_type = st.selectbox(
+                                                "Investigation Type",
+                                                options=options,
+                                                index=default_index,
+                                                key=f"test_name_{uploaded_file.name}_{i}",
+                                                help="Select standardized investigation type or use extracted name"
+                                            )
+                                            
+                                            # Show match information if fuzzy match was found
+                                            if match_info and standardized_name != result['test_type']:
+                                                match_score = match_info.get('match_score', 0)
+                                                st.caption(f"🔍 Fuzzy match: '{result['test_type']}' → '{standardized_name}' (score: {match_score:.2f})")
+                                        else:
+                                            # Fallback to text input if standards not available
+                                            st.text_input(
+                                                "Investigation Type",
+                                                value=result['test_type'],
+                                                key=f"test_name_{uploaded_file.name}_{i}",
+                                                help="Edit the test name if needed"
+                                            )
                                         
                                         # Editable value
                                         st.number_input(
@@ -378,12 +414,42 @@ Extraction Method: {result.get('source', 'regex')}""")
                                     col1, col2, col3, col4, col5 = st.columns([3, 2, 2, 1, 1])
                                     
                                     with col1:
-                                        st.text_input(
-                                            f"Additional Test {i+1}",
-                                            key=f"add_test_name_{uploaded_file.name}_{i}",
-                                            label_visibility="collapsed",
-                                            placeholder="Enter investigation type"
-                                        )
+                                        # Investigation type dropdown for additional tests
+                                        investigation_standards = st.session_state.get('investigation_standards')
+                                        if investigation_standards:
+                                            # Get all standard names
+                                            all_standards = investigation_standards.get_all_standards()
+                                            standard_names = [std['standard_name'] for std in all_standards]
+                                            
+                                            # Add option for custom entry at the top
+                                            options = ["(Enter custom test name)"] + standard_names
+                                            
+                                            selected_option = st.selectbox(
+                                                f"Additional Test {i+1}",
+                                                options=options,
+                                                key=f"add_test_dropdown_{uploaded_file.name}_{i}",
+                                                label_visibility="collapsed"
+                                            )
+                                            
+                                            # If custom option is selected, show text input
+                                            if selected_option == "(Enter custom test name)":
+                                                custom_test_name = st.text_input(
+                                                    f"Custom Test Name {i+1}",
+                                                    key=f"add_test_name_{uploaded_file.name}_{i}",
+                                                    label_visibility="collapsed",
+                                                    placeholder="Enter investigation type"
+                                                )
+                                            else:
+                                                # Store the selected standard name in session state
+                                                st.session_state[f"add_test_name_{uploaded_file.name}_{i}"] = selected_option
+                                        else:
+                                            # Fallback to text input if standards not available
+                                            st.text_input(
+                                                f"Additional Test {i+1}",
+                                                key=f"add_test_name_{uploaded_file.name}_{i}",
+                                                label_visibility="collapsed",
+                                                placeholder="Enter investigation type"
+                                            )
                                     
                                     with col2:
                                         st.number_input(
