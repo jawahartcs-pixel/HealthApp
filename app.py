@@ -146,15 +146,15 @@ def upload_results_page(file_parser, data_processor, user_id):
     # File upload
     uploaded_files = st.file_uploader(
         "Choose blood test result files",
-        type=['pdf', 'txt', 'docx', 'xlsx', 'xls', 'csv', 'xml'],
+        type=['pdf', 'txt', 'docx', 'xlsx', 'xls', 'csv', 'xml', 'jpg', 'jpeg', 'png', 'bmp', 'tiff'],
         accept_multiple_files=True,
-        help="Upload PDF, Word (.docx), Excel (.xlsx, .xls), CSV, XML, or text files containing blood test results"
+        help="Upload PDF, Word (.docx), Excel (.xlsx, .xls), CSV, XML, text files, or images (JPG, PNG, BMP, TIFF) containing blood test results"
     )
     
     # Option to force OCR for difficult PDFs
     force_ocr = st.checkbox(
         "Force OCR extraction",
-        help="Use OCR (Optical Character Recognition) for image-based or problematic PDFs. This can help extract text from scanned documents."
+        help="Use OCR (Optical Character Recognition) for image files and scanned documents. This automatically processes images and can help extract text from problematic PDFs."
     )
     
     # Clear cache button for reprocessing
