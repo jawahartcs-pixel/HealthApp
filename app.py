@@ -2265,6 +2265,30 @@ def investigation_standards_page(investigation_standards):
                             force_ocr = st.checkbox(f"Force OCR for {file_name}", key=f"force_ocr_{i}")
                             
                             with st.spinner(f"Processing {file_name}..."):
+                                # Process file for image snippets if it's a PDF or image
+                                if uploaded_file.type == "application/pdf" or uploaded_file.type.startswith("image/"):
+                                    try:
+                                        # Get image snippet extractor from session state
+                                        if hasattr(st.session_state, 'image_snippet_extractor'):
+                                            image_snippet_extractor = st.session_state.image_snippet_extractor
+                                        else:
+                                            from image_snippet_extractor import ImageSnippetExtractor
+                                            image_snippet_extractor = ImageSnippetExtractor()
+                                            st.session_state.image_snippet_extractor = image_snippet_extractor
+                                        
+                                        # Process file for image snippets
+                                        uploaded_file.seek(0)  # Reset file pointer
+                                        file_bytes = uploaded_file.read()
+                                        uploaded_file.seek(0)  # Reset again for text extraction
+                                        
+                                        if uploaded_file.type == "application/pdf":
+                                            image_snippet_extractor.process_pdf_for_snippets(file_bytes)
+                                        else:
+                                            # For image files, we can use the image directly
+                                            pass
+                                    except Exception as snippet_error:
+                                        st.warning(f"Could not process {file_name} for image snippets: {str(snippet_error)}")
+                                
                                 # Extract text from file
                                 extracted_text = file_parser.parse_file(uploaded_file, force_ocr=force_ocr)
                                 
@@ -2276,68 +2300,16 @@ def investigation_standards_page(investigation_standards):
                                         # Display extracted tests
                                         st.success(f"✅ Extracted {len(test_data['results'])} test types from {file_name}")
                                         
-                                        # Document preview section
-                                        col_preview1, col_preview2 = st.columns(2)
+                                        # Display extracted test types
+                                        test_types_found = []
+                                        for result in test_data['results']:
+                                            test_type = result.get('test_type', '').strip()
+                                            if test_type and test_type not in test_types_found:
+                                                test_types_found.append(test_type)
                                         
-                                        with col_preview1:
-                                            with st.expander("📄 Document Preview", expanded=True):
-                                                st.write("**Full Document Text:**")
-                                                
-                                                # Search functionality within document
-                                                search_term = st.text_input(
-                                                    "Search in document", 
-                                                    placeholder="Enter text to search...",
-                                                    key=f"search_{file_name}_{i}"
-                                                )
-                                                
-                                                if search_term:
-                                                    # Count occurrences
-                                                    search_count = extracted_text.lower().count(search_term.lower())
-                                                    if search_count > 0:
-                                                        st.write(f"Found **{search_count}** occurrence(s) of '{search_term}'")
-                                                    else:
-                                                        st.write(f"No occurrences of '{search_term}' found")
-                                                
-                                                # Display document text in scrollable area
-                                                st.text_area(
-                                                    "Document content", 
-                                                    extracted_text, 
-                                                    height=400,
-                                                    key=f"doc_content_{file_name}_{i}"
-                                                )
-                                                
-                                                # File information
-                                                st.write("**File Information:**")
-                                                st.write(f"• Characters: {len(extracted_text):,}")
-                                                st.write(f"• Lines: {len(extracted_text.splitlines()):,}")
-                                                if hasattr(uploaded_file, 'size'):
-                                                    st.write(f"• File size: {uploaded_file.size:,} bytes")
-                                        
-                                        with col_preview2:
-                                            with st.expander("🔍 Extracted Results", expanded=True):
-                                                # Display extracted test types
-                                                test_types_found = []
-                                                for result in test_data['results']:
-                                                    test_type = result.get('test_type', '').strip()
-                                                    if test_type and test_type not in test_types_found:
-                                                        test_types_found.append(test_type)
-                                                
-                                                st.write(f"**Test Types Found ({len(test_types_found)}):**")
-                                                for test_type in test_types_found:
-                                                    col_test, col_search = st.columns([3, 1])
-                                                    with col_test:
-                                                        st.write(f"• {test_type}")
-                                                    with col_search:
-                                                        if st.button(f"🔍", key=f"search_btn_{test_type}_{i}", help=f"Search for '{test_type}' in document"):
-                                                            st.session_state[f"search_{file_name}_{i}"] = test_type
-                                                            st.rerun()
-                                                
-                                                # Show extraction method breakdown
-                                                extraction_methods = test_data.get('extraction_methods', {})
-                                                if extraction_methods:
-                                                    st.write("**Extraction Methods Used:**")
-                                                    for method, count in extraction_methods.items():
-                                                        st.write(f"• {method}: {count} test(s)")
+                                        st.write(f"**Test Types Found ({len(test_types_found)}):**")
+                                        for test_type in test_types_found:
+                                            st.write(f"• {test_type}")
                                         
                                         # Add to all extracted tests
                                         all_extracted_tests.extend(test_types_found)
@@ -2401,7 +2373,7 @@ def investigation_standards_page(investigation_standards):
                         exists_in_aliases = test_name_lower in all_aliases
                         
                         with st.expander(f"{'✅' if exists_in_aliases else '➕'} {test_name}", expanded=not exists_in_aliases):
-                            col1, col2 = st.columns([2, 1])
+                            col1, col2, col3 = st.columns([2, 1, 1])
                             
                             with col1:
                                 if exists_in_aliases:
@@ -2417,100 +2389,125 @@ def investigation_standards_page(investigation_standards):
                                         key=checkbox_key, 
                                         value=True
                                     )
-                                    
-                                    if create_checkbox:
-                                        # Create unique form key using test name hash to avoid duplicates
-                                        form_key = f"create_form_{abs(hash(test_name)) % 1000000}"
-                                        
-                                        with st.form(form_key):
-                                            st.write("**Investigation Standard Details:**")
-                                            
-                                            # Standard name (pre-populated with extracted text)
-                                            standard_name = st.text_input(
-                                                "Standard Investigation Name", 
-                                                value=test_name,
-                                                key=f"name_{form_key}"
-                                            )
-                                            
-                                            # Category
-                                            category = st.selectbox(
-                                                "Category", 
-                                                ["Blood Chemistry", "Hematology", "Lipid Profile", "Liver Function", 
-                                                 "Kidney Function", "Thyroid Function", "Cardiac Markers", "Diabetes Markers",
-                                                 "Electrolytes", "Vitamins", "Hormones", "Other"],
-                                                key=f"category_{form_key}"
-                                            )
-                                            
-                                            # Reference ranges
-                                            col_male, col_female = st.columns(2)
-                                            
-                                            with col_male:
-                                                st.write("**Male Range:**")
-                                                male_min = st.number_input("Min", value=0.0, key=f"male_min_{form_key}")
-                                                male_max = st.number_input("Max", value=100.0, key=f"male_max_{form_key}")
-                                                male_unit = st.text_input("Unit", value="mg/dL", key=f"male_unit_{form_key}")
-                                            
-                                            with col_female:
-                                                st.write("**Female Range:**")
-                                                female_min = st.number_input("Min", value=0.0, key=f"female_min_{form_key}")
-                                                female_max = st.number_input("Max", value=100.0, key=f"female_max_{form_key}")
-                                                female_unit = st.text_input("Unit", value="mg/dL", key=f"female_unit_{form_key}")
-                                            
-                                            # Description
-                                            description = st.text_area(
-                                                "Description", 
-                                                value="Investigation standard created from medical report extraction",
-                                                key=f"desc_{form_key}"
-                                            )
-                                            
-                                            # Aliases (automatically include the extracted text)
-                                            aliases_input = st.text_input(
-                                                "Aliases (comma-separated)", 
-                                                value=test_name,
-                                                help="The extracted test name will be automatically added to aliases",
-                                                key=f"aliases_{form_key}"
-                                            )
-                                            
-                                            # Submit button
-                                            submit_individual = st.form_submit_button(
-                                                f"✅ Create Standard for {test_name}", 
-                                                type="primary"
-                                            )
-                                            
-                                            if submit_individual:
-                                                try:
-                                                    # Ensure extracted test name is in aliases
-                                                    aliases_list = [alias.strip() for alias in aliases_input.split(',') if alias.strip()]
-                                                    if test_name not in aliases_list:
-                                                        aliases_list.append(test_name)
-                                                    
-                                                    success = investigation_standards.add_standard(
-                                                        standard_name=standard_name,
-                                                        category=category,
-                                                        male_range_min=male_min,
-                                                        male_range_max=male_max,
-                                                        male_unit=male_unit,
-                                                        female_range_min=female_min,
-                                                        female_range_max=female_max,
-                                                        female_unit=female_unit,
-                                                        description=description,
-                                                        aliases=", ".join(aliases_list)
-                                                    )
-                                                    
-                                                    if success:
-                                                        st.success(f"✅ Successfully created standard for {test_name}!")
-                                                        st.rerun()
-                                                    else:
-                                                        st.error(f"❌ Failed to create standard for {test_name}")
-                                                
-                                                except Exception as e:
-                                                    st.error(f"Error creating standard: {str(e)}")
                             
                             with col2:
                                 if exists_in_aliases:
                                     st.write("**Action:** None needed")
                                 else:
                                     st.write("**Action:** Create new")
+                            
+                            with col3:
+                                # Show image snippet for this investigation type
+                                if hasattr(st.session_state, 'image_snippet_extractor'):
+                                    image_snippet_extractor = st.session_state.image_snippet_extractor
+                                else:
+                                    from image_snippet_extractor import ImageSnippetExtractor
+                                    image_snippet_extractor = ImageSnippetExtractor()
+                                    st.session_state.image_snippet_extractor = image_snippet_extractor
+                                
+                                if st.button(f"📷 View Snippet", key=f"snippet_{abs(hash(test_name)) % 1000000}", help=f"Show document snippet for {test_name}"):
+                                    try:
+                                        # Try to get image snippet for this test
+                                        snippet_image = image_snippet_extractor.get_context_snippet(test_name)
+                                        if snippet_image:
+                                            st.image(snippet_image, caption=f"Document snippet showing '{test_name}'", use_column_width=True)
+                                        else:
+                                            st.info(f"No visual snippet available for '{test_name}'")
+                                    except Exception as e:
+                                        st.error(f"Error getting snippet: {str(e)}")
+                            
+                            # Continue with the form logic for new investigations
+                            if not exists_in_aliases:
+                                checkbox_key = f"create_{abs(hash(test_name)) % 1000000}"
+                                create_checkbox = st.session_state.get(checkbox_key, True)
+                                
+                                if create_checkbox:
+                                    # Create unique form key using test name hash to avoid duplicates
+                                    form_key = f"create_form_{abs(hash(test_name)) % 1000000}"
+                                    
+                                    with st.form(form_key):
+                                        st.write("**Investigation Standard Details:**")
+                                        
+                                        # Standard name (pre-populated with extracted text)
+                                        standard_name = st.text_input(
+                                            "Standard Investigation Name", 
+                                            value=test_name,
+                                            key=f"name_{form_key}"
+                                        )
+                                        
+                                        # Category
+                                        category = st.selectbox(
+                                            "Category", 
+                                            ["Blood Chemistry", "Hematology", "Lipid Profile", "Liver Function", 
+                                             "Kidney Function", "Thyroid Function", "Cardiac Markers", "Diabetes Markers",
+                                             "Electrolytes", "Vitamins", "Hormones", "Other"],
+                                            key=f"category_{form_key}"
+                                        )
+                                        
+                                        # Reference ranges
+                                        col_male, col_female = st.columns(2)
+                                        
+                                        with col_male:
+                                            st.write("**Male Range:**")
+                                            male_min = st.number_input("Min", value=0.0, key=f"male_min_{form_key}")
+                                            male_max = st.number_input("Max", value=100.0, key=f"male_max_{form_key}")
+                                            male_unit = st.text_input("Unit", value="mg/dL", key=f"male_unit_{form_key}")
+                                        
+                                        with col_female:
+                                            st.write("**Female Range:**")
+                                            female_min = st.number_input("Min", value=0.0, key=f"female_min_{form_key}")
+                                            female_max = st.number_input("Max", value=100.0, key=f"female_max_{form_key}")
+                                            female_unit = st.text_input("Unit", value="mg/dL", key=f"female_unit_{form_key}")
+                                        
+                                        # Description
+                                        description = st.text_area(
+                                            "Description", 
+                                            value="Investigation standard created from medical report extraction",
+                                            key=f"desc_{form_key}"
+                                        )
+                                        
+                                        # Aliases (automatically include the extracted text)
+                                        aliases_input = st.text_input(
+                                            "Aliases (comma-separated)", 
+                                            value=test_name,
+                                            help="The extracted test name will be automatically added to aliases",
+                                            key=f"aliases_{form_key}"
+                                        )
+                                        
+                                        # Submit button
+                                        submit_individual = st.form_submit_button(
+                                            f"✅ Create Standard for {test_name}", 
+                                            type="primary"
+                                        )
+                                        
+                                        if submit_individual:
+                                            try:
+                                                # Ensure extracted test name is in aliases
+                                                aliases_list = [alias.strip() for alias in aliases_input.split(',') if alias.strip()]
+                                                if test_name not in aliases_list:
+                                                    aliases_list.append(test_name)
+                                                
+                                                success = investigation_standards.add_standard(
+                                                    standard_name=standard_name,
+                                                    category=category,
+                                                    male_range_min=male_min,
+                                                    male_range_max=male_max,
+                                                    male_unit=male_unit,
+                                                    female_range_min=female_min,
+                                                    female_range_max=female_max,
+                                                    female_unit=female_unit,
+                                                    description=description,
+                                                    aliases=", ".join(aliases_list)
+                                                )
+                                                
+                                                if success:
+                                                    st.success(f"✅ Successfully created standard for {test_name}!")
+                                                    st.rerun()
+                                                else:
+                                                    st.error(f"❌ Failed to create standard for {test_name}")
+                                            
+                                            except Exception as e:
+                                                st.error(f"Error creating standard: {str(e)}")
 
 if __name__ == "__main__":
     main()
