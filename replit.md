@@ -121,6 +121,13 @@ Preferred communication style: Simple, everyday language.
 
 ## Recent Changes
 
+### July 16, 2025 - Optimized Form Field Editing
+- **Simplified Patient Name and Date Editing**: Removed session state management that caused page reloads
+  - Patient name and test date fields are directly editable without triggering OCR re-extraction
+  - Form values are passed directly to data processor when saving results
+  - Eliminated unnecessary page refreshes when editing patient information
+  - Maintained all extraction and editing functionality without form interference
+
 ### July 16, 2025 - Investigation Type Dropdown with Fuzzy Matching
 - **Smart Investigation Selection**: Replaced text inputs with intelligent dropdown selections in extraction details
   - Investigation type selectboxes display all standardized investigation names from the standards table
