@@ -514,16 +514,20 @@ Extraction Method: {result.get('source', 'regex')}""")
                                         if dropdown_selection == "(Use custom text below)":
                                             # User chose to use custom text - ignore fuzzy match, use custom input
                                             final_test_type = custom_text_value
+                                            st.write(f"DEBUG Test {i+1}: USING CUSTOM TEXT: '{final_test_type}'")
                                         else:
                                             # User selected a standard from dropdown - use that standard
                                             final_test_type = dropdown_selection
+                                            st.write(f"DEBUG Test {i+1}: USING DROPDOWN: '{final_test_type}'")
                                         
-                                        final_results.append({
+                                        test_result = {
                                             'test_type': final_test_type,
                                             'value': st.session_state.get(f"test_value_{uploaded_file.name}_{i}", result['value']),
                                             'unit': st.session_state.get(f"test_unit_{uploaded_file.name}_{i}", result.get('unit', '')),
                                             'reference_range': result.get('reference_range', '')
-                                        })
+                                        }
+                                        final_results.append(test_result)
+                                        st.write(f"DEBUG Test {i+1}: STORED RESULT: {test_result}")
                                 
                                 # Add additional manual tests
                                 num_additional = st.session_state.get(f"num_additional_{uploaded_file.name}", 0)
