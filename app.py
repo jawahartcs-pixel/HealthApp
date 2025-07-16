@@ -330,7 +330,7 @@ Extraction Method: {result.get('source', 'regex')}""")
                                     with right_col:
                                         st.markdown("**✏️ Edit Before Saving:**")
                                         
-                                        # Investigation type selection with fuzzy matching
+                                        # Editable investigation type with standardization dropdown
                                         investigation_standards = st.session_state.get('investigation_standards')
                                         if investigation_standards:
                                             # Get all standard names
@@ -340,209 +340,53 @@ Extraction Method: {result.get('source', 'regex')}""")
                                             # Try to find fuzzy match for current test type
                                             standardized_name, match_info = investigation_standards.standardize_test_name(result['test_type'])
                                             
-                                            st.markdown("**Investigation Type Options:**")
+                                            # Create the options list
+                                            if standardized_name in standard_names:
+                                                # If we found a match, select it by default
+                                                default_index = standard_names.index(standardized_name)
+                                                options = standard_names
+                                            else:
+                                                # If no match, add the original name to the list and select it
+                                                options = [result['test_type']] + standard_names
+                                                default_index = 0
                                             
-                                            # Show comparison between fuzzy match and extracted data
-                                            col_option1, col_option2 = st.columns(2)
+                                            selected_test_type = st.selectbox(
+                                                "Investigation Type",
+                                                options=options,
+                                                index=default_index,
+                                                key=f"test_name_{uploaded_file.name}_{i}",
+                                                help="Select standardized investigation type or use extracted name"
+                                            )
                                             
-                                            with col_option1:
-                                                if match_info and standardized_name in standard_names:
-                                                    match_score = match_info.get('match_score', 0)
-                                                    st.markdown(f"**🔍 Fuzzy Match (Score: {match_score:.2f})**")
-                                                    st.success(f"✅ {standardized_name}")
-                                                    if match_info.get('gender_specific', False):
-                                                        st.caption(f"Male: {match_info['male_range_min']}-{match_info['male_range_max']} {match_info['male_unit']}")
-                                                        st.caption(f"Female: {match_info['female_range_min']}-{match_info['female_range_max']} {match_info['female_unit']}")
-                                                    else:
-                                                        st.caption(f"Range: {match_info['male_range_min']}-{match_info['male_range_max']} {match_info['male_unit']}")
-                                                else:
-                                                    st.markdown("**🔍 Fuzzy Match**")
-                                                    st.warning("❌ No match found")
-                                            
-                                            with col_option2:
-                                                st.markdown("**📝 Extracted Data**")
-                                                st.info(f"📋 {result['test_type']}")
-                                                if result.get('reference_range'):
-                                                    st.caption(f"Range: {result.get('reference_range')}")
-                                                if result.get('unit'):
-                                                    st.caption(f"Unit: {result.get('unit')}")
-                                            
-                                            # Always show editable fields for extracted data
-                                            st.markdown("**Edit Test Data:**")
-                                            
-                                            # Editable fields for all investigation types
-                                            col_edit1, col_edit2, col_edit3 = st.columns(3)
-                                            
-                                            with col_edit1:
-                                                edited_test_name = st.text_input(
-                                                    "Test Name:",
-                                                    value=result['test_type'],
-                                                    key=f"edit_name_{uploaded_file.name}_{i}",
-                                                    help="Edit the test name before saving"
-                                                )
-                                            
-                                            with col_edit2:
-                                                # Use session state value if available, otherwise use original
-                                                current_value = st.session_state.get(f"edit_value_{uploaded_file.name}_{i}", float(result['value']))
-                                                edited_test_value = st.number_input(
-                                                    "Test Value:",
-                                                    value=current_value,
-                                                    key=f"edit_value_{uploaded_file.name}_{i}",
-                                                    help="Edit the test value"
-                                                )
-                                            
-                                            with col_edit3:
-                                                edited_test_unit = st.text_input(
-                                                    "Unit:",
-                                                    value=result.get('unit', ''),
-                                                    key=f"edit_unit_{uploaded_file.name}_{i}",
-                                                    help="Edit the unit"
-                                                )
-                                            
-                                            # Show what will be saved
-                                            st.info(f"📋 Will save: **{edited_test_name}** = {edited_test_value} {edited_test_unit}")
-                                            
-                                            # Always show "Create New Standard" dialog for extracted data
-                                            if edited_test_name not in standard_names:
-                                                with st.expander("➕ Create New Standard from Edited Data", expanded=False):
-                                                    # Use the edited values for creating the standard
-                                                    current_test_name = st.session_state.get(f"edit_name_{uploaded_file.name}_{i}", result['test_type'])
-                                                    current_test_unit = st.session_state.get(f"edit_unit_{uploaded_file.name}_{i}", result.get('unit', ''))
-                                                    
-                                                    st.markdown(f"**Creating standard for:** `{current_test_name}`")
-                                                    
-                                                    # Parse reference range from extracted data
-                                                    ref_range = result.get('reference_range', '')
-                                                    unit = current_test_unit or result.get('unit', '')
-                                                    
-                                                    # Initialize range values
-                                                    range_min = 0.0
-                                                    range_max = 0.0
-                                                    
-                                                    # Try to parse reference range
-                                                    if ref_range and '-' in ref_range:
-                                                        try:
-                                                            range_part = ref_range.split()[0] if ' ' in ref_range else ref_range
-                                                            if '-' in range_part:
-                                                                min_str, max_str = range_part.split('-', 1)
-                                                                range_min = float(min_str.strip())
-                                                                range_max = float(max_str.strip())
-                                                                if not unit and ' ' in ref_range:
-                                                                    unit = ref_range.split(' ', 1)[1]
-                                                        except (ValueError, IndexError):
-                                                            pass
-                                                    
-                                                    col1, col2 = st.columns(2)
-                                                    
-                                                    with col1:
-                                                        new_std_name = st.text_input(
-                                                            "Standard Name:", 
-                                                            value=current_test_name,
-                                                            key=f"new_std_name_dialog_{uploaded_file.name}_{i}"
-                                                        )
-                                                        new_std_category = st.selectbox(
-                                                            "Category:",
-                                                            options=["Complete Blood Count", "Basic Metabolic Panel", "Liver Function", "Lipid Panel", "Thyroid Function", "Kidney Function", "Other"],
-                                                            key=f"new_std_cat_dialog_{uploaded_file.name}_{i}"
-                                                        )
-                                                        new_std_description = st.text_area(
-                                                            "Description:",
-                                                            value=f"Extracted from document. Original range: {ref_range}",
-                                                            key=f"new_std_desc_dialog_{uploaded_file.name}_{i}"
-                                                        )
-                                                    
-                                                    with col2:
-                                                        st.markdown("**Reference Ranges**")
-                                                        new_gender_specific = st.checkbox(
-                                                            "Different ranges for male/female",
-                                                            key=f"new_std_gender_dialog_{uploaded_file.name}_{i}"
-                                                        )
-                                                        
-                                                        if new_gender_specific:
-                                                            st.markdown("**Male Range:**")
-                                                            col_m1, col_m2, col_m3 = st.columns(3)
-                                                            with col_m1:
-                                                                new_male_min = st.number_input("Min", value=range_min, key=f"new_std_m_min_dialog_{uploaded_file.name}_{i}")
-                                                            with col_m2:
-                                                                new_male_max = st.number_input("Max", value=range_max, key=f"new_std_m_max_dialog_{uploaded_file.name}_{i}")
-                                                            with col_m3:
-                                                                new_male_unit = st.text_input("Unit", value=unit, key=f"new_std_m_unit_dialog_{uploaded_file.name}_{i}")
-                                                            
-                                                            st.markdown("**Female Range:**")
-                                                            col_f1, col_f2, col_f3 = st.columns(3)
-                                                            with col_f1:
-                                                                new_female_min = st.number_input("Min", value=range_min, key=f"new_std_f_min_dialog_{uploaded_file.name}_{i}")
-                                                            with col_f2:
-                                                                new_female_max = st.number_input("Max", value=range_max, key=f"new_std_f_max_dialog_{uploaded_file.name}_{i}")
-                                                            with col_f3:
-                                                                new_female_unit = st.text_input("Unit", value=unit, key=f"new_std_f_unit_dialog_{uploaded_file.name}_{i}")
-                                                        else:
-                                                            st.markdown("**Reference Range (Both Genders):**")
-                                                            col_1, col_2, col_3 = st.columns(3)
-                                                            with col_1:
-                                                                new_male_min = new_female_min = st.number_input("Min", value=range_min, key=f"new_std_single_min_dialog_{uploaded_file.name}_{i}")
-                                                            with col_2:
-                                                                new_male_max = new_female_max = st.number_input("Max", value=range_max, key=f"new_std_single_max_dialog_{uploaded_file.name}_{i}")
-                                                            with col_3:
-                                                                new_male_unit = new_female_unit = st.text_input("Unit", value=unit, key=f"new_std_single_unit_dialog_{uploaded_file.name}_{i}")
-                                                    
-                                                    # Store data for creating standard when form is submitted
-                                                    create_std_data = st.checkbox(
-                                                        f"🔬 Add '{new_std_name}' to standardization table when saving",
-                                                        key=f"create_std_checkbox_{uploaded_file.name}_{i}",
-                                                        help="This standard will be created when you save the results"
-                                                    )
-                                                    
-                                                    if create_std_data:
-                                                        # Store all the standard data in session state
-                                                        st.session_state[f'new_std_data_{uploaded_file.name}_{i}'] = {
-                                                            'standard_name': new_std_name,
-                                                            'aliases': '',
-                                                            'male_range_min': new_male_min,
-                                                            'male_range_max': new_male_max,
-                                                            'male_unit': new_male_unit,
-                                                            'female_range_min': new_female_min,
-                                                            'female_range_max': new_female_max,
-                                                            'female_unit': new_female_unit,
-                                                            'description': new_std_description,
-                                                            'category': new_std_category,
-                                                            'gender_specific': new_gender_specific
-                                                        }
-                                                        st.success(f"✅ Standard '{new_std_name}' will be created when you save results")
-                                                    else:
-                                                        # Remove from session state if unchecked
-                                                        if f'new_std_data_{uploaded_file.name}_{i}' in st.session_state:
-                                                            del st.session_state[f'new_std_data_{uploaded_file.name}_{i}']
+                                            # Show match information if fuzzy match was found
+                                            if match_info and standardized_name != result['test_type']:
+                                                match_score = match_info.get('match_score', 0)
+                                                st.caption(f"🔍 Fuzzy match: '{result['test_type']}' → '{standardized_name}' (score: {match_score:.2f})")
                                         else:
-                                            # If investigation standards not available, still show editable fields
-                                            st.markdown("**Edit Test Data:**")
-                                            
-                                            col_edit1, col_edit2, col_edit3 = st.columns(3)
-                                            
-                                            with col_edit1:
-                                                st.text_input(
-                                                    "Test Name:",
-                                                    value=result['test_type'],
-                                                    key=f"edit_name_{uploaded_file.name}_{i}",
-                                                    help="Edit the test name"
-                                                )
-                                            
-                                            with col_edit2:
-                                                current_value = st.session_state.get(f"edit_value_{uploaded_file.name}_{i}", float(result['value']))
-                                                st.number_input(
-                                                    "Test Value:",
-                                                    value=current_value,
-                                                    key=f"edit_value_{uploaded_file.name}_{i}",
-                                                    help="Edit the test value"
-                                                )
-                                            
-                                            with col_edit3:
-                                                st.text_input(
-                                                    "Unit:",
-                                                    value=result.get('unit', ''),
-                                                    key=f"edit_unit_{uploaded_file.name}_{i}",
-                                                    help="Edit the unit"
-                                                )
+                                            # Fallback to text input if standards not available
+                                            st.text_input(
+                                                "Investigation Type",
+                                                value=result['test_type'],
+                                                key=f"test_name_{uploaded_file.name}_{i}",
+                                                help="Edit the test name if needed"
+                                            )
+                                        
+                                        # Editable value
+                                        st.number_input(
+                                            "Value",
+                                            value=float(result['value']),
+                                            key=f"test_value_{uploaded_file.name}_{i}",
+                                            format="%.2f",
+                                            help="Edit the test value if needed"
+                                        )
+                                        
+                                        # Editable unit
+                                        st.text_input(
+                                            "Unit",
+                                            value=result.get('unit', ''),
+                                            key=f"test_unit_{uploaded_file.name}_{i}",
+                                            help="Edit the unit if needed"
+                                        )
                                         
                                         # Include checkbox
                                         st.checkbox(
@@ -641,22 +485,6 @@ Extraction Method: {result.get('source', 'regex')}""")
                         
                         if save_clicked and patient_name:
                             with st.spinner("Saving results..."):
-                                status_text.text("Creating new standards...")
-                                progress_bar.progress(80)
-                                
-                                # First, create any new standards that were requested
-                                investigation_standards = st.session_state.get('investigation_standards')
-                                if investigation_standards:
-                                    for i, result in enumerate(test_data['results']):
-                                        std_data_key = f'new_std_data_{uploaded_file.name}_{i}'
-                                        if std_data_key in st.session_state:
-                                            standard_data = st.session_state[std_data_key]
-                                            
-                                            if investigation_standards.add_standard(standard_data):
-                                                st.success(f"✅ Created standard for '{standard_data['standard_name']}'")
-                                            else:
-                                                st.warning(f"⚠️ Could not create standard for '{standard_data['standard_name']}'")
-                                
                                 status_text.text("Saving to database...")
                                 progress_bar.progress(90)
                                 
@@ -664,32 +492,10 @@ Extraction Method: {result.get('source', 'regex')}""")
                                 final_results = []
                                 for i, result in enumerate(test_data['results']):
                                     if st.session_state.get(f"include_{uploaded_file.name}_{i}", True):
-                                        # Get values from different possible keys depending on choice made
-                                        test_name = (
-                                            st.session_state.get(f"edit_name_{uploaded_file.name}_{i}") or
-                                            st.session_state.get(f"test_name_{uploaded_file.name}_{i}") or
-                                            st.session_state.get(f"fallback_name_{uploaded_file.name}_{i}") or
-                                            result['test_type']
-                                        )
-                                        
-                                        test_value = (
-                                            st.session_state.get(f"edit_value_{uploaded_file.name}_{i}") or
-                                            st.session_state.get(f"test_value_{uploaded_file.name}_{i}") or
-                                            st.session_state.get(f"fallback_value_{uploaded_file.name}_{i}") or
-                                            result['value']
-                                        )
-                                        
-                                        test_unit = (
-                                            st.session_state.get(f"edit_unit_{uploaded_file.name}_{i}") or
-                                            st.session_state.get(f"test_unit_{uploaded_file.name}_{i}") or
-                                            st.session_state.get(f"fallback_unit_{uploaded_file.name}_{i}") or
-                                            result.get('unit', '')
-                                        )
-                                        
                                         final_results.append({
-                                            'test_type': test_name,
-                                            'value': test_value,
-                                            'unit': test_unit,
+                                            'test_type': st.session_state.get(f"test_name_{uploaded_file.name}_{i}", result['test_type']),
+                                            'value': st.session_state.get(f"test_value_{uploaded_file.name}_{i}", result['value']),
+                                            'unit': st.session_state.get(f"test_unit_{uploaded_file.name}_{i}", result.get('unit', '')),
                                             'reference_range': result.get('reference_range', '')
                                         })
                                 
@@ -729,15 +535,6 @@ Extraction Method: {result.get('source', 'regex')}""")
                                     extracted_count = len([r for i, r in enumerate(test_data['results']) if st.session_state.get(f"include_{uploaded_file.name}_{i}", True)])
                                     st.success(f"Successfully saved {len(final_results)} test results for {patient_name}")
                                     st.info(f"Extracted: {extracted_count} tests, Additional: {additional_count} tests")
-                                    
-                                    # Clear all session state keys related to this upload
-                                    keys_to_remove = []
-                                    for key in st.session_state.keys():
-                                        if uploaded_file.name in key:
-                                            keys_to_remove.append(key)
-                                    
-                                    for key in keys_to_remove:
-                                        del st.session_state[key]
                                     
                                     # Show extraction debug info
                                     with st.expander("Debug: Extraction details"):
@@ -2158,43 +1955,25 @@ def investigation_standards_page(investigation_standards):
                     with col2:
                         st.markdown("**🚹🚺 Reference Ranges**")
                         
-                        # Gender-specific checkbox
-                        gender_specific = st.checkbox(
-                            "Different ranges for male/female", 
-                            value=standard.get('gender_specific', False), 
-                            key=f"gender_specific_{standard['id']}"
-                        )
+                        # Male ranges
+                        st.markdown("**Male Range:**")
+                        col_m1, col_m2, col_m3 = st.columns(3)
+                        with col_m1:
+                            male_min = st.number_input("Min", value=float(standard['male_range_min']) if standard['male_range_min'] else 0.0, key=f"m_min_{standard['id']}")
+                        with col_m2:
+                            male_max = st.number_input("Max", value=float(standard['male_range_max']) if standard['male_range_max'] else 0.0, key=f"m_max_{standard['id']}")
+                        with col_m3:
+                            male_unit = st.text_input("Unit", value=standard['male_unit'] or '', key=f"m_unit_{standard['id']}")
                         
-                        if gender_specific:
-                            # Male ranges
-                            st.markdown("**Male Range:**")
-                            col_m1, col_m2, col_m3 = st.columns(3)
-                            with col_m1:
-                                male_min = st.number_input("Min", value=float(standard['male_range_min']) if standard['male_range_min'] else 0.0, key=f"m_min_{standard['id']}")
-                            with col_m2:
-                                male_max = st.number_input("Max", value=float(standard['male_range_max']) if standard['male_range_max'] else 0.0, key=f"m_max_{standard['id']}")
-                            with col_m3:
-                                male_unit = st.text_input("Unit", value=standard['male_unit'] or '', key=f"m_unit_{standard['id']}")
-                            
-                            # Female ranges
-                            st.markdown("**Female Range:**")
-                            col_f1, col_f2, col_f3 = st.columns(3)
-                            with col_f1:
-                                female_min = st.number_input("Min", value=float(standard['female_range_min']) if standard['female_range_min'] else 0.0, key=f"f_min_{standard['id']}")
-                            with col_f2:
-                                female_max = st.number_input("Max", value=float(standard['female_range_max']) if standard['female_range_max'] else 0.0, key=f"f_max_{standard['id']}")
-                            with col_f3:
-                                female_unit = st.text_input("Unit", value=standard['female_unit'] or '', key=f"f_unit_{standard['id']}")
-                        else:
-                            # Single range for both genders
-                            st.markdown("**Reference Range (Both Genders):**")
-                            col_1, col_2, col_3 = st.columns(3)
-                            with col_1:
-                                male_min = female_min = st.number_input("Min", value=float(standard['male_range_min']) if standard['male_range_min'] else 0.0, key=f"single_min_{standard['id']}")
-                            with col_2:
-                                male_max = female_max = st.number_input("Max", value=float(standard['male_range_max']) if standard['male_range_max'] else 0.0, key=f"single_max_{standard['id']}")
-                            with col_3:
-                                male_unit = female_unit = st.text_input("Unit", value=standard['male_unit'] or '', key=f"single_unit_{standard['id']}")
+                        # Female ranges
+                        st.markdown("**Female Range:**")
+                        col_f1, col_f2, col_f3 = st.columns(3)
+                        with col_f1:
+                            female_min = st.number_input("Min", value=float(standard['female_range_min']) if standard['female_range_min'] else 0.0, key=f"f_min_{standard['id']}")
+                        with col_f2:
+                            female_max = st.number_input("Max", value=float(standard['female_range_max']) if standard['female_range_max'] else 0.0, key=f"f_max_{standard['id']}")
+                        with col_f3:
+                            female_unit = st.text_input("Unit", value=standard['female_unit'] or '', key=f"f_unit_{standard['id']}")
                     
                     # Action buttons
                     col1, col2, col3 = st.columns(3)
@@ -2211,8 +1990,7 @@ def investigation_standards_page(investigation_standards):
                                 'female_range_max': female_max,
                                 'female_unit': female_unit,
                                 'description': edit_description,
-                                'category': edit_category,
-                                'gender_specific': gender_specific
+                                'category': edit_category
                             }
                             
                             if investigation_standards.update_standard(standard['id'], update_data):
@@ -2231,10 +2009,7 @@ def investigation_standards_page(investigation_standards):
                     
                     with col3:
                         # Show current reference ranges
-                        if gender_specific:
-                            st.info(f"M: {male_min}-{male_max} {male_unit}\nF: {female_min}-{female_max} {female_unit}")
-                        else:
-                            st.info(f"Both: {male_min}-{male_max} {male_unit}")
+                        st.info(f"M: {male_min}-{male_max} {male_unit}\nF: {female_min}-{female_max} {female_unit}")
         
         else:
             st.info("No investigation standards found. Add some standards to get started.")
@@ -2257,39 +2032,25 @@ def investigation_standards_page(investigation_standards):
             with col2:
                 st.markdown("**Reference Ranges**")
                 
-                # Gender-specific checkbox
-                new_gender_specific = st.checkbox("Different ranges for male/female", value=False, key="new_gender_specific")
+                # Male ranges
+                st.markdown("**Male Range:**")
+                col_m1, col_m2, col_m3 = st.columns(3)
+                with col_m1:
+                    new_male_min = st.number_input("Min Value", value=0.0, key="new_m_min")
+                with col_m2:
+                    new_male_max = st.number_input("Max Value", value=0.0, key="new_m_max")
+                with col_m3:
+                    new_male_unit = st.text_input("Unit", placeholder="mg/dL", key="new_m_unit")
                 
-                if new_gender_specific:
-                    # Male ranges
-                    st.markdown("**Male Range:**")
-                    col_m1, col_m2, col_m3 = st.columns(3)
-                    with col_m1:
-                        new_male_min = st.number_input("Min Value", value=0.0, key="new_m_min")
-                    with col_m2:
-                        new_male_max = st.number_input("Max Value", value=0.0, key="new_m_max")
-                    with col_m3:
-                        new_male_unit = st.text_input("Unit", placeholder="mg/dL", key="new_m_unit")
-                    
-                    # Female ranges
-                    st.markdown("**Female Range:**")
-                    col_f1, col_f2, col_f3 = st.columns(3)
-                    with col_f1:
-                        new_female_min = st.number_input("Min Value", value=0.0, key="new_f_min")
-                    with col_f2:
-                        new_female_max = st.number_input("Max Value", value=0.0, key="new_f_max")
-                    with col_f3:
-                        new_female_unit = st.text_input("Unit", placeholder="mg/dL", key="new_f_unit")
-                else:
-                    # Single range for both genders
-                    st.markdown("**Reference Range (Both Genders):**")
-                    col_1, col_2, col_3 = st.columns(3)
-                    with col_1:
-                        new_male_min = new_female_min = st.number_input("Min Value", value=0.0, key="new_single_min")
-                    with col_2:
-                        new_male_max = new_female_max = st.number_input("Max Value", value=0.0, key="new_single_max")
-                    with col_3:
-                        new_male_unit = new_female_unit = st.text_input("Unit", placeholder="mg/dL", key="new_single_unit")
+                # Female ranges
+                st.markdown("**Female Range:**")
+                col_f1, col_f2, col_f3 = st.columns(3)
+                with col_f1:
+                    new_female_min = st.number_input("Min Value", value=0.0, key="new_f_min")
+                with col_f2:
+                    new_female_max = st.number_input("Max Value", value=0.0, key="new_f_max")
+                with col_f3:
+                    new_female_unit = st.text_input("Unit", placeholder="mg/dL", key="new_f_unit")
             
             if st.form_submit_button("🔬 Add Standard"):
                 if new_name and new_category:
@@ -2303,8 +2064,7 @@ def investigation_standards_page(investigation_standards):
                         'female_range_max': new_female_max,
                         'female_unit': new_female_unit,
                         'description': new_description,
-                        'category': new_category,
-                        'gender_specific': new_gender_specific
+                        'category': new_category
                     }
                     
                     if investigation_standards.add_standard(new_standard):
@@ -2339,17 +2099,8 @@ def investigation_standards_page(investigation_standards):
                     if match_info:
                         match_score = match_info.get('match_score', 0)
                         category = match_info.get('category', 'Unknown')
-                        gender_specific = match_info.get('gender_specific', False)
-                        
-                        if gender_specific:
-                            male_range = f"{match_info['male_range_min']}-{match_info['male_range_max']} {match_info['male_unit']}"
-                            female_range = f"{match_info['female_range_min']}-{match_info['female_range_max']} {match_info['female_unit']}"
-                        else:
-                            # Same range for both genders
-                            range_text = f"{match_info['male_range_min']}-{match_info['male_range_max']} {match_info['male_unit']}"
-                            male_range = f"{range_text} (shared)"
-                            female_range = f"{range_text} (shared)"
-                        
+                        male_range = f"{match_info['male_range_min']}-{match_info['male_range_max']} {match_info['male_unit']}"
+                        female_range = f"{match_info['female_range_min']}-{match_info['female_range_max']} {match_info['female_unit']}"
                         status = "✅ Matched"
                     else:
                         match_score = 0
