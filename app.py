@@ -600,21 +600,49 @@ def patient_dashboard_page(db, visualization, alert_system, user_id):
         df['Value'] = pd.to_numeric(df['Value'], errors='coerce')
         
         # Patient summary
-        col1, col2, col3, col4 = st.columns(4)
+        col1, col2, col3, col4, col5 = st.columns(5)
         
         with col1:
             st.metric("Total Tests", len(df))
         
         with col2:
-            st.metric("Test Types", df['Test Type'].nunique())
+            unique_reports = df['Date'].dt.date.nunique()
+            st.metric("Reports", unique_reports)
         
         with col3:
+            st.metric("Test Types", df['Test Type'].nunique())
+        
+        with col4:
             first_test = df['Date'].min().strftime('%Y-%m-%d')
             st.metric("First Test", first_test)
         
-        with col4:
+        with col5:
             last_test = df['Date'].max().strftime('%Y-%m-%d')
             st.metric("Last Test", last_test)
+        
+        # Show detailed report breakdown
+        st.subheader("📋 Report Summary")
+        
+        # Create a detailed summary by date
+        date_groups = df.groupby(df['Date'].dt.date).agg({
+            'Test Type': ['count', lambda x: ', '.join(sorted(x.unique()))]
+        }).reset_index()
+        date_groups.columns = ['Report Date', 'Test Count', 'Test Types']
+        
+        # Display in a nice format
+        for _, row in date_groups.iterrows():
+            with st.expander(f"📊 Report from {row['Report Date']} - {row['Test Count']} tests"):
+                test_types_list = row['Test Types'].split(', ')
+                cols = st.columns(min(3, len(test_types_list)))
+                for i, test_type in enumerate(test_types_list):
+                    with cols[i % 3]:
+                        test_values = df[(df['Date'].dt.date == row['Report Date']) & (df['Test Type'] == test_type)]
+                        if len(test_values) > 0:
+                            value = test_values.iloc[0]['Value']
+                            unit = test_values.iloc[0]['Unit'] or ''
+                            st.metric(test_type, f"{value} {unit}")
+        
+        st.divider()
         
         # Get and display patient alerts
         patient_alerts = alert_system.get_patient_alerts(selected_patient)
