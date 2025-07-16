@@ -149,6 +149,9 @@ Preferred communication style: Simple, everyday language.
   - Side-by-side document preview showing full document image alongside extracted investigation list
   - Enhanced image snippet extractor with support for both PDF and direct image file processing
   - Full document display without trimming for complete context during investigation standard creation
+  - Text highlighting functionality showing blue boxes around extracted investigation types in document images
+  - Highlighted document snippets for both full document view and individual investigation snippets
+  - Visual indicators with blue rectangles around found text similar to main upload page functionality
 
 ### July 16, 2025 - Reference Range Extraction & Display
 - **Enhanced Reference Range Extraction**: Added comprehensive reference range detection to file parser

@@ -2304,8 +2304,8 @@ def investigation_standards_page(investigation_standards):
                                         doc_col, tests_col = st.columns([1, 1])
                                         
                                         with doc_col:
-                                            st.subheader("📄 Full Document")
-                                            # Show full document image snippet
+                                            st.subheader("📄 Full Document with Highlights")
+                                            # Show full document image snippet with highlighted extracted tests
                                             try:
                                                 # Get image snippet extractor
                                                 if hasattr(st.session_state, 'image_snippet_extractor'):
@@ -2315,13 +2315,21 @@ def investigation_standards_page(investigation_standards):
                                                     image_snippet_extractor = ImageSnippetExtractor()
                                                     st.session_state.image_snippet_extractor = image_snippet_extractor
                                                 
-                                                # Get full document snippet
-                                                full_doc_snippet = image_snippet_extractor.get_full_document()
-                                                if full_doc_snippet:
-                                                    st.image(full_doc_snippet, caption=f"Full document: {file_name}", use_column_width=True)
+                                                # Display extracted test types
+                                                test_types_found = []
+                                                for result in test_data['results']:
+                                                    test_type = result.get('test_type', '').strip()
+                                                    if test_type and test_type not in test_types_found:
+                                                        test_types_found.append(test_type)
+                                                
+                                                # Get document with all highlighted test names
+                                                highlighted_doc = image_snippet_extractor.get_document_with_highlights(test_types_found)
+                                                if highlighted_doc:
+                                                    st.image(highlighted_doc, caption=f"Document with highlighted investigations: {file_name}", use_column_width=True)
+                                                    st.caption("🔵 Blue boxes highlight extracted investigation types")
                                                 else:
                                                     # Fallback: show document type and basic info
-                                                    st.info("Full document image not available for this file type")
+                                                    st.info("Highlighted document image not available for this file type")
                                                     if hasattr(uploaded_file, 'type'):
                                                         if uploaded_file.type.startswith('image/'):
                                                             # For image files, display the image directly
@@ -2331,7 +2339,7 @@ def investigation_standards_page(investigation_standards):
                                                             st.write(f"File type: {uploaded_file.type}")
                                                             st.write(f"Use 'View Snippet' buttons below to see specific sections")
                                             except Exception as e:
-                                                st.warning(f"Could not display full document: {str(e)}")
+                                                st.warning(f"Could not display highlighted document: {str(e)}")
                                                 # Show basic file info as fallback
                                                 if hasattr(uploaded_file, 'type') and uploaded_file.type.startswith('image/'):
                                                     uploaded_file.seek(0)
@@ -2449,10 +2457,11 @@ def investigation_standards_page(investigation_standards):
                                 
                                 if st.button(f"📷 View Snippet", key=f"snippet_{abs(hash(test_name)) % 1000000}", help=f"Show document snippet for {test_name}"):
                                     try:
-                                        # Try to get image snippet for this test
+                                        # Try to get image snippet for this test with highlighting
                                         snippet_image = image_snippet_extractor.get_context_snippet(test_name)
                                         if snippet_image:
-                                            st.image(snippet_image, caption=f"Document snippet showing '{test_name}'", use_column_width=True)
+                                            st.image(snippet_image, caption=f"Document snippet with highlighted '{test_name}'", use_column_width=True)
+                                            st.caption("🔵 Blue boxes show the highlighted investigation type")
                                         else:
                                             st.info(f"No visual snippet available for '{test_name}'")
                                     except Exception as e:

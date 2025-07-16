@@ -170,3 +170,47 @@ class ImageSnippetExtractor:
             return img_buffer.getvalue()
         
         return None
+    
+    def get_document_with_highlights(self, test_names: list) -> bytes:
+        """Return the full document image with highlighted test names."""
+        if not self.ocr_data or not test_names:
+            return self.get_full_document()
+        
+        page_data = self.ocr_data[0]  # First page
+        image = page_data['image']
+        text_data = page_data['text_data']
+        
+        # Create copy of image for highlighting
+        highlighted_image = image.copy()
+        draw = ImageDraw.Draw(highlighted_image)
+        
+        # Find and highlight all test names
+        found_coords = []
+        for test_name in test_names:
+            test_name_lower = test_name.lower()
+            test_words = [word for word in test_name_lower.split() if len(word) > 2]
+            
+            for i, text in enumerate(text_data['text']):
+                if text.strip():
+                    text_lower = text.lower()
+                    # Check for partial matches of test name words
+                    if any(word in text_lower for word in test_words):
+                        x, y, w, h = text_data['left'][i], text_data['top'][i], text_data['width'][i], text_data['height'][i]
+                        if w > 0 and h > 0:  # Valid coordinates
+                            found_coords.append((x, y, w, h))
+                    # Also check for exact test name match
+                    elif test_name_lower in text_lower:
+                        x, y, w, h = text_data['left'][i], text_data['top'][i], text_data['width'][i], text_data['height'][i]
+                        if w > 0 and h > 0:
+                            found_coords.append((x, y, w, h))
+        
+        # Draw highlights for all found coordinates
+        for coord in found_coords:
+            x, y, w, h = coord
+            # Draw blue rectangle around found text
+            draw.rectangle([(x-2, y-2), (x + w + 2, y + h + 2)], outline='blue', width=3)
+        
+        # Convert to bytes
+        img_buffer = io.BytesIO()
+        highlighted_image.save(img_buffer, format='PNG')
+        return img_buffer.getvalue()
