@@ -121,63 +121,20 @@ Preferred communication style: Simple, everyday language.
 
 ## Recent Changes
 
-### July 16, 2025 - Streamlined Investigation Type Workflow
-- **Simplified Interface**: Removed radio button choices entirely for cleaner user experience
-  - No more choice between "Use Fuzzy Match", "Use Extracted", or "Browse all standards"
-  - Eliminated complex decision points that interrupted the workflow
-  - Direct editing approach focusing on standardization rather than choice selection
-- **Always-On Standardization Dialog**: Inline standard creation is now always available
-  - Create new standard dialog appears for all extracted data regardless of fuzzy match status
-  - Users can add extracted investigation types directly to standardization table
-  - Streamlined workflow from extraction to standardization in single interface
-- **Universal Editing Fields**: Consistent editing experience across all scenarios
-  - Same three-column layout (Test Name, Test Value, Unit) for all tests
-  - Pre-populated with extracted data but fully editable
-  - Real-time preview showing what will be saved
-  - Eliminated duplicate fields and interface complexity
-- **Enhanced Fuzzy Match Display**: Simplified presentation of similar standards
-  - Shows fuzzy match information as reference without forcing choice
-  - Side-by-side comparison remains for context
-  - Focus shifted from selection to direct standardization workflow
-
-### July 16, 2025 - Gender-Specific Reference Ranges
-- **Flexible Range Configuration**: Added gender-specific flag to control reference range display
-  - Optional gender differentiation for investigation standards with checkbox control
-  - When enabled: Shows separate male and female reference ranges with independent min/max/unit values
-  - When disabled: Shows single reference range applied to both genders with "(shared)" indicator
-  - Existing standards automatically configured based on actual range differences
-- **Enhanced Standards Management**: Updated investigation standards interface
-  - Gender-specific checkbox in both view/edit and add new standard forms
-  - Dynamic UI that shows appropriate range inputs based on gender-specific setting
-  - Smart range display in preview showing "(shared)" for unified ranges
-  - Database schema updated to include gender_specific boolean column
-- **Backward Compatibility**: Seamless integration with existing data
-  - Automatic column addition to existing investigation_standards table
-  - Default gender_specific=False for existing standards with same ranges
-  - True for standards like Hemoglobin, Creatinine where ranges actually differ by gender
-
-### July 16, 2025 - Enhanced Investigation Type Selection with Inline Standard Creation
-- **Side-by-Side Comparison**: Visual comparison between fuzzy matched standards and extracted data
-  - Two-column layout showing fuzzy match details vs extracted data
-  - Match scores and reference ranges displayed for informed decision making
-  - Clear visual indicators (✅ for matches, 📝 for extracted data)
-  - Gender-specific range display in fuzzy match preview
-- **Radio Button Selection**: Clean choice interface for investigation type selection
-  - "Use Fuzzy Match" option with standardized name and score
-  - "Use Extracted" option preserving original document data
-  - "Browse all standards" option for manual standard selection
-  - Dynamic options based on fuzzy match availability
-- **Inline Standard Creation Dialog**: Full standard creation form within extraction workflow
-  - Expandable dialog for creating standards from extracted data
-  - Pre-populated fields from document extraction (name, ranges, units)
-  - Complete standard form with category, description, and gender-specific options
-  - Real-time reference range parsing from document text
-  - Checkbox to confirm standard creation during save process
-- **Seamless Integration**: Standards created automatically during result saving
-  - Standard creation happens when form is submitted
-  - Success/warning messages for standard creation attempts
-  - New standards immediately available for future uploads
-  - Clean session state management prevents conflicts
+### July 16, 2025 - Investigation Type Dropdown with Fuzzy Matching
+- **Smart Investigation Selection**: Replaced text inputs with intelligent dropdown selections in extraction details
+  - Investigation type selectboxes display all standardized investigation names from the standards table
+  - Automatic fuzzy matching pre-selects the best match when extraction finds similar test names
+  - If no match found, original extracted name appears first in dropdown with all standards below
+  - Match score and standardization information displayed when fuzzy matching occurs
+- **Additional Test Enhancement**: Enhanced manual test addition with same dropdown approach
+  - Additional tests can be selected from standardized investigation types
+  - Custom test name option available when standard types don't match
+  - Seamless integration with standardization system for consistent data entry
+- **Session State Integration**: Investigation standards available throughout upload workflow
+  - Standards component stored in session state for access across upload pages
+  - Real-time fuzzy matching during extraction preview and editing
+  - Consistent standardization whether tests are extracted or manually added
 
 ### July 15, 2025 - Document Preview & Comparison System
 - **Side-by-Side Document Verification**: Implemented comprehensive document preview feature for upload validation
