@@ -185,6 +185,34 @@ Preferred communication style: Simple, everyday language.
   - Enhanced get_all_standards method with intelligent column detection
   - Seamless migration support for existing databases without breaking functionality
 
+### July 18, 2025 - Complete Rewrite of Extraction Process for Structured Table Data
+- **Structured Table Detection**: Completely rewrote extraction methods to focus on table structure recognition
+  - New _extract_structured_table_data method as primary extraction engine
+  - Enhanced PDF table extraction with proper table markers detection
+  - Column header identification system for medical report formats
+  - Support for standard lab report headers: Specimen, Investigation, Result, Unit, Reference Interval
+- **Advanced Column Header Recognition**: Intelligent detection of medical report column structures
+  - Header pattern matching for various report formats (Investigation/Test/Parameter + Result/Value + Unit + Reference)
+  - Column position mapping for accurate data extraction from each row
+  - Flexible header detection supporting multiple medical report layouts
+- **Enhanced Table Row Processing**: Robust parsing of structured medical data
+  - Tab-separated and space-delimited table row parsing
+  - Automatic unit extraction from dedicated unit columns
+  - Reference range extraction from reference interval columns
+  - Validation of medical test names and numeric values
+- **OCR Table-Aware Processing**: Optimized OCR for table structure preservation
+  - Enhanced Tesseract configuration with preserve_interword_spaces for better column separation
+  - OCR-specific table pattern recognition for scanned reports
+  - Fallback OCR extraction when structured table detection fails
+- **Medical Test Validation**: Improved validation system for extracted test names
+  - Comprehensive medical terminology and abbreviation checking
+  - Invalid pattern filtering (page numbers, headers, footers)
+  - Medical keyword and abbreviation validation
+- **Priority-Based Extraction**: Source priority system ensuring best quality results
+  - Table extraction > Column parsing > OCR table > Legacy methods
+  - Duplicate removal based on extraction source quality
+  - Enhanced duplicate detection with name similarity and value matching
+
 ### July 16, 2025 - Image Upload Support & Standards Creation from Reports
 - **Image File Support**: Added comprehensive support for image uploads in file parser
   - Support for JPEG, PNG, BMP, and TIFF image formats
