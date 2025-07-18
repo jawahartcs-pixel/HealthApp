@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 import os
+import re
 from datetime import datetime, date
 import plotly.express as px
 import plotly.graph_objects as go
@@ -146,15 +147,15 @@ def upload_results_page(file_parser, data_processor, user_id):
     # File upload
     uploaded_files = st.file_uploader(
         "Choose blood test result files",
-        type=['pdf', 'txt', 'docx', 'xlsx', 'xls', 'csv', 'xml'],
+        type=['pdf', 'txt', 'docx', 'xlsx', 'xls', 'csv', 'xml', 'jpg', 'jpeg', 'png', 'bmp', 'tiff'],
         accept_multiple_files=True,
-        help="Upload PDF, Word (.docx), Excel (.xlsx, .xls), CSV, XML, or text files containing blood test results"
+        help="Upload PDF, Word (.docx), Excel (.xlsx, .xls), CSV, XML, text files, or images (JPG, PNG, BMP, TIFF) containing blood test results"
     )
     
     # Option to force OCR for difficult PDFs
     force_ocr = st.checkbox(
         "Force OCR extraction",
-        help="Use OCR (Optical Character Recognition) for image-based or problematic PDFs. This can help extract text from scanned documents."
+        help="Use OCR (Optical Character Recognition) for image files and scanned documents. This automatically processes images and can help extract text from problematic PDFs."
     )
     
     # Clear cache button for reprocessing
@@ -1987,7 +1988,7 @@ def investigation_standards_page(investigation_standards):
     st.markdown("Manage standardized investigation types with reference ranges for male and female patients")
     
     # Create tabs for different operations
-    tab1, tab2, tab3 = st.tabs(["📋 View Standards", "➕ Add New Standard", "📊 Standardization Preview"])
+    tab1, tab2, tab3, tab4 = st.tabs(["📋 View Standards", "➕ Add New Standard", "📊 Standardization Preview", "📄 Extract from Reports"])
     
     with tab1:
         st.subheader("Current Investigation Standards")
@@ -2207,6 +2208,481 @@ def investigation_standards_page(investigation_standards):
                 # Summary
                 matched_count = len([r for r in results_data if "✅" in r['Status']])
                 st.metric("Standardization Success Rate", f"{matched_count}/{len(results_data)} ({matched_count/len(results_data)*100:.1f}%)")
+    
+    with tab4:
+        st.subheader("📄 Extract Standards from Medical Reports")
+        st.markdown("Upload medical reports to extract test types and automatically create investigation standards")
+        
+        # File upload section
+        st.write("**📁 Upload Medical Reports**")
+        uploaded_files = st.file_uploader(
+            "Choose files to extract investigation types from",
+            type=['pdf', 'doc', 'docx', 'txt', 'xlsx', 'xls', 'csv', 'xml', 'jpg', 'jpeg', 'png', 'bmp', 'tiff'],
+            accept_multiple_files=True,
+            help="Supported formats: PDF, Word, Text, Excel, CSV, XML, and Images (JPG, PNG, BMP, TIFF)"
+        )
+        
+
+        
+        # Initialize session state for extraction results
+        if 'standards_extraction_results' not in st.session_state:
+            st.session_state.standards_extraction_results = {}
+        
+        # Process uploaded files
+        if uploaded_files:
+            all_files = uploaded_files
+            
+            if all_files:
+                st.subheader("📊 Processing Results")
+                
+                # Get file parser and data processor from session state
+                file_parser = st.session_state.get('file_parser')
+                data_processor = st.session_state.get('data_processor')
+                
+                if not file_parser:
+                    from file_parser import FileParser
+                    file_parser = FileParser()
+                    st.session_state.file_parser = file_parser
+                
+                # Process each file
+                all_extracted_tests = []
+                processing_summary = []
+                
+                for i, uploaded_file in enumerate(all_files):
+                    file_name = uploaded_file.name if hasattr(uploaded_file, 'name') else f"camera_photo_{i+1}.jpg"
+                    
+                    with st.expander(f"📄 {file_name}", expanded=True):
+                        try:
+                            # Show file info
+                            col1, col2 = st.columns(2)
+                            with col1:
+                                st.write(f"**File:** {file_name}")
+                                if hasattr(uploaded_file, 'size'):
+                                    st.write(f"**Size:** {uploaded_file.size:,} bytes")
+                                if hasattr(uploaded_file, 'type'):
+                                    st.write(f"**Type:** {uploaded_file.type}")
+                            
+                            # Force OCR option for images and scanned documents (enabled by default)
+                            force_ocr = st.checkbox(f"Force OCR for {file_name}", value=True, key=f"force_ocr_{i}")
+                            
+                            with st.spinner(f"Processing {file_name}..."):
+                                # Process file for image snippets if it's a PDF or image
+                                if uploaded_file.type == "application/pdf" or uploaded_file.type.startswith("image/"):
+                                    try:
+                                        # Get image snippet extractor from session state
+                                        if hasattr(st.session_state, 'image_snippet_extractor'):
+                                            image_snippet_extractor = st.session_state.image_snippet_extractor
+                                        else:
+                                            from image_snippet_extractor import ImageSnippetExtractor
+                                            image_snippet_extractor = ImageSnippetExtractor()
+                                            st.session_state.image_snippet_extractor = image_snippet_extractor
+                                        
+                                        # Process file for image snippets
+                                        uploaded_file.seek(0)  # Reset file pointer
+                                        file_bytes = uploaded_file.read()
+                                        uploaded_file.seek(0)  # Reset again for text extraction
+                                        
+                                        if uploaded_file.type == "application/pdf":
+                                            image_snippet_extractor.process_pdf_for_snippets(file_bytes)
+                                        elif uploaded_file.type.startswith("image/"):
+                                            # For image files, process them for OCR and snippets
+                                            image_snippet_extractor.process_image_for_snippets(file_bytes)
+                                    except Exception as snippet_error:
+                                        st.warning(f"Could not process {file_name} for image snippets: {str(snippet_error)}")
+                                
+                                # Extract text from file
+                                extracted_text = file_parser.parse_file(uploaded_file, force_ocr=force_ocr)
+                                
+                                if extracted_text and "Error" not in extracted_text:
+                                    # Extract test data
+                                    test_data = file_parser.extract_test_data(extracted_text)
+                                    
+                                    if test_data.get('results'):
+                                        # Display extracted tests
+                                        st.success(f"✅ Extracted {len(test_data['results'])} test types from {file_name}")
+                                        
+                                        # Store full test data with reference ranges in session state
+                                        if 'extracted_test_data' not in st.session_state:
+                                            st.session_state.extracted_test_data = {}
+                                        
+                                        # Display extracted test types and store full test data
+                                        test_types_found = []
+                                        for result in test_data['results']:
+                                            test_type = result.get('test_type', '').strip()
+                                            if test_type and test_type not in test_types_found:
+                                                test_types_found.append(test_type)
+                                                # Store the full result data for this test type
+                                                st.session_state.extracted_test_data[test_type] = result
+                                        
+                                        st.write(f"**Found {len(test_types_found)} investigation types:**")
+                                        
+                                        # Debug: Show all extracted test data
+                                        with st.expander("🔍 Debug: View Extracted Test Data", expanded=False):
+                                            for test_type in test_types_found:
+                                                test_info = st.session_state.extracted_test_data[test_type]
+                                                st.write(f"**{test_type}:**")
+                                                st.json(test_info)
+                                        
+                                        for test_type in test_types_found:
+                                            ref_range = st.session_state.extracted_test_data[test_type].get('reference_range', '')
+                                            ref_info = f" (Range: {ref_range})" if ref_range else " (No range extracted)"
+                                            st.write(f"• {test_type}{ref_info}")
+                                        
+                                        if test_types_found:
+                                            st.info("👇 Each investigation below shows the document snippet with highlighted text and extracted reference ranges")
+                                        
+                                        # Add to all extracted tests
+                                        all_extracted_tests.extend(test_types_found)
+                                        processing_summary.append({
+                                            'file': file_name,
+                                            'tests_found': len(test_types_found),
+                                            'status': 'Success'
+                                        })
+                                    else:
+                                        st.warning(f"⚠️ No test results found in {file_name}")
+                                        processing_summary.append({
+                                            'file': file_name,
+                                            'tests_found': 0,
+                                            'status': 'No tests found'
+                                        })
+                                else:
+                                    st.error(f"❌ Failed to extract text from {file_name}")
+                                    processing_summary.append({
+                                        'file': file_name,
+                                        'tests_found': 0,
+                                        'status': 'Extraction failed'
+                                    })
+                        
+                        except Exception as e:
+                            st.error(f"❌ Error processing {file_name}: {str(e)}")
+                            processing_summary.append({
+                                'file': file_name,
+                                'tests_found': 0,
+                                'status': f'Error: {str(e)}'
+                            })
+                
+                # Show processing summary
+                if processing_summary:
+                    st.subheader("📋 Processing Summary")
+                    summary_df = pd.DataFrame(processing_summary)
+                    st.dataframe(summary_df, use_container_width=True, hide_index=True)
+                
+                # Create standards from extracted tests
+                if all_extracted_tests:
+                    st.subheader("🔬 Create Investigation Standards")
+                    
+                    # Remove duplicates and sort
+                    unique_tests = sorted(list(set(all_extracted_tests)))
+                    
+                    st.write(f"**Found {len(unique_tests)} unique investigation types across all files:**")
+                    
+                    # Get all existing aliases from standards
+                    existing_standards = investigation_standards.get_all_standards()
+                    
+                    # Helper function to check if a test name matches any existing aliases using case-insensitive matching
+                    def check_case_insensitive_match(test_name):
+                        """Check if test name matches any existing aliases using case-insensitive matching."""
+                        test_name_clean = test_name.lower().strip()
+                        
+                        for standard in existing_standards:
+                            # Check against standard name (exact match)
+                            standard_name = standard['standard_name'].lower()
+                            if test_name_clean == standard_name:
+                                return True, standard['standard_name']
+                            
+                            # Check against aliases (exact match)
+                            if standard.get('aliases'):
+                                aliases = [alias.strip().lower() for alias in standard['aliases'].split(',')]
+                                for alias in aliases:
+                                    if test_name_clean == alias:
+                                        return True, standard['standard_name']
+                        
+                        return False, None
+                    
+                    # Process each unique test individually
+                    for i, test_name in enumerate(unique_tests):
+                        # Check if this test exists in aliases using case-insensitive matching
+                        exists_in_aliases, matched_standard = check_case_insensitive_match(test_name)
+                        
+                        with st.expander(f"{'✅' if exists_in_aliases else '➕'} {test_name}", expanded=not exists_in_aliases):
+                            # Create two-column layout: Document snippet on left, Investigation details on right
+                            snippet_col, details_col = st.columns([1, 1])
+                            
+                            with snippet_col:
+                                st.subheader("📄 Document Snippet")
+                                # Show image snippet for this investigation type
+                                if hasattr(st.session_state, 'image_snippet_extractor'):
+                                    image_snippet_extractor = st.session_state.image_snippet_extractor
+                                else:
+                                    from image_snippet_extractor import ImageSnippetExtractor
+                                    image_snippet_extractor = ImageSnippetExtractor()
+                                    st.session_state.image_snippet_extractor = image_snippet_extractor
+                                
+                                try:
+                                    # Get image snippet for this test with highlighting
+                                    snippet_image = image_snippet_extractor.get_context_snippet(test_name)
+                                    if snippet_image:
+                                        st.image(snippet_image, caption=f"Highlighted: '{test_name}'", use_container_width=True)
+                                        st.caption("🔵 Blue boxes highlight the investigation type")
+                                    else:
+                                        st.info(f"No visual snippet available for '{test_name}'")
+                                        
+                                        # Debug: Show what text was extracted for troubleshooting
+                                        if hasattr(image_snippet_extractor, 'ocr_data') and image_snippet_extractor.ocr_data:
+                                            ocr_texts = []
+                                            for page_data in image_snippet_extractor.ocr_data:
+                                                for text in page_data['text_data']['text']:
+                                                    if text.strip() and len(text.strip()) > 2:
+                                                        ocr_texts.append(text.strip())
+                                            
+                                            if ocr_texts:
+                                                with st.expander("🔍 Debug: OCR Text Found", expanded=False):
+                                                    st.write("OCR extracted the following text from the document:")
+                                                    st.text_area("", value="\n".join(ocr_texts[:50]), height=150)  # Show first 50 text items
+                                                    st.caption(f"Showing first 50 items out of {len(ocr_texts)} total text elements")
+                                            else:
+                                                st.warning("No OCR text was extracted from the document")
+                                except Exception as e:
+                                    st.error(f"Error getting snippet: {str(e)}")
+                            
+                            with details_col:
+                                st.subheader("🔬 Investigation Details")
+                                if exists_in_aliases:
+                                    st.info("📋 This investigation type already exists in the system")
+                                    st.write("**Status:** Found in existing aliases")
+                                    if matched_standard:
+                                        st.write(f"**Matched Standard:** {matched_standard}")
+                                else:
+                                    st.warning("🆕 New investigation type - not found in existing aliases")
+                                    st.write("**Status:** No exact match found")
+                                
+                                # Always provide both options regardless of match status
+                                st.subheader("🎯 Available Actions")
+                                
+                                # Option 1: Create as new standard
+                                create_new = st.checkbox(
+                                    f"Create '{test_name}' as new standard",
+                                    key=f"create_new_{i}",
+                                    value=not exists_in_aliases,
+                                    help="Create this as a completely new investigation standard"
+                                )
+                                
+                                # Option 2: Add to existing standard's aliases
+                                add_to_existing = st.checkbox(
+                                    f"Add '{test_name}' to existing standard's aliases",
+                                    key=f"add_to_existing_{i}",
+                                    value=False,
+                                    help="Add this test name as an alias to an existing standard"
+                                )
+                                
+                                # If adding to existing, show dropdown to select standard
+                                selected_standard = None
+                                if add_to_existing:
+                                    standard_options = [s['standard_name'] for s in existing_standards]
+                                    selected_standard = st.selectbox(
+                                        "Select existing standard to add alias to:",
+                                        options=standard_options,
+                                        key=f"select_standard_{i}",
+                                        index=0 if not matched_standard else (
+                                            standard_options.index(matched_standard) if matched_standard in standard_options else 0
+                                        )
+                                    )
+                                
+                                # Show forms based on selected options
+                                if create_new:
+                                        # Create unique form key using test name hash to avoid duplicates
+                                        form_key = f"create_form_{abs(hash(test_name)) % 1000000}"
+                                        
+                                        # Get extracted test data for this test if available
+                                        extracted_data = st.session_state.get('extracted_test_data', {}).get(test_name, {})
+                                        reference_range = extracted_data.get('reference_range', '')
+                                        extracted_unit = extracted_data.get('unit', 'mg/dL')
+                                        
+                                        # Parse reference range to extract min/max values
+                                        def parse_reference_range(ref_range_str):
+                                            """Parse reference range string to extract min/max values."""
+                                            if not ref_range_str:
+                                                return 0.0, 100.0, extracted_unit
+                                            
+                                            # Clean the reference range string
+                                            ref_clean = ref_range_str.strip()
+                                            
+                                            # Try to extract numeric ranges (e.g., "5.0-15.0", "5.0 - 15.0", "5.0 to 15.0")
+                                            range_patterns = [
+                                                r'(\d+\.?\d*)\s*[-–—]\s*(\d+\.?\d*)',  # 5.0-15.0 or 5.0 - 15.0
+                                                r'(\d+\.?\d*)\s+to\s+(\d+\.?\d*)',     # 5.0 to 15.0
+                                                r'(\d+\.?\d*)\s*–\s*(\d+\.?\d*)',      # em dash
+                                                r'(\d+\.?\d*)\s*\-\s*(\d+\.?\d*)',     # regular dash
+                                            ]
+                                            
+                                            for pattern in range_patterns:
+                                                match = re.search(pattern, ref_clean, re.IGNORECASE)
+                                                if match:
+                                                    try:
+                                                        min_val = float(match.group(1))
+                                                        max_val = float(match.group(2))
+                                                        return min_val, max_val, extracted_unit
+                                                    except ValueError:
+                                                        continue
+                                            
+                                            # Try to extract single value with operator (e.g., "<10", ">5")
+                                            single_patterns = [
+                                                r'<\s*(\d+\.?\d*)',  # <10
+                                                r'>\s*(\d+\.?\d*)',  # >5
+                                                r'≤\s*(\d+\.?\d*)',  # ≤10
+                                                r'≥\s*(\d+\.?\d*)',  # ≥5
+                                            ]
+                                            
+                                            for pattern in single_patterns:
+                                                match = re.search(pattern, ref_clean)
+                                                if match:
+                                                    try:
+                                                        val = float(match.group(1))
+                                                        if '<' in pattern or '≤' in pattern:
+                                                            return 0.0, val, extracted_unit
+                                                        else:  # > or ≥
+                                                            return val, val * 2, extracted_unit
+                                                    except ValueError:
+                                                        continue
+                                            
+                                            # Default fallback
+                                            return 0.0, 100.0, extracted_unit
+                                        
+                                        # Parse the reference range
+                                        min_val, max_val, unit = parse_reference_range(reference_range)
+                                        
+                                        with st.form(form_key):
+                                            st.write("**Investigation Standard Details:**")
+                                            
+                                            # Show extracted reference range if available
+                                            if reference_range:
+                                                st.info(f"📋 **Extracted Reference Range:** {reference_range}")
+                                                st.caption("The values below are automatically populated from the document")
+                                            
+                                            # Standard name (pre-populated with extracted text)
+                                            standard_name = st.text_input(
+                                                "Standard Investigation Name", 
+                                                value=test_name,
+                                                key=f"name_{form_key}"
+                                            )
+                                            
+                                            # Category
+                                            category = st.selectbox(
+                                                "Category", 
+                                                ["Blood Chemistry", "Hematology", "Lipid Profile", "Liver Function", 
+                                                 "Kidney Function", "Thyroid Function", "Cardiac Markers", "Diabetes Markers",
+                                                 "Electrolytes", "Vitamins", "Hormones", "Other"],
+                                                key=f"category_{form_key}"
+                                            )
+                                            
+                                            # Reference ranges
+                                            col_male, col_female = st.columns(2)
+                                            
+                                            with col_male:
+                                                st.write("**Male Range:**")
+                                                male_min = st.number_input("Min", value=min_val, key=f"male_min_{form_key}")
+                                                male_max = st.number_input("Max", value=max_val, key=f"male_max_{form_key}")
+                                                male_unit = st.text_input("Unit", value=unit, key=f"male_unit_{form_key}")
+                                            
+                                            with col_female:
+                                                st.write("**Female Range:**")
+                                                female_min = st.number_input("Min", value=min_val, key=f"female_min_{form_key}")
+                                                female_max = st.number_input("Max", value=max_val, key=f"female_max_{form_key}")
+                                                female_unit = st.text_input("Unit", value=unit, key=f"female_unit_{form_key}")
+                                            
+                                            # Description
+                                            description = st.text_area(
+                                                "Description", 
+                                                value="Investigation standard created from medical report extraction",
+                                                key=f"desc_{form_key}"
+                                            )
+                                            
+                                            # Aliases (automatically include the extracted text)
+                                            aliases_input = st.text_input(
+                                                "Aliases (comma-separated)", 
+                                                value=test_name,
+                                                help="The extracted test name will be automatically added to aliases",
+                                                key=f"aliases_{form_key}"
+                                            )
+                                            
+                                            # Submit button
+                                            submit_individual = st.form_submit_button(
+                                                f"✅ Create Standard for {test_name}", 
+                                                type="primary"
+                                            )
+                                            
+                                            if submit_individual:
+                                                try:
+                                                    # Ensure extracted test name is in aliases
+                                                    aliases_list = [alias.strip() for alias in aliases_input.split(',') if alias.strip()]
+                                                    if test_name not in aliases_list:
+                                                        aliases_list.append(test_name)
+                                                    
+                                                    standard_data = {
+                                                        'standard_name': standard_name,
+                                                        'category': category,
+                                                        'male_range_min': male_min,
+                                                        'male_range_max': male_max,
+                                                        'male_unit': male_unit,
+                                                        'female_range_min': female_min,
+                                                        'female_range_max': female_max,
+                                                        'female_unit': female_unit,
+                                                        'description': description,
+                                                        'aliases': ", ".join(aliases_list)
+                                                    }
+                                                    
+                                                    success = investigation_standards.add_standard(standard_data)
+                                                    
+                                                    if success:
+                                                        st.success(f"✅ Successfully created standard for {test_name}!")
+                                                        st.rerun()
+                                                    else:
+                                                        st.error(f"❌ Failed to create standard for {test_name}")
+                                                
+                                                except Exception as e:
+                                                    st.error(f"Error creating standard: {str(e)}")
+                                
+                                # Handle adding to existing standard's aliases
+                                if add_to_existing and selected_standard:
+                                    st.subheader(f"Add to '{selected_standard}' aliases")
+                                    
+                                    # Find the selected standard
+                                    target_standard = None
+                                    for std in existing_standards:
+                                        if std['standard_name'] == selected_standard:
+                                            target_standard = std
+                                            break
+                                    
+                                    if target_standard:
+                                        current_aliases = target_standard.get('aliases', '')
+                                        st.write(f"**Current aliases:** {current_aliases}")
+                                        
+                                        # Check if already exists
+                                        existing_aliases = [alias.strip().lower() for alias in current_aliases.split(',') if alias.strip()]
+                                        if test_name.lower() in existing_aliases:
+                                            st.info(f"'{test_name}' already exists in aliases")
+                                        else:
+                                            if st.button(f"Add '{test_name}' to aliases", key=f"add_alias_{i}"):
+                                                try:
+                                                    # Add to aliases
+                                                    new_aliases = f"{current_aliases}, {test_name}".strip(', ')
+                                                    
+                                                    # Update the standard
+                                                    updated_data = target_standard.copy()
+                                                    updated_data['aliases'] = new_aliases
+                                                    
+                                                    success = investigation_standards.update_standard(target_standard['id'], updated_data)
+                                                    
+                                                    if success:
+                                                        st.success(f"✅ Added '{test_name}' to '{selected_standard}' aliases!")
+                                                        st.rerun()
+                                                    else:
+                                                        st.error(f"❌ Failed to update aliases for '{selected_standard}'")
+                                                        
+                                                except Exception as e:
+                                                    st.error(f"Error updating aliases: {str(e)}")
+                                    else:
+                                        st.error("Selected standard not found")
 
 if __name__ == "__main__":
     main()
