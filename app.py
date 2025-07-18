@@ -380,8 +380,8 @@ Extraction Method: {result.get('source', 'regex')}""")
                                             all_standards = investigation_standards.get_all_standards()
                                             standard_names = [std['standard_name'] for std in all_standards]
                                             
-                                            # Try to find fuzzy match for current test type
-                                            standardized_name, match_info = investigation_standards.standardize_test_name(result['test_type'])
+                                            # Try to find fuzzy match for current test type (including unit)
+                                            standardized_name, match_info = investigation_standards.standardize_test_name(result['test_type'], result.get('unit', ''))
                                             
                                             # Create the options list with option to use the text input
                                             options = ["(Use custom text below)"] + standard_names

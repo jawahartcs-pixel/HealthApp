@@ -195,29 +195,61 @@ class InvestigationStandards:
         """Get all investigation standards."""
         with sqlite3.connect(self.db_path) as conn:
             cursor = conn.cursor()
-            cursor.execute('''
-                SELECT id, standard_name, aliases, male_range_min, male_range_max, male_unit,
-                       female_range_min, female_range_max, female_unit, description, category
-                FROM investigation_standards
-                ORDER BY category, standard_name
-            ''')
+            # Check if common_unit column exists
+            cursor.execute("PRAGMA table_info(investigation_standards)")
+            columns = [column[1] for column in cursor.fetchall()]
             
-            results = cursor.fetchall()
-            standards = []
-            for row in results:
-                standards.append({
-                    'id': row[0],
-                    'standard_name': row[1],
-                    'aliases': row[2],
-                    'male_range_min': row[3],
-                    'male_range_max': row[4],
-                    'male_unit': row[5],
-                    'female_range_min': row[6],
-                    'female_range_max': row[7],
-                    'female_unit': row[8],
-                    'description': row[9],
-                    'category': row[10]
-                })
+            if 'common_unit' in columns:
+                cursor.execute('''
+                    SELECT id, standard_name, aliases, male_range_min, male_range_max, male_unit,
+                           female_range_min, female_range_max, female_unit, description, category, common_unit
+                    FROM investigation_standards
+                    ORDER BY category, standard_name
+                ''')
+                
+                results = cursor.fetchall()
+                standards = []
+                for row in results:
+                    standards.append({
+                        'id': row[0],
+                        'standard_name': row[1],
+                        'aliases': row[2],
+                        'male_range_min': row[3],
+                        'male_range_max': row[4],
+                        'male_unit': row[5],
+                        'female_range_min': row[6],
+                        'female_range_max': row[7],
+                        'female_unit': row[8],
+                        'description': row[9],
+                        'category': row[10],
+                        'common_unit': row[11]
+                    })
+            else:
+                # Fallback to old schema
+                cursor.execute('''
+                    SELECT id, standard_name, aliases, male_range_min, male_range_max, male_unit,
+                           female_range_min, female_range_max, female_unit, description, category
+                    FROM investigation_standards
+                    ORDER BY category, standard_name
+                ''')
+                
+                results = cursor.fetchall()
+                standards = []
+                for row in results:
+                    standards.append({
+                        'id': row[0],
+                        'standard_name': row[1],
+                        'aliases': row[2],
+                        'male_range_min': row[3],
+                        'male_range_max': row[4],
+                        'male_unit': row[5],
+                        'female_range_min': row[6],
+                        'female_range_max': row[7],
+                        'female_unit': row[8],
+                        'description': row[9],
+                        'category': row[10],
+                        'common_unit': None  # Add for compatibility
+                    })
             return standards
     
     def add_standard(self, standard_data: Dict) -> bool:
@@ -225,17 +257,37 @@ class InvestigationStandards:
         try:
             with sqlite3.connect(self.db_path) as conn:
                 cursor = conn.cursor()
-                cursor.execute('''
-                    INSERT INTO investigation_standards 
-                    (standard_name, aliases, male_range_min, male_range_max, male_unit,
-                     female_range_min, female_range_max, female_unit, description, category)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                ''', (
-                    standard_data['standard_name'], standard_data['aliases'],
-                    standard_data['male_range_min'], standard_data['male_range_max'], standard_data['male_unit'],
-                    standard_data['female_range_min'], standard_data['female_range_max'], standard_data['female_unit'],
-                    standard_data['description'], standard_data['category']
-                ))
+                
+                # Check if common_unit column exists
+                cursor.execute("PRAGMA table_info(investigation_standards)")
+                columns = [column[1] for column in cursor.fetchall()]
+                
+                if 'common_unit' in columns:
+                    cursor.execute('''
+                        INSERT INTO investigation_standards 
+                        (standard_name, aliases, male_range_min, male_range_max, male_unit,
+                         female_range_min, female_range_max, female_unit, description, category, common_unit)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ''', (
+                        standard_data['standard_name'], standard_data['aliases'],
+                        standard_data['male_range_min'], standard_data['male_range_max'], standard_data['male_unit'],
+                        standard_data['female_range_min'], standard_data['female_range_max'], standard_data['female_unit'],
+                        standard_data['description'], standard_data['category'], standard_data.get('common_unit', '')
+                    ))
+                else:
+                    # Fallback to old schema
+                    cursor.execute('''
+                        INSERT INTO investigation_standards 
+                        (standard_name, aliases, male_range_min, male_range_max, male_unit,
+                         female_range_min, female_range_max, female_unit, description, category)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ''', (
+                        standard_data['standard_name'], standard_data['aliases'],
+                        standard_data['male_range_min'], standard_data['male_range_max'], standard_data['male_unit'],
+                        standard_data['female_range_min'], standard_data['female_range_max'], standard_data['female_unit'],
+                        standard_data['description'], standard_data['category']
+                    ))
+                
                 conn.commit()
                 return True
         except Exception as e:
@@ -247,18 +299,40 @@ class InvestigationStandards:
         try:
             with sqlite3.connect(self.db_path) as conn:
                 cursor = conn.cursor()
-                cursor.execute('''
-                    UPDATE investigation_standards 
-                    SET standard_name=?, aliases=?, male_range_min=?, male_range_max=?, male_unit=?,
-                        female_range_min=?, female_range_max=?, female_unit=?, description=?, category=?,
-                        updated_date=CURRENT_TIMESTAMP
-                    WHERE id=?
-                ''', (
-                    standard_data['standard_name'], standard_data['aliases'],
-                    standard_data['male_range_min'], standard_data['male_range_max'], standard_data['male_unit'],
-                    standard_data['female_range_min'], standard_data['female_range_max'], standard_data['female_unit'],
-                    standard_data['description'], standard_data['category'], standard_id
-                ))
+                
+                # Check if common_unit column exists
+                cursor.execute("PRAGMA table_info(investigation_standards)")
+                columns = [column[1] for column in cursor.fetchall()]
+                
+                if 'common_unit' in columns:
+                    cursor.execute('''
+                        UPDATE investigation_standards 
+                        SET standard_name=?, aliases=?, male_range_min=?, male_range_max=?, male_unit=?,
+                            female_range_min=?, female_range_max=?, female_unit=?, description=?, category=?,
+                            common_unit=?, updated_date=CURRENT_TIMESTAMP
+                        WHERE id=?
+                    ''', (
+                        standard_data['standard_name'], standard_data['aliases'],
+                        standard_data['male_range_min'], standard_data['male_range_max'], standard_data['male_unit'],
+                        standard_data['female_range_min'], standard_data['female_range_max'], standard_data['female_unit'],
+                        standard_data['description'], standard_data['category'], standard_data.get('common_unit', ''),
+                        standard_id
+                    ))
+                else:
+                    # Fallback to old schema
+                    cursor.execute('''
+                        UPDATE investigation_standards 
+                        SET standard_name=?, aliases=?, male_range_min=?, male_range_max=?, male_unit=?,
+                            female_range_min=?, female_range_max=?, female_unit=?, description=?, category=?,
+                            updated_date=CURRENT_TIMESTAMP
+                        WHERE id=?
+                    ''', (
+                        standard_data['standard_name'], standard_data['aliases'],
+                        standard_data['male_range_min'], standard_data['male_range_max'], standard_data['male_unit'],
+                        standard_data['female_range_min'], standard_data['female_range_max'], standard_data['female_unit'],
+                        standard_data['description'], standard_data['category'], standard_id
+                    ))
+                
                 conn.commit()
                 return True
         except Exception as e:
@@ -277,8 +351,8 @@ class InvestigationStandards:
             print(f"Error deleting standard: {e}")
             return False
     
-    def find_best_match(self, test_name: str, threshold: float = 0.6) -> Optional[Dict]:
-        """Find the best matching standard for a given test name using fuzzy logic."""
+    def find_best_match(self, test_name: str, unit: str = '', threshold: float = 0.6) -> Optional[Dict]:
+        """Find the best matching standard for a given test name and unit using fuzzy logic."""
         test_name_clean = self._clean_test_name(test_name)
         standards = self.get_all_standards()
         
@@ -288,10 +362,16 @@ class InvestigationStandards:
         for standard in standards:
             # Check direct match with standard name
             standard_name_clean = self._clean_test_name(standard['standard_name'])
-            score = self._calculate_similarity(test_name_clean, standard_name_clean)
+            text_score = self._calculate_similarity(test_name_clean, standard_name_clean)
             
-            if score > best_score and score >= threshold:
-                best_score = score
+            # Calculate unit compatibility score
+            unit_score = self._calculate_unit_compatibility(unit, standard)
+            
+            # Combine text and unit scores (weighted: 70% text, 30% unit)
+            combined_score = (text_score * 0.7) + (unit_score * 0.3)
+            
+            if combined_score > best_score and combined_score >= threshold:
+                best_score = combined_score
                 best_match = standard
             
             # Check aliases
@@ -299,10 +379,14 @@ class InvestigationStandards:
                 aliases = [alias.strip() for alias in standard['aliases'].split(',')]
                 for alias in aliases:
                     alias_clean = self._clean_test_name(alias)
-                    score = self._calculate_similarity(test_name_clean, alias_clean)
+                    text_score = self._calculate_similarity(test_name_clean, alias_clean)
+                    unit_score = self._calculate_unit_compatibility(unit, standard)
                     
-                    if score > best_score and score >= threshold:
-                        best_score = score
+                    # Combine text and unit scores
+                    combined_score = (text_score * 0.7) + (unit_score * 0.3)
+                    
+                    if combined_score > best_score and combined_score >= threshold:
+                        best_score = combined_score
                         best_match = standard
         
         if best_match:
@@ -334,9 +418,78 @@ class InvestigationStandards:
         # Sequence matcher
         return SequenceMatcher(None, text1, text2).ratio()
     
-    def standardize_test_name(self, test_name: str) -> Tuple[str, Optional[Dict]]:
+    def _calculate_unit_compatibility(self, extracted_unit: str, standard: Dict) -> float:
+        """Calculate how compatible the extracted unit is with the standard's unit."""
+        if not extracted_unit:
+            return 0.5  # Neutral score if no unit provided
+        
+        # Get the standard's unit (use common_unit if available, otherwise fallback)
+        standard_unit = standard.get('common_unit') or standard.get('male_unit') or standard.get('female_unit') or ''
+        
+        if not standard_unit:
+            return 0.5  # Neutral score if standard has no unit
+        
+        # Normalize both units for comparison
+        extracted_clean = self._normalize_unit_for_comparison(extracted_unit)
+        standard_clean = self._normalize_unit_for_comparison(standard_unit)
+        
+        # Exact match
+        if extracted_clean == standard_clean:
+            return 1.0
+        
+        # Check for equivalent units
+        unit_equivalents = {
+            'mg/dl': ['mg/dl', 'mg/100ml'],
+            'mmol/l': ['mmol/l', 'mmol/litre'],
+            'g/dl': ['g/dl', 'g/100ml'],
+            'u/l': ['u/l', 'iu/l', 'units/l'],
+            '%': ['%', 'percent', 'per cent'],
+            'ng/ml': ['ng/ml', 'ng/millilitre'],
+            'pg/ml': ['pg/ml', 'pg/millilitre'],
+            'meq/l': ['meq/l', 'mmol/l']  # Sometimes used interchangeably
+        }
+        
+        for unit_group in unit_equivalents.values():
+            if extracted_clean in unit_group and standard_clean in unit_group:
+                return 0.9
+        
+        # Partial match (contains similar elements)
+        if extracted_clean in standard_clean or standard_clean in extracted_clean:
+            return 0.7
+        
+        # Different units but both are medical units
+        if self._is_medical_unit(extracted_clean) and self._is_medical_unit(standard_clean):
+            return 0.3
+        
+        return 0.0
+    
+    def _normalize_unit_for_comparison(self, unit: str) -> str:
+        """Normalize unit for comparison purposes."""
+        if not unit:
+            return ''
+        
+        unit = unit.lower().strip()
+        
+        # Remove common variations
+        unit = unit.replace('/', 'per')
+        unit = unit.replace(' ', '')
+        unit = unit.replace('.', '')
+        
+        return unit
+    
+    def _is_medical_unit(self, unit: str) -> bool:
+        """Check if a unit appears to be a medical unit."""
+        medical_units = [
+            'mg', 'dl', 'mmol', 'l', 'g', 'ng', 'ml', 'pg', 'u', 'iu', 'meq',
+            'percent', '%', 'cells', 'ul', 'thousand', 'million'
+        ]
+        
+        unit_lower = unit.lower()
+        return any(med_unit in unit_lower for med_unit in medical_units)
+    
+    def standardize_test_name(self, test_name: str, unit: str = '') -> Tuple[str, Optional[Dict]]:
         """Standardize a test name and return the standard name and reference ranges."""
-        match = self.find_best_match(test_name)
+        match = self.find_best_match(test_name, unit)
         if match:
             return match['standard_name'], match
         else:
