@@ -322,6 +322,19 @@ def upload_results_page(file_parser, data_processor, user_id):
                             if len(test_data['results']) > 6:
                                 st.caption(f"Showing first 6 of {len(test_data['results'])} tests")
                         
+                        # Additional manual tests section (outside form to prevent Enter key submission)
+                        st.write("**Add Additional Tests (not scanned):**")
+                        
+                        # Number of additional tests to add
+                        num_additional = st.number_input(
+                            "Number of additional tests to add",
+                            min_value=0,
+                            max_value=20,
+                            value=0,
+                            key=f"num_additional_{uploaded_file.name}",
+                            help="Press Enter to update the number of test fields below"
+                        )
+                        
                         with st.form(key=f"edit_results_{uploaded_file.name}"):
                             st.write("**Review & Edit Extracted Tests:**")
                             st.caption("💡 Left side shows original extracted data, right side allows editing before saving")
@@ -448,18 +461,13 @@ Extraction Method: {result.get('source', 'regex')}""")
                                             help="Uncheck to exclude this test from being saved"
                                         )
                             
-                            # Additional manual tests section
-                            st.write("**Add Additional Tests (not scanned):**")
+
                             
-                            # Number of additional tests to add
-                            num_additional = st.number_input(
-                                "Number of additional tests to add",
-                                min_value=0,
-                                max_value=20,
-                                value=0,
-                                key=f"num_additional_{uploaded_file.name}"
-                            )
-                            
+                            # Show additional tests section if any are requested
+                            if num_additional > 0:
+                                st.write("**Additional Tests (not scanned):**")
+                                st.caption("Fill in the fields below for tests not automatically detected in the document")
+                                
                             # Additional test inputs
                             if num_additional > 0:
                                 for i in range(num_additional):
