@@ -2325,25 +2325,27 @@ def investigation_standards_page(investigation_standards):
                     with col2:
                         st.markdown("**🚹🚺 Reference Ranges**")
                         
+                        # Common unit
+                        st.markdown("**Common Unit:**")
+                        # Use common_unit if available, otherwise fallback to male_unit or female_unit
+                        current_unit = standard.get('common_unit') or standard.get('male_unit') or standard.get('female_unit') or ''
+                        common_unit_edit = st.text_input("Unit (for both ranges)", value=current_unit, key=f"common_unit_{standard['id']}")
+                        
                         # Male ranges
                         st.markdown("**Male Range:**")
-                        col_m1, col_m2, col_m3 = st.columns(3)
+                        col_m1, col_m2 = st.columns(2)
                         with col_m1:
                             male_min = st.number_input("Min", value=float(standard['male_range_min']) if standard['male_range_min'] else 0.0, key=f"m_min_{standard['id']}")
                         with col_m2:
                             male_max = st.number_input("Max", value=float(standard['male_range_max']) if standard['male_range_max'] else 0.0, key=f"m_max_{standard['id']}")
-                        with col_m3:
-                            male_unit = st.text_input("Unit", value=standard['male_unit'] or '', key=f"m_unit_{standard['id']}")
                         
                         # Female ranges
                         st.markdown("**Female Range:**")
-                        col_f1, col_f2, col_f3 = st.columns(3)
+                        col_f1, col_f2 = st.columns(2)
                         with col_f1:
                             female_min = st.number_input("Min", value=float(standard['female_range_min']) if standard['female_range_min'] else 0.0, key=f"f_min_{standard['id']}")
                         with col_f2:
                             female_max = st.number_input("Max", value=float(standard['female_range_max']) if standard['female_range_max'] else 0.0, key=f"f_max_{standard['id']}")
-                        with col_f3:
-                            female_unit = st.text_input("Unit", value=standard['female_unit'] or '', key=f"f_unit_{standard['id']}")
                     
                     # Action buttons
                     col1, col2, col3 = st.columns(3)
@@ -2355,10 +2357,11 @@ def investigation_standards_page(investigation_standards):
                                 'aliases': edit_aliases,
                                 'male_range_min': male_min,
                                 'male_range_max': male_max,
-                                'male_unit': male_unit,
+                                'male_unit': common_unit_edit,  # Use common unit for male
                                 'female_range_min': female_min,
                                 'female_range_max': female_max,
-                                'female_unit': female_unit,
+                                'female_unit': common_unit_edit,  # Use common unit for female
+                                'common_unit': common_unit_edit,
                                 'description': edit_description,
                                 'category': edit_category
                             }
@@ -2378,8 +2381,9 @@ def investigation_standards_page(investigation_standards):
                                 st.error("Failed to delete standard")
                     
                     with col3:
-                        # Show current reference ranges
-                        st.info(f"M: {male_min}-{male_max} {male_unit}\nF: {female_min}-{female_max} {female_unit}")
+                        # Show current reference ranges with common unit
+                        display_unit = current_unit or "No unit"
+                        st.info(f"Unit: {display_unit}\nM: {male_min}-{male_max}\nF: {female_min}-{female_max}")
         
         else:
             st.info("No investigation standards found. Add some standards to get started.")
@@ -2402,25 +2406,25 @@ def investigation_standards_page(investigation_standards):
             with col2:
                 st.markdown("**Reference Ranges**")
                 
+                # Common unit field
+                st.markdown("**Common Unit:**")
+                new_common_unit = st.text_input("Unit (for both ranges)", placeholder="mg/dL", key="new_common_unit")
+                
                 # Male ranges
                 st.markdown("**Male Range:**")
-                col_m1, col_m2, col_m3 = st.columns(3)
+                col_m1, col_m2 = st.columns(2)
                 with col_m1:
                     new_male_min = st.number_input("Min Value", value=0.0, key="new_m_min")
                 with col_m2:
                     new_male_max = st.number_input("Max Value", value=0.0, key="new_m_max")
-                with col_m3:
-                    new_male_unit = st.text_input("Unit", placeholder="mg/dL", key="new_m_unit")
                 
                 # Female ranges
                 st.markdown("**Female Range:**")
-                col_f1, col_f2, col_f3 = st.columns(3)
+                col_f1, col_f2 = st.columns(2)
                 with col_f1:
                     new_female_min = st.number_input("Min Value", value=0.0, key="new_f_min")
                 with col_f2:
                     new_female_max = st.number_input("Max Value", value=0.0, key="new_f_max")
-                with col_f3:
-                    new_female_unit = st.text_input("Unit", placeholder="mg/dL", key="new_f_unit")
             
             if st.form_submit_button("🔬 Add Standard"):
                 if new_name and new_category:
@@ -2429,10 +2433,11 @@ def investigation_standards_page(investigation_standards):
                         'aliases': new_aliases,
                         'male_range_min': new_male_min,
                         'male_range_max': new_male_max,
-                        'male_unit': new_male_unit,
+                        'male_unit': new_common_unit,  # Use common unit for male
                         'female_range_min': new_female_min,
                         'female_range_max': new_female_max,
-                        'female_unit': new_female_unit,
+                        'female_unit': new_common_unit,  # Use common unit for female
+                        'common_unit': new_common_unit,
                         'description': new_description,
                         'category': new_category
                     }
@@ -2863,6 +2868,10 @@ def investigation_standards_page(investigation_standards):
                                                 key=f"category_{form_key}"
                                             )
                                             
+                                            # Common unit first
+                                            st.write("**Common Unit:**")
+                                            common_unit = st.text_input("Unit (for both ranges)", value=unit, key=f"common_unit_{form_key}")
+                                            
                                             # Reference ranges
                                             col_male, col_female = st.columns(2)
                                             
@@ -2870,13 +2879,11 @@ def investigation_standards_page(investigation_standards):
                                                 st.write("**Male Range:**")
                                                 male_min = st.number_input("Min", value=min_val, key=f"male_min_{form_key}")
                                                 male_max = st.number_input("Max", value=max_val, key=f"male_max_{form_key}")
-                                                male_unit = st.text_input("Unit", value=unit, key=f"male_unit_{form_key}")
                                             
                                             with col_female:
                                                 st.write("**Female Range:**")
                                                 female_min = st.number_input("Min", value=min_val, key=f"female_min_{form_key}")
                                                 female_max = st.number_input("Max", value=max_val, key=f"female_max_{form_key}")
-                                                female_unit = st.text_input("Unit", value=unit, key=f"female_unit_{form_key}")
                                             
                                             # Description
                                             description = st.text_area(
@@ -2911,10 +2918,11 @@ def investigation_standards_page(investigation_standards):
                                                         'category': category,
                                                         'male_range_min': male_min,
                                                         'male_range_max': male_max,
-                                                        'male_unit': male_unit,
+                                                        'male_unit': common_unit,  # Use common unit for male
                                                         'female_range_min': female_min,
                                                         'female_range_max': female_max,
-                                                        'female_unit': female_unit,
+                                                        'female_unit': common_unit,  # Use common unit for female
+                                                        'common_unit': common_unit,
                                                         'description': description,
                                                         'aliases': ", ".join(aliases_list)
                                                     }

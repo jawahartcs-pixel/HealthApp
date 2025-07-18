@@ -32,11 +32,19 @@ class InvestigationStandards:
                     female_unit TEXT,
                     description TEXT,
                     category TEXT,
+                    common_unit TEXT,
                     created_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     updated_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
             ''')
-            conn.commit()
+            
+            # Add common_unit column if it doesn't exist (migration)
+            try:
+                cursor.execute('ALTER TABLE investigation_standards ADD COLUMN common_unit TEXT')
+                conn.commit()
+            except sqlite3.OperationalError:
+                # Column already exists
+                pass
     
     def populate_default_standards(self):
         """Populate table with common blood test standards."""
@@ -46,6 +54,7 @@ class InvestigationStandards:
                 'aliases': 'glucose,sugar,fasting glucose,blood sugar,fbs,blood glucose',
                 'male_range_min': 70, 'male_range_max': 99, 'male_unit': 'mg/dL',
                 'female_range_min': 70, 'female_range_max': 99, 'female_unit': 'mg/dL',
+                'common_unit': 'mg/dL',
                 'description': 'Fasting blood glucose level',
                 'category': 'Diabetes'
             },
@@ -54,6 +63,7 @@ class InvestigationStandards:
                 'aliases': 'hb,haemoglobin,hemoglobin,hgb,blood hemoglobin,blood haemoglobin',
                 'male_range_min': 13.8, 'male_range_max': 17.2, 'male_unit': 'g/dL',
                 'female_range_min': 12.1, 'female_range_max': 15.1, 'female_unit': 'g/dL',
+                'common_unit': 'g/dL',
                 'description': 'Oxygen-carrying protein in red blood cells',
                 'category': 'Complete Blood Count'
             },
@@ -62,6 +72,7 @@ class InvestigationStandards:
                 'aliases': 'cholesterol,total chol,tc,total cholesterol',
                 'male_range_min': 125, 'male_range_max': 200, 'male_unit': 'mg/dL',
                 'female_range_min': 125, 'female_range_max': 200, 'female_unit': 'mg/dL',
+                'common_unit': 'mg/dL',
                 'description': 'Total cholesterol in blood',
                 'category': 'Lipid Profile'
             },
