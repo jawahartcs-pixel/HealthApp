@@ -136,10 +136,13 @@ Preferred communication style: Simple, everyday language.
   - Enhanced reference range patterns to handle medical report formats including parentheses, brackets, and comparison operators
   - Improved contextual scanning around test results for better reference range detection
   - Extended pattern matching for "up to", "below", and other medical range expressions
-  - Fixed fuzzy matching logic to properly detect existing investigation standards using substring and alias matching
-  - Enhanced hemoglobin aliases to include "blood hemoglobin" and "blood haemoglobin" variations
-  - Added comprehensive debugging interface showing fuzzy matching process and comparison results
-  - Improved investigation standard detection to prevent duplicate creation of existing standards
+  - **Replaced Fuzzy Matching with Strict Case-Insensitive Matching**: Removed fuzzy matching to prevent incorrect matches
+  - **Dual-Option Workflow**: Added flexible standard creation system with two options regardless of match status:
+    - Create new investigation standard with full form and reference range parsing
+    - Add extracted test name to existing standard's aliases with dropdown selection
+  - **Enhanced Investigation Standards Management**: Both options available whether match is found or not
+  - **Improved User Control**: Users can now choose between creating new standards or updating existing ones
+  - **Case-Insensitive Exact Matching**: Strict matching prevents false positives while allowing case variations
 
 ### July 16, 2025 - Image Upload Support & Standards Creation from Reports
 - **Image File Support**: Added comprehensive support for image uploads in file parser

@@ -2379,33 +2379,30 @@ def investigation_standards_page(investigation_standards):
                     # Get all existing aliases from standards
                     existing_standards = investigation_standards.get_all_standards()
                     
-                    # Helper function to check if a test name matches any existing aliases using fuzzy matching
-                    def check_fuzzy_match(test_name):
-                        """Check if test name matches any existing aliases using fuzzy matching."""
+                    # Helper function to check if a test name matches any existing aliases using case-insensitive matching
+                    def check_case_insensitive_match(test_name):
+                        """Check if test name matches any existing aliases using case-insensitive matching."""
                         test_name_clean = test_name.lower().strip()
                         
-                        # Also check for exact substring matches or partial matches
                         for standard in existing_standards:
-                            # Check against standard name
+                            # Check against standard name (exact match)
                             standard_name = standard['standard_name'].lower()
-                            if (investigation_standards.fuzzy_match(test_name_clean, standard_name) or
-                                standard_name in test_name_clean or test_name_clean in standard_name):
+                            if test_name_clean == standard_name:
                                 return True, standard['standard_name']
                             
-                            # Check against aliases
+                            # Check against aliases (exact match)
                             if standard.get('aliases'):
                                 aliases = [alias.strip().lower() for alias in standard['aliases'].split(',')]
                                 for alias in aliases:
-                                    if (investigation_standards.fuzzy_match(test_name_clean, alias) or
-                                        alias in test_name_clean or test_name_clean in alias):
+                                    if test_name_clean == alias:
                                         return True, standard['standard_name']
                         
                         return False, None
                     
                     # Process each unique test individually
                     for i, test_name in enumerate(unique_tests):
-                        # Check if this test exists in aliases using fuzzy matching
-                        exists_in_aliases, matched_standard = check_fuzzy_match(test_name)
+                        # Check if this test exists in aliases using case-insensitive matching
+                        exists_in_aliases, matched_standard = check_case_insensitive_match(test_name)
                         
                         with st.expander(f"{'✅' if exists_in_aliases else '➕'} {test_name}", expanded=not exists_in_aliases):
                             # Create two-column layout: Document snippet on left, Investigation details on right
@@ -2455,46 +2452,44 @@ def investigation_standards_page(investigation_standards):
                                     st.write("**Status:** Found in existing aliases")
                                     if matched_standard:
                                         st.write(f"**Matched Standard:** {matched_standard}")
-                                    st.write("**Action:** None needed")
                                 else:
                                     st.warning("🆕 New investigation type - not found in existing aliases")
-                                    st.write("**Action:** Create new")
-                                    
-                                    # Debug information for fuzzy matching
-                                    with st.expander("🔍 Debug: Fuzzy Matching Details", expanded=False):
-                                        st.write(f"**Search term:** {test_name}")
-                                        st.write(f"**Normalized:** {test_name.lower().strip()}")
-                                        st.write("**Checked against standards:**")
-                                        for standard in existing_standards:
-                                            st.write(f"- {standard['standard_name']}")
-                                            if standard.get('aliases'):
-                                                st.write(f"  Aliases: {standard['aliases']}")
-                                            
-                                            # Show fuzzy match scores
-                                            standard_name = standard['standard_name'].lower()
-                                            test_name_clean = test_name.lower().strip()
-                                            
-                                            # Check substring matches
-                                            if standard_name in test_name_clean or test_name_clean in standard_name:
-                                                st.write(f"  ✓ Substring match found with '{standard['standard_name']}'")
-                                            
-                                            # Check alias matches
-                                            if standard.get('aliases'):
-                                                aliases = [alias.strip().lower() for alias in standard['aliases'].split(',')]
-                                                for alias in aliases:
-                                                    if alias in test_name_clean or test_name_clean in alias:
-                                                        st.write(f"  ✓ Alias match found: '{alias}' matches '{test_name_clean}'")
-                                    
-                                    # Show inline creation form for new investigations
-                                    checkbox_key = f"create_{abs(hash(test_name)) % 1000000}"
-                                    create_checkbox = st.checkbox(
-                                        "Create new investigation standard", 
-                                        key=checkbox_key, 
-                                        value=True
+                                    st.write("**Status:** No exact match found")
+                                
+                                # Always provide both options regardless of match status
+                                st.subheader("🎯 Available Actions")
+                                
+                                # Option 1: Create as new standard
+                                create_new = st.checkbox(
+                                    f"Create '{test_name}' as new standard",
+                                    key=f"create_new_{i}",
+                                    value=not exists_in_aliases,
+                                    help="Create this as a completely new investigation standard"
+                                )
+                                
+                                # Option 2: Add to existing standard's aliases
+                                add_to_existing = st.checkbox(
+                                    f"Add '{test_name}' to existing standard's aliases",
+                                    key=f"add_to_existing_{i}",
+                                    value=False,
+                                    help="Add this test name as an alias to an existing standard"
+                                )
+                                
+                                # If adding to existing, show dropdown to select standard
+                                selected_standard = None
+                                if add_to_existing:
+                                    standard_options = [s['standard_name'] for s in existing_standards]
+                                    selected_standard = st.selectbox(
+                                        "Select existing standard to add alias to:",
+                                        options=standard_options,
+                                        key=f"select_standard_{i}",
+                                        index=0 if not matched_standard else (
+                                            standard_options.index(matched_standard) if matched_standard in standard_options else 0
+                                        )
                                     )
-                                    
-                                    # Show form if checkbox is checked
-                                    if create_checkbox:
+                                
+                                # Show forms based on selected options
+                                if create_new:
                                         # Create unique form key using test name hash to avoid duplicates
                                         form_key = f"create_form_{abs(hash(test_name)) % 1000000}"
                                         
@@ -2646,6 +2641,48 @@ def investigation_standards_page(investigation_standards):
                                                 
                                                 except Exception as e:
                                                     st.error(f"Error creating standard: {str(e)}")
+                                
+                                # Handle adding to existing standard's aliases
+                                if add_to_existing and selected_standard:
+                                    st.subheader(f"Add to '{selected_standard}' aliases")
+                                    
+                                    # Find the selected standard
+                                    target_standard = None
+                                    for std in existing_standards:
+                                        if std['standard_name'] == selected_standard:
+                                            target_standard = std
+                                            break
+                                    
+                                    if target_standard:
+                                        current_aliases = target_standard.get('aliases', '')
+                                        st.write(f"**Current aliases:** {current_aliases}")
+                                        
+                                        # Check if already exists
+                                        existing_aliases = [alias.strip().lower() for alias in current_aliases.split(',') if alias.strip()]
+                                        if test_name.lower() in existing_aliases:
+                                            st.info(f"'{test_name}' already exists in aliases")
+                                        else:
+                                            if st.button(f"Add '{test_name}' to aliases", key=f"add_alias_{i}"):
+                                                try:
+                                                    # Add to aliases
+                                                    new_aliases = f"{current_aliases}, {test_name}".strip(', ')
+                                                    
+                                                    # Update the standard
+                                                    updated_data = target_standard.copy()
+                                                    updated_data['aliases'] = new_aliases
+                                                    
+                                                    success = investigation_standards.update_standard(target_standard['id'], updated_data)
+                                                    
+                                                    if success:
+                                                        st.success(f"✅ Added '{test_name}' to '{selected_standard}' aliases!")
+                                                        st.rerun()
+                                                    else:
+                                                        st.error(f"❌ Failed to update aliases for '{selected_standard}'")
+                                                        
+                                                except Exception as e:
+                                                    st.error(f"Error updating aliases: {str(e)}")
+                                    else:
+                                        st.error("Selected standard not found")
 
 if __name__ == "__main__":
     main()
