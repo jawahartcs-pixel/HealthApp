@@ -66,6 +66,13 @@ class FileParser:
             'ferritin': r'(?:ferritin)\s*[:\-]?\s*(\d+(?:\.\d+)?)\s*(?:ng/ml|μg/l)?'
         }
         
+        # Enhanced unit extraction patterns
+        self.unit_patterns = [
+            r'(\d+(?:\.\d+)?)\s*([a-zA-Z/%×^²³⁰¹²³⁴⁵⁶⁷⁸⁹μµ]+(?:[/\s]*[a-zA-Z]+)*)',  # Number followed by unit
+            r'(\d+(?:\.\d+)?)\s*([a-zA-Z/%×^²³⁰¹²³⁴⁵⁶⁷⁸⁹μµ]+(?:\s*[/\-]\s*[a-zA-Z]+)+)',  # Complex units with slashes/dashes
+            r'(\d+(?:\.\d+)?)\s*([a-zA-Z]+\d*)',  # Units with numbers (e.g., ml2)
+        ]
+        
         # Common units for each test type
         self.common_units = {
             'glucose': 'mg/dL',
@@ -795,10 +802,15 @@ class FileParser:
                     # Get the display name for the test
                     display_name = self._get_display_name(test_name)
                     
+                    # Try to extract unit from context
+                    extracted_unit = self._extract_unit_from_context(text, display_name, value)
+                    if not extracted_unit:
+                        extracted_unit = self.common_units.get(test_name, '')
+                    
                     result = {
                         'test_type': display_name,
                         'value': value,
-                        'unit': self.common_units.get(test_name, ''),
+                        'unit': extracted_unit,
                         'reference_range': self.reference_ranges.get(test_name, ''),
                         'source': 'regex'
                     }
@@ -1059,6 +1071,70 @@ class FileParser:
         
         return display_names.get(test_key, test_key.replace('_', ' ').title())
     
+    def _extract_unit_from_context(self, text: str, test_name: str, value: float) -> str:
+        """Extract unit from the context around a test result."""
+        # Look for units near the test name and value
+        test_pattern = re.escape(test_name.lower())
+        value_pattern = re.escape(str(value))
+        
+        # Search in a window around the test name and value
+        for pattern in self.unit_patterns:
+            # Look for the specific value with units
+            value_unit_match = re.search(f'{value_pattern}\\s*([a-zA-Z/%×^²³⁰¹²³⁴⁵⁶⁷⁸⁹μµ]+(?:[/\\s]*[a-zA-Z]+)*)', text, re.IGNORECASE)
+            if value_unit_match:
+                unit = value_unit_match.group(1).strip()
+                if unit and len(unit) <= 20:  # Reasonable unit length
+                    return self._normalize_unit(unit)
+        
+        # Look for common medical units in the vicinity
+        window_size = 100
+        test_pos = text.lower().find(test_name.lower())
+        if test_pos != -1:
+            start = max(0, test_pos - window_size)
+            end = min(len(text), test_pos + len(test_name) + window_size)
+            context = text[start:end]
+            
+            # Common medical units to look for
+            common_units = [
+                'mg/dL', 'mg/dl', 'mmol/L', 'mmol/l', 'g/dL', 'g/dl', 'g/L', 'g/l',
+                'μg/dL', 'μg/dl', 'ng/mL', 'ng/ml', 'pg/mL', 'pg/ml', 'mU/L', 'mU/l',
+                'U/L', 'u/l', 'IU/L', 'iu/l', '%', 'percent', 'mEq/L', 'meq/l',
+                'thousand/uL', '×10³/uL', 'million/uL', '×10⁶/uL', 'cells/uL'
+            ]
+            
+            for unit in common_units:
+                if unit.lower() in context.lower():
+                    return self._normalize_unit(unit)
+        
+        return ''
+    
+    def _normalize_unit(self, unit: str) -> str:
+        """Normalize unit format for consistency."""
+        if not unit:
+            return ''
+        
+        unit = unit.strip()
+        
+        # Standardize common variations
+        unit_normalizations = {
+            'mg/dl': 'mg/dL',
+            'mmol/l': 'mmol/L',
+            'g/dl': 'g/dL',
+            'g/l': 'g/L',
+            'μg/dl': 'μg/dL',
+            'ng/ml': 'ng/mL',
+            'pg/ml': 'pg/mL',
+            'mu/l': 'mU/L',
+            'u/l': 'U/L',
+            'iu/l': 'IU/L',
+            'meq/l': 'mEq/L',
+            'percent': '%',
+            'per cent': '%'
+        }
+        
+        unit_lower = unit.lower()
+        return unit_normalizations.get(unit_lower, unit)
+
     def _clean_reference_range(self, ref_range: str) -> str:
         """Clean and format reference range text."""
         if not ref_range:

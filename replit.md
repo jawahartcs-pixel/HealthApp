@@ -164,6 +164,27 @@ Preferred communication style: Simple, everyday language.
   - Updated display formatting to show common unit with reference ranges
   - Streamlined interface reduces data entry and ensures consistency across gender ranges
 
+### July 18, 2025 - Enhanced Unit Extraction & Fuzzy Matching with Text and Unit Comparison
+- **Advanced Unit Extraction**: Enhanced document processing to extract units for each investigation type during parsing
+  - Added enhanced unit extraction patterns for complex medical units (mg/dL, μg/dL, ×10³/uL, etc.)
+  - Context-aware unit detection searching around test names and values
+  - Unit normalization for consistent formatting across different document formats
+  - Fallback to common medical units when specific units not found in document
+  - Support for various unit formats including special characters and scientific notation
+- **Intelligent Fuzzy Matching**: Upgraded investigation standards matching to consider both test names and units
+  - Enhanced find_best_match method to accept unit parameter alongside test name
+  - Unit compatibility scoring system comparing extracted units with standard units
+  - Weighted scoring combining text similarity (70%) and unit compatibility (30%)
+  - Unit equivalence detection for variations (mg/dl vs mg/dL, u/l vs IU/L)
+  - Medical unit validation to distinguish between medical and non-medical units
+  - Improved standardize_test_name method passing both text and unit for better matches
+- **Robust Database Compatibility**: Enhanced investigation standards methods for backward compatibility
+  - Dynamic schema detection for common_unit column availability
+  - Automatic fallback to individual male/female unit fields when common_unit not available
+  - Updated add_standard and update_standard methods to handle both schema versions
+  - Enhanced get_all_standards method with intelligent column detection
+  - Seamless migration support for existing databases without breaking functionality
+
 ### July 16, 2025 - Image Upload Support & Standards Creation from Reports
 - **Image File Support**: Added comprehensive support for image uploads in file parser
   - Support for JPEG, PNG, BMP, and TIFF image formats
