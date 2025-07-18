@@ -170,7 +170,7 @@ def upload_results_page(file_parser, data_processor, user_id):
         st.subheader("Processing Files")
         
         for uploaded_file in uploaded_files:
-            with st.expander(f"Processing: {uploaded_file.name}"):
+            with st.expander(f"Processing: {uploaded_file.name}", expanded=True):
                 try:
                     # Cache extraction results to prevent reprocessing on form changes
                     cache_key = f"extraction_{uploaded_file.name}_{uploaded_file.size}_{force_ocr}"
@@ -255,7 +255,12 @@ def upload_results_page(file_parser, data_processor, user_id):
                         )
                     
                     # Additional manual tests section (outside form to prevent Enter key submission)
-                    st.write("**Add Additional Tests (not scanned):**")
+                    st.divider()
+                    st.markdown("### 📝 Add Additional Tests (Manual Entry)")
+                    st.caption("Add test results that weren't automatically detected or scanned from the document")
+                    
+                    # Debug indicator to confirm section is visible
+                    st.info("✅ Manual test entry section loaded successfully")
                     
                     # Number of additional tests to add
                     num_additional = st.number_input(
@@ -264,7 +269,7 @@ def upload_results_page(file_parser, data_processor, user_id):
                         max_value=20,
                         value=0,
                         key=f"num_additional_{uploaded_file.name}",
-                        help="Press Enter to update the number of test fields below"
+                        help="Choose how many manual tests to add, then press Enter to see input fields below"
                     )
                     
                     # Test results preview and editing
