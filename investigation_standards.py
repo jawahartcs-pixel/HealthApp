@@ -51,7 +51,7 @@ class InvestigationStandards:
             },
             {
                 'standard_name': 'Hemoglobin',
-                'aliases': 'hb,haemoglobin,hemoglobin,hgb,blood hemoglobin,blood haemoglobin',
+                'aliases': 'hb,haemoglobin,hemoglobin,hgb',
                 'male_range_min': 13.8, 'male_range_max': 17.2, 'male_unit': 'g/dL',
                 'female_range_min': 12.1, 'female_range_max': 15.1, 'female_unit': 'g/dL',
                 'description': 'Oxygen-carrying protein in red blood cells',
@@ -345,14 +345,3 @@ class InvestigationStandards:
                     female_range = f"F: {standard['female_range_min']}-{standard['female_range_max']} {standard['female_unit']}"
                     return f"{male_range}, {female_range}"
         return None
-    
-    def fuzzy_match(self, text1: str, text2: str, threshold: float = 0.6) -> bool:
-        """Check if two texts match using fuzzy logic."""
-        # Clean both texts
-        text1_clean = self._clean_test_name(text1)
-        text2_clean = self._clean_test_name(text2)
-        
-        # Calculate similarity
-        similarity = self._calculate_similarity(text1_clean, text2_clean)
-        
-        return similarity >= threshold
