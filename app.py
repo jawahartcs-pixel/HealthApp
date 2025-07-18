@@ -222,6 +222,9 @@ def upload_results_page(file_parser, data_processor, user_id):
                     # Check if we have any results - continue processing even if none found
                     has_extracted_results = test_data and test_data.get('results')
                     
+                    # Initialize num_additional early to avoid scope issues
+                    num_additional = 0
+                    
                     if not has_extracted_results:
                         st.warning("No blood test data automatically detected in the file")
                         st.info("💡 You can still manually add test results using the section below")
@@ -656,14 +659,17 @@ Extraction Method: {result.get('source', 'regex')}""")
                             st.write("**Manual Test Entry:**")
                             st.caption("No tests were automatically detected. Add tests manually below.")
                             
+                            # Get the current number of additional tests from session state
+                            current_num_additional = st.session_state.get(f"num_additional_{uploaded_file.name}", 0)
+                            
                             # Show additional tests section if any are requested
-                            if num_additional > 0:
+                            if current_num_additional > 0:
                                 st.write("**Manual Tests:**")
                                 st.caption("Fill in the fields below for tests to add to the database")
                                 
                             # Additional test inputs
-                            if num_additional > 0:
-                                for i in range(num_additional):
+                            if current_num_additional > 0:
+                                for i in range(current_num_additional):
                                     col1, col2, col3, col4, col5, col6 = st.columns([3, 2, 2, 2, 1, 1])
                                     
                                     with col1:
@@ -744,11 +750,11 @@ Extraction Method: {result.get('source', 'regex')}""")
                             with st.spinner("Saving manual tests..."):
                                 # Process only additional manual tests
                                 final_results = []
-                                num_additional = st.session_state.get(f"num_additional_{uploaded_file.name}", 0)
+                                manual_num_additional = st.session_state.get(f"num_additional_{uploaded_file.name}", 0)
                                 additional_count = 0
                                 
-                                if num_additional > 0:
-                                    for i in range(num_additional):
+                                if manual_num_additional > 0:
+                                    for i in range(manual_num_additional):
                                         if st.session_state.get(f"add_include_{uploaded_file.name}_{i}", True):
                                             # Determine which test type to use for additional tests
                                             add_dropdown_selection = st.session_state.get(f"add_test_dropdown_{uploaded_file.name}_{i}", "(Use custom text below)")
@@ -796,8 +802,7 @@ Extraction Method: {result.get('source', 'regex')}""")
                     st.markdown("### 📝 Add Additional Tests (Manual Entry)")
                     st.caption("Add test results that weren't automatically detected or scanned from the document")
                     
-                    # Debug indicator to confirm section is visible
-                    st.info("✅ Manual test entry section loaded successfully")
+
                     
                     # Number of additional tests to add
                     num_additional = st.number_input(
