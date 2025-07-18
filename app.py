@@ -366,7 +366,7 @@ def upload_results_page(file_parser, data_processor, user_id):
                                         st.code(f"""Investigation: {result['test_type']}
 Value: {result['value']}
 Unit: {result.get('unit', 'Not specified')}
-
+Reference Range: {result.get('reference_range', 'Not specified')}
 Extraction Method: {result.get('source', 'regex')}""")
                                     
                                     # Right side - Editable fields
@@ -442,7 +442,13 @@ Extraction Method: {result.get('source', 'regex')}""")
                                             help="Edit the unit if needed"
                                         )
                                         
-
+                                        # Editable reference range
+                                        st.text_input(
+                                            "Reference Range",
+                                            value=result.get('reference_range', ''),
+                                            key=f"test_ref_range_{uploaded_file.name}_{i}",
+                                            help="Edit the reference range if needed"
+                                        )
                                         
                                         # Include checkbox
                                         st.checkbox(
@@ -523,6 +529,7 @@ Extraction Method: {result.get('source', 'regex')}""")
                                     with col4:
                                         st.text_input(
                                             f"Additional Ref Range {i+1}",
+                                            key=f"add_test_ref_range_{uploaded_file.name}_{i}",
                                             label_visibility="collapsed",
                                             placeholder="5.0-15.0"
                                         )
@@ -566,7 +573,7 @@ Extraction Method: {result.get('source', 'regex')}""")
                                             'test_type': final_test_type,
                                             'value': st.session_state.get(f"test_value_{uploaded_file.name}_{i}", result['value']),
                                             'unit': st.session_state.get(f"test_unit_{uploaded_file.name}_{i}", result.get('unit', '')),
-
+                                            'reference_range': st.session_state.get(f"test_ref_range_{uploaded_file.name}_{i}", result.get('reference_range', ''))
                                         })
                                 
                                 # Add additional manual tests
@@ -588,6 +595,7 @@ Extraction Method: {result.get('source', 'regex')}""")
                                             
                                             test_value = st.session_state.get(f"add_test_value_{uploaded_file.name}_{i}", 0.0)
                                             test_unit = st.session_state.get(f"add_test_unit_{uploaded_file.name}_{i}", "").strip()
+                                            test_ref_range = st.session_state.get(f"add_test_ref_range_{uploaded_file.name}_{i}", "").strip()
                                             
                                             # Only add if test name is provided and value is not zero
                                             if test_name and test_value != 0.0:
@@ -595,6 +603,7 @@ Extraction Method: {result.get('source', 'regex')}""")
                                                     'test_type': test_name,
                                                     'value': test_value,
                                                     'unit': test_unit,
+                                                    'reference_range': test_ref_range
                                                 })
                                                 additional_count += 1
                                 
@@ -718,6 +727,7 @@ Extraction Method: {result.get('source', 'regex')}""")
                                     with col4:
                                         st.text_input(
                                             f"Ref Range {i+1}",
+                                            key=f"add_test_ref_range_{uploaded_file.name}_{i}",
                                             label_visibility="collapsed",
                                             placeholder="5.0-15.0"
                                         )
@@ -756,6 +766,7 @@ Extraction Method: {result.get('source', 'regex')}""")
                                             
                                             test_value = st.session_state.get(f"add_test_value_{uploaded_file.name}_{i}", 0.0)
                                             test_unit = st.session_state.get(f"add_test_unit_{uploaded_file.name}_{i}", "").strip()
+                                            test_ref_range = st.session_state.get(f"add_test_ref_range_{uploaded_file.name}_{i}", "").strip()
                                             
                                             # Only add if test name is provided and value is not zero
                                             if test_name and test_value != 0.0:
@@ -763,6 +774,7 @@ Extraction Method: {result.get('source', 'regex')}""")
                                                     'test_type': test_name,
                                                     'value': test_value,
                                                     'unit': test_unit,
+                                                    'reference_range': test_ref_range
                                                 })
                                                 additional_count += 1
                                 
@@ -862,6 +874,7 @@ Extraction Method: {result.get('source', 'regex')}""")
                                 with col4:
                                     st.text_input(
                                         f"Ref Range {i+1}",
+                                        key=f"bottom_test_ref_range_{uploaded_file.name}_{i}",
                                         placeholder="5.0-15.0"
                                     )
                                 
@@ -895,6 +908,7 @@ Extraction Method: {result.get('source', 'regex')}""")
                                         
                                         test_value = st.session_state.get(f"bottom_test_value_{uploaded_file.name}_{i}", 0.0)
                                         test_unit = st.session_state.get(f"bottom_test_unit_{uploaded_file.name}_{i}", "").strip()
+                                        test_ref_range = st.session_state.get(f"bottom_test_ref_range_{uploaded_file.name}_{i}", "").strip()
                                         
                                         # Only add if test name is provided and value is not zero
                                         if test_name and test_value != 0.0:
@@ -902,6 +916,7 @@ Extraction Method: {result.get('source', 'regex')}""")
                                                 'test_type': test_name,
                                                 'value': test_value,
                                                 'unit': test_unit,
+                                                'reference_range': test_ref_range
                                             })
                                             additional_count += 1
                                 
@@ -988,7 +1003,7 @@ def view_patients_page(db, alert_system, user_id):
                         """, unsafe_allow_html=True)
                 
                 st.subheader(f"Recent Tests for {selected_patient}")
-                recent_df = pd.DataFrame(patient_tests[-5:], columns=['Date', 'Test Type', 'Value', 'Unit'])
+                recent_df = pd.DataFrame(patient_tests[-5:], columns=['Date', 'Test Type', 'Value', 'Unit', 'Reference Range'])
                 st.dataframe(recent_df, use_container_width=True, hide_index=True)
     else:
         st.info("No patients found matching your search.")
@@ -1020,7 +1035,7 @@ def patient_dashboard_page(db, visualization, alert_system, user_id):
             return
         
         # Convert to DataFrame for easier manipulation
-        df = pd.DataFrame(patient_tests, columns=['Date', 'Test Type', 'Value', 'Unit'])
+        df = pd.DataFrame(patient_tests, columns=['Date', 'Test Type', 'Value', 'Unit', 'Reference Range'])
         df['Date'] = pd.to_datetime(df['Date'])
         df['Value'] = pd.to_numeric(df['Value'], errors='coerce')
         
@@ -1089,6 +1104,7 @@ def patient_dashboard_page(db, visualization, alert_system, user_id):
                 with st.expander(f"{alert['icon']} {alert['level']} - {alert['test_type']} ({alert['test_date']})", expanded=alert['level'] == 'CRITICAL'):
                     st.markdown(f"**Message:** {alert['message']}")
                     st.markdown(f"**Value:** {alert['value']} {alert['unit']}")
+                    st.markdown(f"**Reference Range:** {alert['reference_range']}")
                     
                     if alert['recommendations']:
                         st.markdown("**Recommendations:**")
@@ -1125,7 +1141,7 @@ def patient_dashboard_page(db, visualization, alert_system, user_id):
         # Quick summary of patient data
         all_test_data = db.get_patient_test_results_with_ids(selected_patient)
         if all_test_data:
-            edit_df = pd.DataFrame(all_test_data, columns=['ID', 'Date', 'Test Type', 'Value', 'Unit'])
+            edit_df = pd.DataFrame(all_test_data, columns=['ID', 'Date', 'Test Type', 'Value', 'Unit', 'Reference Range'])
             
             # Add quick stats
             col1, col2, col3 = st.columns(3)
@@ -1190,7 +1206,7 @@ def search_filter_page(db, visualization, user_id):
             st.subheader(f"📊 Search Results ({len(results)} records)")
             
             # Convert to DataFrame
-            df = pd.DataFrame(results, columns=['Patient Name', 'Date', 'Test Type', 'Value', 'Unit'])
+            df = pd.DataFrame(results, columns=['Patient Name', 'Date', 'Test Type', 'Value', 'Unit', 'Reference Range'])
             df['Date'] = pd.to_datetime(df['Date'])
             df['Value'] = pd.to_numeric(df['Value'], errors='coerce')
             
@@ -1226,7 +1242,7 @@ def export_data_page(db, user_id):
         if selected_patient and st.button("Export Patient Data"):
             patient_tests = db.get_patient_tests(selected_patient)
             if patient_tests:
-                df = pd.DataFrame(patient_tests, columns=['Date', 'Test Type', 'Value', 'Unit'])
+                df = pd.DataFrame(patient_tests, columns=['Date', 'Test Type', 'Value', 'Unit', 'Reference Range'])
                 csv = df.to_csv(index=False)
                 st.download_button(
                     label=f"Download {selected_patient}_test_results.csv",
@@ -1245,7 +1261,7 @@ def export_data_page(db, user_id):
         if st.button("Export Date Range"):
             results = db.search_test_results(start_date=start_date, end_date=end_date)
             if results:
-                df = pd.DataFrame(results, columns=['Patient Name', 'Date', 'Test Type', 'Value', 'Unit'])
+                df = pd.DataFrame(results, columns=['Patient Name', 'Date', 'Test Type', 'Value', 'Unit', 'Reference Range'])
                 csv = df.to_csv(index=False)
                 st.download_button(
                     label=f"Download results_{start_date}_to_{end_date}.csv",
@@ -1261,7 +1277,7 @@ def export_data_page(db, user_id):
         if selected_test_type and st.button("Export Test Type Data"):
             results = db.search_test_results(test_types=[selected_test_type])
             if results:
-                df = pd.DataFrame(results, columns=['Patient Name', 'Date', 'Test Type', 'Value', 'Unit'])
+                df = pd.DataFrame(results, columns=['Patient Name', 'Date', 'Test Type', 'Value', 'Unit', 'Reference Range'])
                 csv = df.to_csv(index=False)
                 st.download_button(
                     label=f"Download {selected_test_type}_results.csv",
@@ -1274,7 +1290,7 @@ def export_data_page(db, user_id):
         if st.button("Export All Data"):
             all_results = db.get_all_test_results()
             if all_results:
-                df = pd.DataFrame(all_results, columns=['Patient Name', 'Date', 'Test Type', 'Value', 'Unit'])
+                df = pd.DataFrame(all_results, columns=['Patient Name', 'Date', 'Test Type', 'Value', 'Unit', 'Reference Range'])
                 csv = df.to_csv(index=False)
                 st.download_button(
                     label="Download all_test_results.csv",
@@ -1330,7 +1346,7 @@ def manage_data_page(db, user_id):
             
             if all_test_data:
                 # Convert to DataFrame with IDs
-                edit_df = pd.DataFrame(all_test_data, columns=['ID', 'Date', 'Test Type', 'Value', 'Unit'])
+                edit_df = pd.DataFrame(all_test_data, columns=['ID', 'Date', 'Test Type', 'Value', 'Unit', 'Reference Range'])
                 edit_df['Date'] = pd.to_datetime(edit_df['Date']).dt.strftime('%Y-%m-%d')
                 edit_df['Value'] = pd.to_numeric(edit_df['Value'], errors='coerce')
                 
@@ -1380,6 +1396,7 @@ def manage_data_page(db, user_id):
                                 
                                 with col2:
                                     new_date = st.date_input("Date", value=pd.to_datetime(result_row['Date']).date())
+                                    new_ref_range = st.text_input("Reference Range", value=result_row['Reference Range'])
                                 
                                 col1, col2 = st.columns(2)
                                 with col1:
@@ -1397,6 +1414,7 @@ def manage_data_page(db, user_id):
                                         value=new_value,
                                         unit=new_unit,
                                         test_date=new_date,
+                                        reference_range=new_ref_range
                                     )
                                     
                                     if success:
@@ -1589,7 +1607,8 @@ def manage_data_page(db, user_id):
                 if search_term:
                     search_mask = (
                         filtered_df['Test Type'].str.contains(search_term, case=False, na=False) |
-                        filtered_df['Unit'].str.contains(search_term, case=False, na=False)
+                        filtered_df['Unit'].str.contains(search_term, case=False, na=False) |
+                        filtered_df['Reference Range'].str.contains(search_term, case=False, na=False)
                     )
                     filtered_df = filtered_df[search_mask]
                 
@@ -1644,6 +1663,10 @@ def manage_data_page(db, user_id):
                             "Unit": st.column_config.TextColumn(
                                 "Unit",
                                 width="small"
+                            ),
+                            "Reference Range": st.column_config.TextColumn(
+                                "Reference Range",
+                                width="medium"
                             )
                         }
                     )
@@ -1686,7 +1709,7 @@ def manage_data_page(db, user_id):
             st.write(f"**Test Results for {selected_patient}**")
             
             # Create DataFrame for display
-            df = pd.DataFrame(test_results, columns=['ID', 'Date', 'Test Type', 'Value', 'Unit'])
+            df = pd.DataFrame(test_results, columns=['ID', 'Date', 'Test Type', 'Value', 'Unit', 'Reference Range'])
             
             # Multi-select for deletion
             selected_indices = st.multiselect(
@@ -1740,7 +1763,7 @@ def manage_data_page(db, user_id):
             for test_date, tests in results_by_date.items():
                 with st.expander(f"📋 Report from {test_date} ({len(tests)} tests)"):
                     # Show tests for this date
-                    date_df = pd.DataFrame(tests, columns=['Test Type', 'Value', 'Unit'])
+                    date_df = pd.DataFrame(tests, columns=['Test Type', 'Value', 'Unit', 'Reference Range', 'Count'])
                     st.dataframe(date_df, use_container_width=True, hide_index=True)
                     
                     if st.button(f"🗑️ Delete Entire Report ({test_date})", key=f"delete_date_{test_date}"):
@@ -1782,7 +1805,7 @@ def manage_data_page(db, user_id):
                 st.warning(f"⚠️ This will delete **{len(filtered_tests)}** {selected_test_type} test results for {selected_patient}!")
                 
                 with st.expander("Preview of data to be deleted"):
-                    test_df = pd.DataFrame(filtered_tests, columns=['Date', 'Test Type', 'Value', 'Unit'])
+                    test_df = pd.DataFrame(filtered_tests, columns=['Date', 'Test Type', 'Value', 'Unit', 'Reference Range'])
                     st.dataframe(test_df, use_container_width=True, hide_index=True)
                 
                 # Confirmation
@@ -1818,7 +1841,7 @@ def manage_data_page(db, user_id):
                 
                 # Show recent tests
                 with st.expander("Preview of data to be deleted"):
-                    recent_df = pd.DataFrame(patient_tests[:10], columns=['Date', 'Test Type', 'Value', 'Unit'])
+                    recent_df = pd.DataFrame(patient_tests[:10], columns=['Date', 'Test Type', 'Value', 'Unit', 'Reference Range'])
                     st.dataframe(recent_df, use_container_width=True, hide_index=True)
                     if len(patient_tests) > 10:
                         st.write(f"... and {len(patient_tests) - 10} more test results")
@@ -1934,7 +1957,7 @@ def alert_dashboard_page(alert_system, user_id):
                 <h4>{alert['icon']} {alert['patient_name']} - {alert['test_type']}</h4>
                 <p><strong>Message:</strong> {alert['message']}</p>
                 <p><strong>Date:</strong> {alert['test_date']} | <strong>Value:</strong> {alert['value']} {alert['unit']}</p>
-<p><strong>Level:</strong> {alert['level']} | <strong>Severity:</strong> {alert['severity']}</p>
+                <p><strong>Reference Range:</strong> {alert['reference_range']}</p>
             </div>
             """, unsafe_allow_html=True)
             
@@ -1950,6 +1973,7 @@ def alert_dashboard_page(alert_system, user_id):
             with st.expander(f"{alert['icon']} {alert['patient_name']} - {alert['test_type']} ({alert['test_date']})"):
                 st.markdown(f"**Message:** {alert['message']}")
                 st.markdown(f"**Value:** {alert['value']} {alert['unit']}")
+                st.markdown(f"**Reference Range:** {alert['reference_range']}")
                 
                 if alert['recommendations']:
                     st.markdown("**Recommendations:**")
@@ -1965,6 +1989,7 @@ def alert_dashboard_page(alert_system, user_id):
             with st.expander(f"{alert['icon']} {alert['level']} - {alert['patient_name']} - {alert['test_type']} ({alert['test_date']})"):
                 st.markdown(f"**Message:** {alert['message']}")
                 st.markdown(f"**Value:** {alert['value']} {alert['unit']}")
+                st.markdown(f"**Reference Range:** {alert['reference_range']}")
                 
                 if alert['recommendations']:
                     st.markdown("**Recommendations:**")
@@ -2298,7 +2323,7 @@ def investigation_standards_page(investigation_standards):
                         edit_aliases = st.text_area("Aliases (comma-separated)", value=standard['aliases'] or '', key=f"alias_{standard['id']}")
                     
                     with col2:
-                        st.markdown("**🚹🚺 Gender-Specific Ranges:**")
+                        st.markdown("**🚹🚺 Reference Ranges**")
                         
                         # Male ranges
                         st.markdown("**Male Range:**")
@@ -2375,6 +2400,7 @@ def investigation_standards_page(investigation_standards):
                     placeholder="bilirubin, total bil, tbil")
             
             with col2:
+                st.markdown("**Reference Ranges**")
                 
                 # Male ranges
                 st.markdown("**Male Range:**")
@@ -2586,6 +2612,8 @@ def investigation_standards_page(investigation_standards):
                                                 st.json(test_info)
                                         
                                         for test_type in test_types_found:
+                                            ref_range = st.session_state.extracted_test_data[test_type].get('reference_range', '')
+                                            ref_info = f" (Range: {ref_range})" if ref_range else " (No range extracted)"
                                             st.write(f"• {test_type}{ref_info}")
                                         
                                         if test_types_found:
@@ -2750,77 +2778,157 @@ def investigation_standards_page(investigation_standards):
                                 
                                 # Show forms based on selected options
                                 if create_new:
-                                    # Create unique form key using test name hash to avoid duplicates
-                                    form_key = f"create_form_{abs(hash(test_name)) % 1000000}"
-                                    
-                                    # Get extracted test data for this test if available
-                                    extracted_data = st.session_state.get('extracted_test_data', {}).get(test_name, {})
-                                    extracted_unit = extracted_data.get('unit', 'mg/dL')
-                                    
-                                    with st.form(form_key):
-                                        st.write("**Investigation Standard Details:**")
+                                        # Create unique form key using test name hash to avoid duplicates
+                                        form_key = f"create_form_{abs(hash(test_name)) % 1000000}"
                                         
-                                        # Standard name (pre-populated with extracted text)
-                                        standard_name = st.text_input(
-                                            "Standard Investigation Name", 
-                                            value=test_name,
-                                            key=f"name_{form_key}"
-                                        )
+                                        # Get extracted test data for this test if available
+                                        extracted_data = st.session_state.get('extracted_test_data', {}).get(test_name, {})
+                                        reference_range = extracted_data.get('reference_range', '')
+                                        extracted_unit = extracted_data.get('unit', 'mg/dL')
                                         
-                                        # Category
-                                        category = st.selectbox(
-                                            "Category", 
-                                            ["Blood Chemistry", "Hematology", "Lipid Profile", "Liver Function", 
-                                             "Kidney Function", "Thyroid Function", "Cardiac Markers", "Diabetes Markers",
-                                             "Electrolytes", "Vitamins", "Hormones", "Other"],
-                                            key=f"category_{form_key}"
-                                        )
-                                        
-                                        # Description
-                                        description = st.text_area(
-                                            "Description", 
-                                            value="Investigation standard created from medical report extraction",
-                                            key=f"desc_{form_key}"
-                                        )
-                                        
-                                        # Aliases (automatically include the extracted text)
-                                        aliases_input = st.text_input(
-                                            "Aliases (comma-separated)", 
-                                            value=test_name,
-                                            help="The extracted test name will be automatically added to aliases",
-                                            key=f"aliases_{form_key}"
-                                        )
-                                        
-                                        # Submit button
-                                        submit_individual = st.form_submit_button(
-                                            f"✅ Create Standard for {test_name}", 
-                                            type="primary"
-                                        )
-                                        
-                                        if submit_individual:
-                                            try:
-                                                # Ensure extracted test name is in aliases
-                                                aliases_list = [alias.strip() for alias in aliases_input.split(',') if alias.strip()]
-                                                if test_name not in aliases_list:
-                                                    aliases_list.append(test_name)
-                                                
-                                                standard_data = {
-                                                    'standard_name': standard_name,
-                                                    'category': category,
-                                                    'description': description,
-                                                    'aliases': ", ".join(aliases_list)
-                                                }
-                                                
-                                                success = investigation_standards.add_standard(standard_data)
-                                                
-                                                if success:
-                                                    st.success(f"✅ Successfully created standard for {test_name}!")
-                                                    st.rerun()
-                                                else:
-                                                    st.error(f"❌ Failed to create standard for {test_name}")
+                                        # Parse reference range to extract min/max values
+                                        def parse_reference_range(ref_range_str):
+                                            """Parse reference range string to extract min/max values."""
+                                            if not ref_range_str:
+                                                return 0.0, 100.0, extracted_unit
                                             
-                                            except Exception as e:
-                                                st.error(f"Error creating standard: {str(e)}")
+                                            # Clean the reference range string
+                                            ref_clean = ref_range_str.strip()
+                                            
+                                            # Try to extract numeric ranges (e.g., "5.0-15.0", "5.0 - 15.0", "5.0 to 15.0")
+                                            range_patterns = [
+                                                r'(\d+\.?\d*)\s*[-–—]\s*(\d+\.?\d*)',  # 5.0-15.0 or 5.0 - 15.0
+                                                r'(\d+\.?\d*)\s+to\s+(\d+\.?\d*)',     # 5.0 to 15.0
+                                                r'(\d+\.?\d*)\s*–\s*(\d+\.?\d*)',      # em dash
+                                                r'(\d+\.?\d*)\s*\-\s*(\d+\.?\d*)',     # regular dash
+                                            ]
+                                            
+                                            for pattern in range_patterns:
+                                                match = re.search(pattern, ref_clean, re.IGNORECASE)
+                                                if match:
+                                                    try:
+                                                        min_val = float(match.group(1))
+                                                        max_val = float(match.group(2))
+                                                        return min_val, max_val, extracted_unit
+                                                    except ValueError:
+                                                        continue
+                                            
+                                            # Try to extract single value with operator (e.g., "<10", ">5")
+                                            single_patterns = [
+                                                r'<\s*(\d+\.?\d*)',  # <10
+                                                r'>\s*(\d+\.?\d*)',  # >5
+                                                r'≤\s*(\d+\.?\d*)',  # ≤10
+                                                r'≥\s*(\d+\.?\d*)',  # ≥5
+                                            ]
+                                            
+                                            for pattern in single_patterns:
+                                                match = re.search(pattern, ref_clean)
+                                                if match:
+                                                    try:
+                                                        val = float(match.group(1))
+                                                        if '<' in pattern or '≤' in pattern:
+                                                            return 0.0, val, extracted_unit
+                                                        else:  # > or ≥
+                                                            return val, val * 2, extracted_unit
+                                                    except ValueError:
+                                                        continue
+                                            
+                                            # Default fallback
+                                            return 0.0, 100.0, extracted_unit
+                                        
+                                        # Parse the reference range
+                                        min_val, max_val, unit = parse_reference_range(reference_range)
+                                        
+                                        with st.form(form_key):
+                                            st.write("**Investigation Standard Details:**")
+                                            
+                                            # Show extracted reference range if available
+                                            if reference_range:
+                                                st.info(f"📋 **Extracted Reference Range:** {reference_range}")
+                                                st.caption("The values below are automatically populated from the document")
+                                            
+                                            # Standard name (pre-populated with extracted text)
+                                            standard_name = st.text_input(
+                                                "Standard Investigation Name", 
+                                                value=test_name,
+                                                key=f"name_{form_key}"
+                                            )
+                                            
+                                            # Category
+                                            category = st.selectbox(
+                                                "Category", 
+                                                ["Blood Chemistry", "Hematology", "Lipid Profile", "Liver Function", 
+                                                 "Kidney Function", "Thyroid Function", "Cardiac Markers", "Diabetes Markers",
+                                                 "Electrolytes", "Vitamins", "Hormones", "Other"],
+                                                key=f"category_{form_key}"
+                                            )
+                                            
+                                            # Reference ranges
+                                            col_male, col_female = st.columns(2)
+                                            
+                                            with col_male:
+                                                st.write("**Male Range:**")
+                                                male_min = st.number_input("Min", value=min_val, key=f"male_min_{form_key}")
+                                                male_max = st.number_input("Max", value=max_val, key=f"male_max_{form_key}")
+                                                male_unit = st.text_input("Unit", value=unit, key=f"male_unit_{form_key}")
+                                            
+                                            with col_female:
+                                                st.write("**Female Range:**")
+                                                female_min = st.number_input("Min", value=min_val, key=f"female_min_{form_key}")
+                                                female_max = st.number_input("Max", value=max_val, key=f"female_max_{form_key}")
+                                                female_unit = st.text_input("Unit", value=unit, key=f"female_unit_{form_key}")
+                                            
+                                            # Description
+                                            description = st.text_area(
+                                                "Description", 
+                                                value="Investigation standard created from medical report extraction",
+                                                key=f"desc_{form_key}"
+                                            )
+                                            
+                                            # Aliases (automatically include the extracted text)
+                                            aliases_input = st.text_input(
+                                                "Aliases (comma-separated)", 
+                                                value=test_name,
+                                                help="The extracted test name will be automatically added to aliases",
+                                                key=f"aliases_{form_key}"
+                                            )
+                                            
+                                            # Submit button
+                                            submit_individual = st.form_submit_button(
+                                                f"✅ Create Standard for {test_name}", 
+                                                type="primary"
+                                            )
+                                            
+                                            if submit_individual:
+                                                try:
+                                                    # Ensure extracted test name is in aliases
+                                                    aliases_list = [alias.strip() for alias in aliases_input.split(',') if alias.strip()]
+                                                    if test_name not in aliases_list:
+                                                        aliases_list.append(test_name)
+                                                    
+                                                    standard_data = {
+                                                        'standard_name': standard_name,
+                                                        'category': category,
+                                                        'male_range_min': male_min,
+                                                        'male_range_max': male_max,
+                                                        'male_unit': male_unit,
+                                                        'female_range_min': female_min,
+                                                        'female_range_max': female_max,
+                                                        'female_unit': female_unit,
+                                                        'description': description,
+                                                        'aliases': ", ".join(aliases_list)
+                                                    }
+                                                    
+                                                    success = investigation_standards.add_standard(standard_data)
+                                                    
+                                                    if success:
+                                                        st.success(f"✅ Successfully created standard for {test_name}!")
+                                                        st.rerun()
+                                                    else:
+                                                        st.error(f"❌ Failed to create standard for {test_name}")
+                                                
+                                                except Exception as e:
+                                                    st.error(f"Error creating standard: {str(e)}")
                                 
                                 # Handle adding to existing standard's aliases
                                 if add_to_existing and selected_standard:
