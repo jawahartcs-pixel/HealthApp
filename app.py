@@ -219,12 +219,15 @@ def upload_results_page(file_parser, data_processor, user_id):
                         test_data = cached_data['test_data']
                         snippet_extractor = cached_data['snippet_extractor']
                     
-                    if not test_data or not test_data.get('results'):
-                        st.error("No valid blood test data found in the file")
+                    # Check if we have any results - continue processing even if none found
+                    has_extracted_results = test_data and test_data.get('results')
+                    
+                    if not has_extracted_results:
+                        st.warning("No blood test data automatically detected in the file")
+                        st.info("💡 You can still manually add test results using the section below")
                         # Show extracted text for debugging
                         with st.expander("Debug: Show extracted text"):
                             st.text_area("Extracted text", extracted_text[:1000] + "..." if len(extracted_text) > 1000 else extracted_text, height=200)
-                        continue
                     
                     status_text.text("Processing patient information...")
                     progress_bar.progress(75)
@@ -251,8 +254,21 @@ def upload_results_page(file_parser, data_processor, user_id):
                             help="Edit the test date if needed"
                         )
                     
+                    # Additional manual tests section (outside form to prevent Enter key submission)
+                    st.write("**Add Additional Tests (not scanned):**")
+                    
+                    # Number of additional tests to add
+                    num_additional = st.number_input(
+                        "Number of additional tests to add",
+                        min_value=0,
+                        max_value=20,
+                        value=0,
+                        key=f"num_additional_{uploaded_file.name}",
+                        help="Press Enter to update the number of test fields below"
+                    )
+                    
                     # Test results preview and editing
-                    if test_data.get('results'):
+                    if has_extracted_results:
                         # Document preview and results comparison
                         col1, col2 = st.columns([1, 1])
                         
@@ -322,18 +338,7 @@ def upload_results_page(file_parser, data_processor, user_id):
                             if len(test_data['results']) > 6:
                                 st.caption(f"Showing first 6 of {len(test_data['results'])} tests")
                         
-                        # Additional manual tests section (outside form to prevent Enter key submission)
-                        st.write("**Add Additional Tests (not scanned):**")
-                        
-                        # Number of additional tests to add
-                        num_additional = st.number_input(
-                            "Number of additional tests to add",
-                            min_value=0,
-                            max_value=20,
-                            value=0,
-                            key=f"num_additional_{uploaded_file.name}",
-                            help="Press Enter to update the number of test fields below"
-                        )
+
                         
                         with st.form(key=f"edit_results_{uploaded_file.name}"):
                             st.write("**Review & Edit Extracted Tests:**")
@@ -657,7 +662,145 @@ Extraction Method: {result.get('source', 'regex')}""")
                         elif save_clicked and not patient_name:
                             st.warning("Please enter a patient name to save results")
                     else:
-                        st.warning("No test results found to preview")
+                        # No extracted results - show manual entry form only
+                        with st.form(key=f"manual_results_{uploaded_file.name}"):
+                            st.write("**Manual Test Entry:**")
+                            st.caption("No tests were automatically detected. Add tests manually below.")
+                            
+                            # Show additional tests section if any are requested
+                            if num_additional > 0:
+                                st.write("**Manual Tests:**")
+                                st.caption("Fill in the fields below for tests to add to the database")
+                                
+                            # Additional test inputs
+                            if num_additional > 0:
+                                for i in range(num_additional):
+                                    col1, col2, col3, col4, col5, col6 = st.columns([3, 2, 2, 2, 1, 1])
+                                    
+                                    with col1:
+                                        # Investigation type dropdown for additional tests
+                                        investigation_standards = st.session_state.get('investigation_standards')
+                                        if investigation_standards:
+                                            # Get all standard names
+                                            all_standards = investigation_standards.get_all_standards()
+                                            standard_names = [std['standard_name'] for std in all_standards]
+                                            
+                                            # Add option for custom entry at the top
+                                            options = ["(Use custom text below)"] + standard_names
+                                            
+                                            selected_option = st.selectbox(
+                                                f"Standard Type {i+1}",
+                                                options=options,
+                                                key=f"add_test_dropdown_{uploaded_file.name}_{i}",
+                                                label_visibility="collapsed",
+                                                help="Choose a standard or use custom text below"
+                                            )
+                                            
+                                            # Always show custom text input
+                                            st.text_input(
+                                                f"Custom Type {i+1}",
+                                                key=f"add_test_name_{uploaded_file.name}_{i}",
+                                                label_visibility="collapsed",
+                                                placeholder="Enter investigation type"
+                                            )
+                                        else:
+                                            # Fallback to text input if standards not available
+                                            st.text_input(
+                                                f"Manual Test {i+1}",
+                                                key=f"add_test_name_{uploaded_file.name}_{i}",
+                                                label_visibility="collapsed",
+                                                placeholder="Enter investigation type"
+                                            )
+                                    
+                                    with col2:
+                                        st.number_input(
+                                            f"Value {i+1}",
+                                            value=0.0,
+                                            key=f"add_test_value_{uploaded_file.name}_{i}",
+                                            label_visibility="collapsed",
+                                            format="%.2f"
+                                        )
+                                    
+                                    with col3:
+                                        st.text_input(
+                                            f"Unit {i+1}",
+                                            key=f"add_test_unit_{uploaded_file.name}_{i}",
+                                            label_visibility="collapsed",
+                                            placeholder="mg/dl, g/dl, etc."
+                                        )
+                                    
+                                    with col4:
+                                        st.text_input(
+                                            f"Ref Range {i+1}",
+                                            key=f"add_test_ref_range_{uploaded_file.name}_{i}",
+                                            label_visibility="collapsed",
+                                            placeholder="5.0-15.0"
+                                        )
+                                    
+                                    with col5:
+                                        st.checkbox(
+                                            f"Add {i+1}",
+                                            value=True,
+                                            key=f"add_include_{uploaded_file.name}_{i}",
+                                            label_visibility="collapsed"
+                                        )
+                                    
+                                    with col6:
+                                        st.write("")
+                            
+                            # Save button for manual entry
+                            save_manual_clicked = st.form_submit_button("💾 Save Manual Tests", type="primary")
+                        
+                        if save_manual_clicked and patient_name:
+                            with st.spinner("Saving manual tests..."):
+                                # Process only additional manual tests
+                                final_results = []
+                                num_additional = st.session_state.get(f"num_additional_{uploaded_file.name}", 0)
+                                additional_count = 0
+                                
+                                if num_additional > 0:
+                                    for i in range(num_additional):
+                                        if st.session_state.get(f"add_include_{uploaded_file.name}_{i}", True):
+                                            # Determine which test type to use for additional tests
+                                            add_dropdown_selection = st.session_state.get(f"add_test_dropdown_{uploaded_file.name}_{i}", "(Use custom text below)")
+                                            
+                                            if add_dropdown_selection == "(Use custom text below)":
+                                                test_name = st.session_state.get(f"add_test_name_{uploaded_file.name}_{i}", "").strip()
+                                            else:
+                                                test_name = add_dropdown_selection
+                                            
+                                            test_value = st.session_state.get(f"add_test_value_{uploaded_file.name}_{i}", 0.0)
+                                            test_unit = st.session_state.get(f"add_test_unit_{uploaded_file.name}_{i}", "").strip()
+                                            test_ref_range = st.session_state.get(f"add_test_ref_range_{uploaded_file.name}_{i}", "").strip()
+                                            
+                                            # Only add if test name is provided and value is not zero
+                                            if test_name and test_value != 0.0:
+                                                final_results.append({
+                                                    'test_type': test_name,
+                                                    'value': test_value,
+                                                    'unit': test_unit,
+                                                    'reference_range': test_ref_range
+                                                })
+                                                additional_count += 1
+                                
+                                if final_results:
+                                    # Save manual results
+                                    success = data_processor.save_test_results(
+                                        patient_name=patient_name,
+                                        test_date=test_date,
+                                        test_results=final_results,
+                                        user_id=user_id
+                                    )
+                                    
+                                    if success:
+                                        st.success(f"Successfully saved {len(final_results)} manual test results for {patient_name}")
+                                    else:
+                                        st.error("Failed to save manual test results to database")
+                                else:
+                                    st.warning("No valid manual tests to save. Please enter test names and non-zero values.")
+                        
+                        elif save_manual_clicked and not patient_name:
+                            st.warning("Please enter a patient name to save results")
                         
                 except Exception as e:
                     st.error(f"Error processing file {uploaded_file.name}: {str(e)}")

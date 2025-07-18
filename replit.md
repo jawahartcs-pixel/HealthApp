@@ -144,6 +144,17 @@ Preferred communication style: Simple, everyday language.
   - **Improved User Control**: Users can now choose between creating new standards or updating existing ones
   - **Case-Insensitive Exact Matching**: Strict matching prevents false positives while allowing case variations
 
+### July 18, 2025 - Fixed Enter Key Form Submission & Enhanced Manual Test Entry
+- **Resolved Form Submission Issue**: Fixed Enter key triggering premature form submission on uploads page
+  - Moved "Number of additional tests" input outside the form to prevent accidental submission
+  - Added helpful instructions explaining when to press Enter
+  - Maintained all existing form functionality for test data entry
+- **Enhanced Manual Test Entry**: Improved workflow for documents with no extracted results
+  - Manual test entry form always available when no automatic extraction occurs
+  - Full investigation standards dropdown integration for manual tests
+  - Proper handling of both extracted and manual-only test scenarios
+  - Dedicated save button for manual test entries with validation
+
 ### July 16, 2025 - Image Upload Support & Standards Creation from Reports
 - **Image File Support**: Added comprehensive support for image uploads in file parser
   - Support for JPEG, PNG, BMP, and TIFF image formats
