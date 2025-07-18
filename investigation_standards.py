@@ -345,3 +345,14 @@ class InvestigationStandards:
                     female_range = f"F: {standard['female_range_min']}-{standard['female_range_max']} {standard['female_unit']}"
                     return f"{male_range}, {female_range}"
         return None
+    
+    def fuzzy_match(self, text1: str, text2: str, threshold: float = 0.6) -> bool:
+        """Check if two texts match using fuzzy logic."""
+        # Clean both texts
+        text1_clean = self._clean_test_name(text1)
+        text2_clean = self._clean_test_name(text2)
+        
+        # Calculate similarity
+        similarity = self._calculate_similarity(text1_clean, text2_clean)
+        
+        return similarity >= threshold
