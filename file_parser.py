@@ -13,10 +13,13 @@ import openpyxl
 import xlrd
 import xml.etree.ElementTree as ET
 import csv
+from investigation_standards import InvestigationStandards
 
 class FileParser:
     def __init__(self):
         """Initialize the file parser with common blood test patterns."""
+        # Initialize investigation standards for matching
+        self.investigation_standards = InvestigationStandards()
         # Common blood test parameters and their patterns
         self.test_patterns = {
             # Glucose tests
@@ -799,11 +802,13 @@ class FileParser:
                     # Get the display name for the test
                     display_name = self._get_display_name(test_name)
                     
+                    # Try to match with investigation standards
+                    standardized_name, matched_standard = self._standardize_test_with_unit(display_name, self.common_units.get(test_name, ''))
+                    
                     result = {
-                        'test_type': display_name,
+                        'test_type': standardized_name,
                         'value': value,
-                        'unit': self.common_units.get(test_name, ''),
-                        'reference_range': self.reference_ranges.get(test_name, ''),
+                        'unit': matched_standard['male_unit'] if matched_standard else self.common_units.get(test_name, ''),
                         'source': 'regex'
                     }
                     
@@ -1292,11 +1297,13 @@ class FileParser:
                     # Clean and enhance reference range
                     ref_range = self._clean_reference_range(ref_range)
                     
+                    # Try to match with investigation standards
+                    standardized_name, matched_standard = self._standardize_test_with_unit(test_name, unit)
+                    
                     result = {
-                        'test_type': test_name.title(),
+                        'test_type': standardized_name,
                         'value': value,
-                        'unit': unit,
-                        'reference_range': ref_range,
+                        'unit': matched_standard['male_unit'] if matched_standard else unit,
                         'source': 'tabular'
                     }
                     
@@ -1435,11 +1442,13 @@ class FileParser:
                     if value < 0 or value > 50000:
                         continue
                     
+                    # Try to match with investigation standards
+                    standardized_name, matched_standard = self._standardize_test_with_unit(test_name, unit)
+                    
                     result = {
-                        'test_type': test_name.title(),
+                        'test_type': standardized_name,
                         'value': value,
-                        'unit': unit,
-                        'reference_range': '',
+                        'unit': matched_standard['male_unit'] if matched_standard else unit,
                         'source': 'ocr_pattern'
                     }
                     
@@ -1511,14 +1520,13 @@ class FileParser:
                         if value < 0 or value > 1000000:
                             continue
                         
-                        # Clean reference range
-                        ref_range = self._clean_reference_range(ref_range)
+                        # Try to match with investigation standards
+                        standardized_name, matched_standard = self._standardize_test_with_unit(test_name, unit)
                         
                         result = {
-                            'test_type': test_name.title(),
+                            'test_type': standardized_name,
                             'value': value,
-                            'unit': unit,
-                            'reference_range': ref_range,
+                            'unit': matched_standard['male_unit'] if matched_standard else unit,
                             'source': 'line_analysis'
                         }
                         
@@ -1577,22 +1585,13 @@ class FileParser:
                     if value < 0 or value > 50000:
                         continue
                     
-                    # Try to extract reference range from the line containing this result
-                    line_with_result = None
-                    for line in text.split('\n'):
-                        if test_name in line and str(value) in line:
-                            line_with_result = line
-                            break
-                    
-                    ref_range = ''
-                    if line_with_result:
-                        ref_range = self._extract_reference_range_from_line(line_with_result)
+                    # Try to match with investigation standards
+                    standardized_name, matched_standard = self._standardize_test_with_unit(test_name, unit)
                     
                     result = {
-                        'test_type': test_name.title(),
+                        'test_type': standardized_name,
                         'value': value,
-                        'unit': unit,
-                        'reference_range': ref_range,
+                        'unit': matched_standard['male_unit'] if matched_standard else unit,
                         'source': 'generic'
                     }
                     
@@ -1602,3 +1601,17 @@ class FileParser:
                     continue
         
         return results
+    
+    def _standardize_test_with_unit(self, test_name: str, extracted_unit: str = '') -> tuple:
+        """Standardize test name using investigation standards and get proper unit."""
+        # Find best match from investigation standards
+        match = self.investigation_standards.find_best_match(test_name, threshold=0.6)
+        
+        if match:
+            # Use the standardized name and unit from the standards
+            standardized_name = match['standard_name']
+            return standardized_name, match
+        else:
+            # No match found, use original name but clean it
+            cleaned_name = test_name.title().strip()
+            return cleaned_name, None
