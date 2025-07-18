@@ -184,8 +184,6 @@ class FileParser:
                 return self._parse_csv(uploaded_file)
             elif uploaded_file.type in ["application/xml", "text/xml"]:
                 return self._parse_xml(uploaded_file)
-            elif uploaded_file.type in ["image/jpeg", "image/jpg", "image/png", "image/bmp", "image/tiff"]:
-                return self._parse_image(uploaded_file)
             else:
                 raise ValueError(f"Unsupported file type: {uploaded_file.type}")
         except Exception as e:
@@ -631,32 +629,6 @@ class FileParser:
                 text += elem.tail.strip() + "\n"
         
         return text
-    
-    def _parse_image(self, uploaded_file) -> str:
-        """Extract text from image file using OCR."""
-        try:
-            # Reset file pointer to beginning
-            uploaded_file.seek(0)
-            
-            # Open image with PIL
-            image = Image.open(uploaded_file)
-            
-            # Convert to RGB if necessary (for JPEG compatibility)
-            if image.mode != 'RGB':
-                image = image.convert('RGB')
-            
-            # Configure tesseract for better accuracy
-            custom_config = r'--oem 3 --psm 6'
-            
-            # Extract text using OCR
-            extracted_text = pytesseract.image_to_string(image, config=custom_config)
-            
-            # Clean and enhance OCR text
-            enhanced_text = self._enhance_ocr_text(extracted_text)
-            
-            return enhanced_text
-        except Exception as e:
-            raise Exception(f"Error processing image with OCR: {str(e)}")
     
     def extract_test_data(self, text: str) -> Dict[str, Any]:
         """Extract test data from text content."""
@@ -1131,19 +1103,11 @@ class FileParser:
             # Brackets: [5.0-15.0]
             r'\[([^\]]+)\]',
             # Reference/Normal: Reference: 5.0-15.0, Normal: 5.0-15.0
-            r'(?:reference|normal|ref|range)[\s\:]*([^\s]+(?:\s*[-–]\s*[^\s]+)?)',
-            # Range patterns: 5.0-15.0, 5.0 - 15.0, 5.0 to 15.0
-            r'(\d+(?:\.\d+)?\s*[-–to]\s*\d+(?:\.\d+)?)',
-            # Less than/greater than: <10, >5, ≤10, ≥5
-            r'([<>≤≥]\s*\d+(?:\.\d+)?)',
-            # Range with units: 5.0-15.0 mg/dL
-            r'(\d+(?:\.\d+)?\s*[-–]\s*\d+(?:\.\d+)?\s*[a-zA-Z\/\%\^µμmM]+)',
-            # Additional patterns for medical ranges
-            r'(\d+(?:\.\d+)?\s*[-–]\s*\d+(?:\.\d+)?\s*[a-zA-Z\/]*)',
-            # Up to patterns: up to 10
-            r'(?:up\s+to|upto)\s+(\d+(?:\.\d+)?)',
-            # Below patterns: below 5
-            r'(?:below|under)\s+(\d+(?:\.\d+)?)',
+            r'(?:reference|normal|ref)[\s\:]*([^\s]+(?:\s*[-–]\s*[^\s]+)?)',
+            # Range patterns: 5.0-15.0, 5.0 - 15.0
+            r'(\d+(?:\.\d+)?\s*[-–]\s*\d+(?:\.\d+)?)',
+            # Less than/greater than: <10, >5
+            r'([<>]\s*\d+(?:\.\d+)?)',
         ]
         
         for pattern in ref_patterns:
@@ -1160,7 +1124,6 @@ class FileParser:
         # Enhanced tabular patterns to capture test results with reference ranges
         tabular_patterns = [
             # Tab-separated values with reference range
-            r'([a-zA-Z][a-zA-Z\s\(\)\/\-\.]+?)\s+(\d+(?:\.\d+)?)\s+([a-zA-Z\/\%\^µμmM]*)\s+([^\n\r\t]*)',
             r'([a-zA-Z][a-zA-Z\s\(\)\/\-\.]+?)\t+(\d+(?:\.\d+)?)\t*([a-zA-Z\/\%\^µμmM]*)\t*([^\n\r\t]*)',
             # Multiple spaces with reference range
             r'([a-zA-Z][a-zA-Z\s\(\)\/\-\.]+?)\s{3,}(\d+(?:\.\d+)?)\s*([a-zA-Z\/\%\^µμmM]*)\s*([^\n\r]*)',
@@ -1289,10 +1252,6 @@ class FileParser:
                         # Try to extract reference range from the remainder of line
                         remainder = line[match.end():].strip()
                         ref_range = self._extract_reference_range_from_line(remainder)
-                        
-                        # If no range found in remainder, try looking in the entire line
-                        if not ref_range:
-                            ref_range = self._extract_reference_range_from_line(line)
                         
                         result = {
                             'test_type': test_name.title(),
@@ -1428,22 +1387,11 @@ class FileParser:
                     if value < 0 or value > 50000:
                         continue
                     
-                    # Try to extract reference range from the line containing this result
-                    line_with_result = None
-                    for line in text.split('\n'):
-                        if test_name in line and str(value) in line:
-                            line_with_result = line
-                            break
-                    
-                    ref_range = ''
-                    if line_with_result:
-                        ref_range = self._extract_reference_range_from_line(line_with_result)
-                    
                     result = {
                         'test_type': test_name.title(),
                         'value': value,
                         'unit': unit,
-                        'reference_range': ref_range,
+                        'reference_range': '',
                         'source': 'generic'
                     }
                     
