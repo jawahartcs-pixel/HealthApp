@@ -51,7 +51,7 @@ class InvestigationStandards:
             },
             {
                 'standard_name': 'Hemoglobin',
-                'aliases': 'hb,haemoglobin,hemoglobin,hgb',
+                'aliases': 'hb,haemoglobin,hemoglobin,hgb,blood hemoglobin,blood haemoglobin',
                 'male_range_min': 13.8, 'male_range_max': 17.2, 'male_unit': 'g/dL',
                 'female_range_min': 12.1, 'female_range_max': 15.1, 'female_unit': 'g/dL',
                 'description': 'Oxygen-carrying protein in red blood cells',
