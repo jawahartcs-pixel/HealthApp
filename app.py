@@ -2750,151 +2750,77 @@ def investigation_standards_page(investigation_standards):
                                 
                                 # Show forms based on selected options
                                 if create_new:
-                                        # Create unique form key using test name hash to avoid duplicates
-                                        form_key = f"create_form_{abs(hash(test_name)) % 1000000}"
+                                    # Create unique form key using test name hash to avoid duplicates
+                                    form_key = f"create_form_{abs(hash(test_name)) % 1000000}"
+                                    
+                                    # Get extracted test data for this test if available
+                                    extracted_data = st.session_state.get('extracted_test_data', {}).get(test_name, {})
+                                    extracted_unit = extracted_data.get('unit', 'mg/dL')
+                                    
+                                    with st.form(form_key):
+                                        st.write("**Investigation Standard Details:**")
                                         
-                                        # Get extracted test data for this test if available
-                                        extracted_data = st.session_state.get('extracted_test_data', {}).get(test_name, {})
-                                        extracted_unit = extracted_data.get('unit', 'mg/dL')
+                                        # Standard name (pre-populated with extracted text)
+                                        standard_name = st.text_input(
+                                            "Standard Investigation Name", 
+                                            value=test_name,
+                                            key=f"name_{form_key}"
+                                        )
                                         
-                                        # Parse reference range to extract min/max values
-                                            """Parse reference range string to extract min/max values."""
-                                                return 0.0, 100.0, extracted_unit
-                                            
-                                            # Clean the reference range string
-                                            
-                                            # Try to extract numeric ranges (e.g., "5.0-15.0", "5.0 - 15.0", "5.0 to 15.0")
-                                            range_patterns = [
-                                                r'(\d+\.?\d*)\s*[-–—]\s*(\d+\.?\d*)',  # 5.0-15.0 or 5.0 - 15.0
-                                                r'(\d+\.?\d*)\s+to\s+(\d+\.?\d*)',     # 5.0 to 15.0
-                                                r'(\d+\.?\d*)\s*–\s*(\d+\.?\d*)',      # em dash
-                                                r'(\d+\.?\d*)\s*\-\s*(\d+\.?\d*)',     # regular dash
-                                            ]
-                                            
-                                            for pattern in range_patterns:
-                                                match = re.search(pattern, ref_clean, re.IGNORECASE)
-                                                if match:
-                                                    try:
-                                                        min_val = float(match.group(1))
-                                                        max_val = float(match.group(2))
-                                                        return min_val, max_val, extracted_unit
-                                                    except ValueError:
-                                                        continue
-                                            
-                                            # Try to extract single value with operator (e.g., "<10", ">5")
-                                            single_patterns = [
-                                                r'<\s*(\d+\.?\d*)',  # <10
-                                                r'>\s*(\d+\.?\d*)',  # >5
-                                                r'≤\s*(\d+\.?\d*)',  # ≤10
-                                                r'≥\s*(\d+\.?\d*)',  # ≥5
-                                            ]
-                                            
-                                            for pattern in single_patterns:
-                                                match = re.search(pattern, ref_clean)
-                                                if match:
-                                                    try:
-                                                        val = float(match.group(1))
-                                                        if '<' in pattern or '≤' in pattern:
-                                                            return 0.0, val, extracted_unit
-                                                        else:  # > or ≥
-                                                            return val, val * 2, extracted_unit
-                                                    except ValueError:
-                                                        continue
-                                            
-                                            # Default fallback
-                                            return 0.0, 100.0, extracted_unit
+                                        # Category
+                                        category = st.selectbox(
+                                            "Category", 
+                                            ["Blood Chemistry", "Hematology", "Lipid Profile", "Liver Function", 
+                                             "Kidney Function", "Thyroid Function", "Cardiac Markers", "Diabetes Markers",
+                                             "Electrolytes", "Vitamins", "Hormones", "Other"],
+                                            key=f"category_{form_key}"
+                                        )
                                         
-                                        # Parse the reference range
+                                        # Description
+                                        description = st.text_area(
+                                            "Description", 
+                                            value="Investigation standard created from medical report extraction",
+                                            key=f"desc_{form_key}"
+                                        )
                                         
-                                        with st.form(form_key):
-                                            st.write("**Investigation Standard Details:**")
-                                            
-                                            # Show extracted reference range if available
-                                                st.info(f"📋 **Extracted ")
-                                                st.caption("The values below are automatically populated from the document")
-                                            
-                                            # Standard name (pre-populated with extracted text)
-                                            standard_name = st.text_input(
-                                                "Standard Investigation Name", 
-                                                value=test_name,
-                                                key=f"name_{form_key}"
-                                            )
-                                            
-                                            # Category
-                                            category = st.selectbox(
-                                                "Category", 
-                                                ["Blood Chemistry", "Hematology", "Lipid Profile", "Liver Function", 
-                                                 "Kidney Function", "Thyroid Function", "Cardiac Markers", "Diabetes Markers",
-                                                 "Electrolytes", "Vitamins", "Hormones", "Other"],
-                                                key=f"category_{form_key}"
-                                            )
-                                            
-                                            # Reference ranges
-                                            col_male, col_female = st.columns(2)
-                                            
-                                            with col_male:
-                                                st.write("**Male Range:**")
-                                                male_min = st.number_input("Min", value=min_val, key=f"male_min_{form_key}")
-                                                male_max = st.number_input("Max", value=max_val, key=f"male_max_{form_key}")
-                                                male_unit = st.text_input("Unit", value=unit, key=f"male_unit_{form_key}")
-                                            
-                                            with col_female:
-                                                st.write("**Female Range:**")
-                                                female_min = st.number_input("Min", value=min_val, key=f"female_min_{form_key}")
-                                                female_max = st.number_input("Max", value=max_val, key=f"female_max_{form_key}")
-                                                female_unit = st.text_input("Unit", value=unit, key=f"female_unit_{form_key}")
-                                            
-                                            # Description
-                                            description = st.text_area(
-                                                "Description", 
-                                                value="Investigation standard created from medical report extraction",
-                                                key=f"desc_{form_key}"
-                                            )
-                                            
-                                            # Aliases (automatically include the extracted text)
-                                            aliases_input = st.text_input(
-                                                "Aliases (comma-separated)", 
-                                                value=test_name,
-                                                help="The extracted test name will be automatically added to aliases",
-                                                key=f"aliases_{form_key}"
-                                            )
-                                            
-                                            # Submit button
-                                            submit_individual = st.form_submit_button(
-                                                f"✅ Create Standard for {test_name}", 
-                                                type="primary"
-                                            )
-                                            
-                                            if submit_individual:
-                                                try:
-                                                    # Ensure extracted test name is in aliases
-                                                    aliases_list = [alias.strip() for alias in aliases_input.split(',') if alias.strip()]
-                                                    if test_name not in aliases_list:
-                                                        aliases_list.append(test_name)
-                                                    
-                                                    standard_data = {
-                                                        'standard_name': standard_name,
-                                                        'category': category,
-                                                        'male_range_min': male_min,
-                                                        'male_range_max': male_max,
-                                                        'male_unit': male_unit,
-                                                        'female_range_min': female_min,
-                                                        'female_range_max': female_max,
-                                                        'female_unit': female_unit,
-                                                        'description': description,
-                                                        'aliases': ", ".join(aliases_list)
-                                                    }
-                                                    
-                                                    success = investigation_standards.add_standard(standard_data)
-                                                    
-                                                    if success:
-                                                        st.success(f"✅ Successfully created standard for {test_name}!")
-                                                        st.rerun()
-                                                    else:
-                                                        st.error(f"❌ Failed to create standard for {test_name}")
+                                        # Aliases (automatically include the extracted text)
+                                        aliases_input = st.text_input(
+                                            "Aliases (comma-separated)", 
+                                            value=test_name,
+                                            help="The extracted test name will be automatically added to aliases",
+                                            key=f"aliases_{form_key}"
+                                        )
+                                        
+                                        # Submit button
+                                        submit_individual = st.form_submit_button(
+                                            f"✅ Create Standard for {test_name}", 
+                                            type="primary"
+                                        )
+                                        
+                                        if submit_individual:
+                                            try:
+                                                # Ensure extracted test name is in aliases
+                                                aliases_list = [alias.strip() for alias in aliases_input.split(',') if alias.strip()]
+                                                if test_name not in aliases_list:
+                                                    aliases_list.append(test_name)
                                                 
-                                                except Exception as e:
-                                                    st.error(f"Error creating standard: {str(e)}")
+                                                standard_data = {
+                                                    'standard_name': standard_name,
+                                                    'category': category,
+                                                    'description': description,
+                                                    'aliases': ", ".join(aliases_list)
+                                                }
+                                                
+                                                success = investigation_standards.add_standard(standard_data)
+                                                
+                                                if success:
+                                                    st.success(f"✅ Successfully created standard for {test_name}!")
+                                                    st.rerun()
+                                                else:
+                                                    st.error(f"❌ Failed to create standard for {test_name}")
+                                            
+                                            except Exception as e:
+                                                st.error(f"Error creating standard: {str(e)}")
                                 
                                 # Handle adding to existing standard's aliases
                                 if add_to_existing and selected_standard:
