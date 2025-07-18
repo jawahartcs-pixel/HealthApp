@@ -2378,19 +2378,34 @@ def investigation_standards_page(investigation_standards):
                     
                     # Get all existing aliases from standards
                     existing_standards = investigation_standards.get_all_standards()
-                    all_aliases = []
-                    for standard in existing_standards:
-                        if standard.get('aliases'):
-                            aliases = [alias.strip().lower() for alias in standard['aliases'].split(',')]
-                            all_aliases.extend(aliases)
-                        # Also add the standard name itself
-                        all_aliases.append(standard['standard_name'].lower())
+                    
+                    # Helper function to check if a test name matches any existing aliases using fuzzy matching
+                    def check_fuzzy_match(test_name):
+                        """Check if test name matches any existing aliases using fuzzy matching."""
+                        test_name_clean = test_name.lower().strip()
+                        
+                        # Also check for exact substring matches or partial matches
+                        for standard in existing_standards:
+                            # Check against standard name
+                            standard_name = standard['standard_name'].lower()
+                            if (investigation_standards.fuzzy_match(test_name_clean, standard_name) or
+                                standard_name in test_name_clean or test_name_clean in standard_name):
+                                return True, standard['standard_name']
+                            
+                            # Check against aliases
+                            if standard.get('aliases'):
+                                aliases = [alias.strip().lower() for alias in standard['aliases'].split(',')]
+                                for alias in aliases:
+                                    if (investigation_standards.fuzzy_match(test_name_clean, alias) or
+                                        alias in test_name_clean or test_name_clean in alias):
+                                        return True, standard['standard_name']
+                        
+                        return False, None
                     
                     # Process each unique test individually
                     for i, test_name in enumerate(unique_tests):
-                        # Check if this test exists in aliases
-                        test_name_lower = test_name.lower()
-                        exists_in_aliases = test_name_lower in all_aliases
+                        # Check if this test exists in aliases using fuzzy matching
+                        exists_in_aliases, matched_standard = check_fuzzy_match(test_name)
                         
                         with st.expander(f"{'✅' if exists_in_aliases else '➕'} {test_name}", expanded=not exists_in_aliases):
                             # Create two-column layout: Document snippet on left, Investigation details on right
@@ -2438,10 +2453,37 @@ def investigation_standards_page(investigation_standards):
                                 if exists_in_aliases:
                                     st.info("📋 This investigation type already exists in the system")
                                     st.write("**Status:** Found in existing aliases")
+                                    if matched_standard:
+                                        st.write(f"**Matched Standard:** {matched_standard}")
                                     st.write("**Action:** None needed")
                                 else:
                                     st.warning("🆕 New investigation type - not found in existing aliases")
                                     st.write("**Action:** Create new")
+                                    
+                                    # Debug information for fuzzy matching
+                                    with st.expander("🔍 Debug: Fuzzy Matching Details", expanded=False):
+                                        st.write(f"**Search term:** {test_name}")
+                                        st.write(f"**Normalized:** {test_name.lower().strip()}")
+                                        st.write("**Checked against standards:**")
+                                        for standard in existing_standards:
+                                            st.write(f"- {standard['standard_name']}")
+                                            if standard.get('aliases'):
+                                                st.write(f"  Aliases: {standard['aliases']}")
+                                            
+                                            # Show fuzzy match scores
+                                            standard_name = standard['standard_name'].lower()
+                                            test_name_clean = test_name.lower().strip()
+                                            
+                                            # Check substring matches
+                                            if standard_name in test_name_clean or test_name_clean in standard_name:
+                                                st.write(f"  ✓ Substring match found with '{standard['standard_name']}'")
+                                            
+                                            # Check alias matches
+                                            if standard.get('aliases'):
+                                                aliases = [alias.strip().lower() for alias in standard['aliases'].split(',')]
+                                                for alias in aliases:
+                                                    if alias in test_name_clean or test_name_clean in alias:
+                                                        st.write(f"  ✓ Alias match found: '{alias}' matches '{test_name_clean}'")
                                     
                                     # Show inline creation form for new investigations
                                     checkbox_key = f"create_{abs(hash(test_name)) % 1000000}"
