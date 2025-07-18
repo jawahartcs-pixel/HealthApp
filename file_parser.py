@@ -784,6 +784,10 @@ class FileParser:
         tabular_results = self._extract_tabular_results(text)
         results.extend(tabular_results)
         
+        # Add line-by-line analysis for structured extraction
+        line_results = self._extract_line_by_line_results(text)
+        results.extend(line_results)
+        
         # Then use regex patterns for any missed results
         for test_name, pattern in self.test_patterns.items():
             matches = re.finditer(pattern, text, re.IGNORECASE)
@@ -902,7 +906,14 @@ class FileParser:
         medical_keywords = {
             'glucose', 'cholesterol', 'hemoglobin', 'hematocrit', 'platelet', 'creatinine',
             'bilirubin', 'albumin', 'protein', 'sodium', 'potassium', 'calcium', 'iron',
-            'vitamin', 'thyroid', 'liver', 'kidney', 'blood', 'serum', 'plasma'
+            'vitamin', 'thyroid', 'liver', 'kidney', 'blood', 'serum', 'plasma',
+            'urea', 'nitrogen', 'triglyceride', 'lymphocyte', 'neutrophil', 'eosinophil',
+            'basophil', 'monocyte', 'erythrocyte', 'leukocyte', 'phosphorus', 'magnesium',
+            'chloride', 'carbon', 'dioxide', 'bicarbonate', 'anion', 'osmolality',
+            'immunoglobulin', 'antibody', 'antigen', 'enzyme', 'kinase', 'transferase',
+            'dehydrogenase', 'phosphatase', 'globulin', 'ferritin', 'transferrin',
+            'cortisol', 'insulin', 'hormone', 'testosterone', 'estradiol', 'progesterone',
+            'prolactin', 'growth', 'follicle', 'luteinizing', 'alpha', 'beta', 'gamma'
         }
         
         for keyword in medical_keywords:
@@ -912,10 +923,76 @@ class FileParser:
         # Check for common medical abbreviations
         medical_abbrevs = {
             'hba1c', 'hdl', 'ldl', 'rbc', 'wbc', 'plt', 'alt', 'ast', 'bun', 'egfr',
-            'tsh', 't3', 't4', 'psa', 'esr', 'crp', 'cpk', 'ggt'
+            'tsh', 't3', 't4', 'psa', 'esr', 'crp', 'cpk', 'ggt', 'alp', 'ldh',
+            'ck', 'ckmb', 'troponin', 'bnp', 'procalcitonin', 'inr', 'pt', 'ptt',
+            'aptt', 'd_dimer', 'fibrinogen', 'fsh', 'lh', 'hcg', 'afp', 'cea',
+            'ca125', 'ca199', 'pth', 'acth', 'cortisol', 'dhea', 'igf', 'rfp',
+            'ana', 'anti_ccp', 'rf', 'complement', 'c3', 'c4', 'iga', 'igg', 'igm',
+            'vldl', 'apoa', 'apob', 'lpa', 'homocysteine', 'folate', 'b12',
+            'ferritin', 'tibc', 'transferrin', 'haptoglobin', 'reticulocyte',
+            'mch', 'mchc', 'mcv', 'rdw', 'mpv', 'pdw', 'pct', 'neutrophils',
+            'lymphocytes', 'monocytes', 'eosinophils', 'basophils'
         }
         
         if normalized_name in medical_abbrevs:
+            return True
+        
+        return False
+    
+    def _looks_like_medical_test(self, test_name: str) -> bool:
+        """Check if text looks like a medical test name based on structure."""
+        if not test_name or len(test_name) < 2:
+            return False
+        
+        # Convert to lowercase for analysis
+        name = test_name.lower().strip()
+        
+        # Skip if it's just numbers or common non-medical words
+        if name.isdigit():
+            return False
+        
+        # Skip obvious non-medical terms
+        non_medical_words = {
+            'date', 'time', 'page', 'total', 'patient', 'doctor', 'address', 'phone',
+            'email', 'signature', 'report', 'lab', 'number', 'id', 'code', 'barcode',
+            'collected', 'received', 'printed', 'verified', 'reviewed'
+        }
+        
+        if name in non_medical_words:
+            return False
+        
+        # Look for medical-sounding patterns
+        medical_patterns = [
+            # Common medical suffixes
+            r'(emia|uria|osis|itis|ase|ine|ogen|crit|globin|protein)$',
+            # Common medical prefixes
+            r'^(hemo|leuko|erythro|thyro|hepato|nephro|cardio|neuro)',
+            # Medical measurement terms
+            r'(count|level|rate|index|ratio|function|test|panel)',
+            # Units or measurement indicators
+            r'(total|free|bound|reactive|specific|direct|indirect)',
+            # Common medical abbreviations pattern (2-5 uppercase letters)
+            r'^[a-z]{2,5}$'
+        ]
+        
+        for pattern in medical_patterns:
+            if re.search(pattern, name):
+                return True
+        
+        # Check if it contains multiple words that could be medical
+        words = name.split()
+        if len(words) >= 2:
+            # More likely to be medical if it has descriptive words
+            descriptive_words = {
+                'blood', 'serum', 'plasma', 'urine', 'total', 'free', 'direct', 'indirect',
+                'mean', 'average', 'high', 'low', 'density', 'cell', 'white', 'red',
+                'complete', 'comprehensive', 'basic', 'panel', 'profile'
+            }
+            if any(word in descriptive_words for word in words):
+                return True
+        
+        # Additional check for numeric components that might indicate test names
+        if re.search(r'[a-z]+\s*\d+', name) or re.search(r'\d+\s*[a-z]+', name):
             return True
         
         return False
@@ -1202,9 +1279,8 @@ class FileParser:
                     if len(test_name) < 2 or len(test_name) > 60:
                         continue
                     
-                    # Skip common non-test words but be less restrictive
-                    skip_words = ['page', 'report', 'signature', 'address', 'phone', 'email', 'total', 'subtotal']
-                    if any(word == test_name.lower().strip() for word in skip_words):
+                    # Be more lenient - use medical terminology check instead of strict filtering
+                    if not self._is_medical_terminology(test_name) and not self._looks_like_medical_test(test_name):
                         continue
                     
                     value = float(value_str)
@@ -1383,6 +1459,77 @@ class FileParser:
         
         return results
     
+    def _extract_line_by_line_results(self, text: str) -> List[Dict[str, Any]]:
+        """Extract test results by analyzing each line for patterns."""
+        results = []
+        lines = text.split('\n')
+        
+        for line in lines:
+            line = line.strip()
+            if not line or len(line) < 10:  # Skip short lines
+                continue
+            
+            # Look for patterns like "Test Name 123.45 mg/dL 50-150"
+            line_patterns = [
+                # Pattern: Test Name Value Unit Reference
+                r'^([a-zA-Z][a-zA-Z\s\(\)\/\-\.\,\d]{3,50}?)\s+(\d+(?:\.\d+)?)\s+([a-zA-Z\/\%\^µμmM]+)\s+([^\s].*?)$',
+                # Pattern: Test Name Value Unit
+                r'^([a-zA-Z][a-zA-Z\s\(\)\/\-\.\,\d]{3,50}?)\s+(\d+(?:\.\d+)?)\s+([a-zA-Z\/\%\^µμmM]+)\s*$',
+                # Pattern: Test Name Value (no unit)
+                r'^([a-zA-Z][a-zA-Z\s\(\)\/\-\.\,\d]{3,50}?)\s+(\d+(?:\.\d+)?)\s*$',
+                # Pattern with separators: Test Name | Value | Unit | Reference
+                r'^([a-zA-Z][a-zA-Z\s\(\)\/\-\.\,\d]{3,50}?)\s*[\|\t]\s*(\d+(?:\.\d+)?)\s*[\|\t]?\s*([a-zA-Z\/\%\^µμmM]*)\s*[\|\t]?\s*([^\s].*?)\s*$',
+                # Pattern with colon: Test Name: Value Unit
+                r'^([a-zA-Z][a-zA-Z\s\(\)\/\-\.\,\d]{3,50}?):\s*(\d+(?:\.\d+)?)\s*([a-zA-Z\/\%\^µμmM]*)\s*(.*)$',
+                # Pattern with multiple spaces as separator
+                r'^([a-zA-Z][a-zA-Z\s\(\)\/\-\.\,\d]{3,40}?)\s{3,}(\d+(?:\.\d+)?)\s*([a-zA-Z\/\%\^µμmM]*)\s*(.*)$',
+            ]
+            
+            for pattern in line_patterns:
+                match = re.match(pattern, line)
+                if match:
+                    try:
+                        test_name = match.group(1).strip()
+                        value_str = match.group(2).strip()
+                        unit = match.group(3).strip() if len(match.groups()) > 2 and match.group(3) else ''
+                        ref_range = match.group(4).strip() if len(match.groups()) > 3 and match.group(4) else ''
+                        
+                        # Clean up test name
+                        test_name = re.sub(r'\s+', ' ', test_name).strip('.,()[]{}:=-')
+                        
+                        # Skip if not medical terminology
+                        if not self._is_medical_terminology(test_name) and not self._looks_like_medical_test(test_name):
+                            continue
+                        
+                        # Skip if test name is too short
+                        if len(test_name) < 3:
+                            continue
+                        
+                        value = float(value_str)
+                        
+                        # Validate value range
+                        if value < 0 or value > 1000000:
+                            continue
+                        
+                        # Clean reference range
+                        ref_range = self._clean_reference_range(ref_range)
+                        
+                        result = {
+                            'test_type': test_name.title(),
+                            'value': value,
+                            'unit': unit,
+                            'reference_range': ref_range,
+                            'source': 'line_analysis'
+                        }
+                        
+                        results.append(result)
+                        break  # Found a match for this line, move to next line
+                        
+                    except (ValueError, IndexError):
+                        continue
+        
+        return results
+    
     def _extract_generic_test_results(self, text: str) -> List[Dict[str, Any]]:
         """Extract generic test results using broader patterns."""
         results = []
@@ -1414,9 +1561,11 @@ class FileParser:
                     test_name = re.sub(r'\s+', ' ', test_name)
                     test_name = test_name.strip('.,()[]{}')
                     
-                    # Only include if test name contains known test keywords
-                    if not any(keyword in test_name.lower() for keyword in common_test_keywords):
-                        continue
+                    # Be more lenient - check if it's medical terminology but don't require specific keywords
+                    if not self._is_medical_terminology(test_name):
+                        # Also allow if it looks like a medical test (has certain characteristics)
+                        if not self._looks_like_medical_test(test_name):
+                            continue
                     
                     # Skip if test name is too short or too long
                     if len(test_name) < 3 or len(test_name) > 40:
