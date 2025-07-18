@@ -275,11 +275,11 @@ class FileParser:
                 raise Exception(f"Both standard and OCR extraction failed. Standard: {str(e)}, OCR: {str(ocr_error)}")
     
     def _extract_text_with_ocr(self, pdf_bytes: bytes) -> str:
-        """Extract text from PDF using OCR."""
+        """Extract text from PDF using OCR with enhanced table detection."""
         try:
-            # Configure tesseract for better accuracy with medical documents
-            # PSM 6 = single uniform block, OEM 3 = default engine
-            custom_config = r'--oem 3 --psm 6'
+            # Configure tesseract for better table extraction
+            # PSM 6 = single uniform block for table structure
+            custom_config = r'--oem 3 --psm 6 -c preserve_interword_spaces=1'
             
             # Convert PDF to images with high DPI for better OCR accuracy
             images = convert_from_bytes(pdf_bytes, dpi=300, fmt='PNG')
@@ -652,8 +652,9 @@ class FileParser:
             if image.mode != 'RGB':
                 image = image.convert('RGB')
             
-            # Configure tesseract for better accuracy
-            custom_config = r'--oem 3 --psm 6'
+            # Configure tesseract for better table recognition
+            # PSM 6 = uniform block, preserve_interword_spaces for table columns
+            custom_config = r'--oem 3 --psm 6 -c preserve_interword_spaces=1'
             
             # Extract text using OCR
             extracted_text = pytesseract.image_to_string(image, config=custom_config)
@@ -784,49 +785,17 @@ class FileParser:
         return date.today()  # Default to today if no date found
     
     def _extract_test_results(self, text: str) -> List[Dict[str, Any]]:
-        """Extract test results from text."""
+        """Extract test results from text using structured table detection."""
         results = []
         
-        # First, try to find results using tabular pattern (common in PDF reports)
-        tabular_results = self._extract_tabular_results(text)
-        results.extend(tabular_results)
+        # Primary method: Structured table extraction with column headers
+        structured_results = self._extract_structured_table_data(text)
+        results.extend(structured_results)
         
-        # Then use regex patterns for any missed results
-        for test_name, pattern in self.test_patterns.items():
-            matches = re.finditer(pattern, text, re.IGNORECASE)
-            
-            for match in matches:
-                try:
-                    value = float(match.group(1))
-                    
-                    # Get the display name for the test
-                    display_name = self._get_display_name(test_name)
-                    
-                    # Try to extract unit from context
-                    extracted_unit = self._extract_unit_from_context(text, display_name, value)
-                    if not extracted_unit:
-                        extracted_unit = self.common_units.get(test_name, '')
-                    
-                    result = {
-                        'test_type': display_name,
-                        'value': value,
-                        'unit': extracted_unit,
-                        'reference_range': self.reference_ranges.get(test_name, ''),
-                        'source': 'regex'
-                    }
-                    
-                    results.append(result)
-                    
-                except (ValueError, IndexError):
-                    continue
-        
-        # Try to extract any numeric value pairs that look like test results
-        generic_results = self._extract_generic_test_results(text)
-        results.extend(generic_results)
-        
-        # Try more aggressive pattern matching for OCR text
-        ocr_results = self._extract_ocr_specific_patterns(text)
-        results.extend(ocr_results)
+        # Fallback: Try OCR-specific patterns if no structured data found
+        if not structured_results:
+            ocr_results = self._extract_ocr_table_patterns(text)
+            results.extend(ocr_results)
         
         # Remove duplicates with improved matching, keeping source info for debugging
         unique_results = []
@@ -886,6 +855,389 @@ class FileParser:
                         existing_priority = source_priority.get(existing_result.get('source', 'regex'), 5)
                         
                         if current_priority < existing_priority or len(test_name) > len(existing_key):
+                            seen[existing_key] = result
+                            unique_results = [r for r in unique_results if r != existing_result]
+                            unique_results.append(result)
+                        
+                        is_duplicate = True
+                        break
+            
+            if not is_duplicate:
+                seen[test_name] = result
+                unique_results.append(result)
+        
+        return self._remove_duplicates(results)
+    
+    def _extract_structured_table_data(self, text: str) -> List[Dict[str, Any]]:
+        """Extract test results from structured table data with column headers."""
+        results = []
+        
+        # Split text into lines for analysis
+        lines = text.split('\n')
+        
+        # First, try to identify table structure from PDF table extraction
+        table_results = self._extract_from_pdf_tables(text)
+        if table_results:
+            results.extend(table_results)
+        
+        # Then try to find column headers and process table rows
+        header_results = self._extract_from_column_headers(lines)
+        if header_results:
+            results.extend(header_results)
+        
+        return results
+    
+    def _extract_from_pdf_tables(self, text: str) -> List[Dict[str, Any]]:
+        """Extract from PDF table structure if available."""
+        results = []
+        
+        # Look for table markers that indicate structured data
+        table_markers = ['--- TABLE', '--- END TABLE']
+        if any(marker in text for marker in table_markers):
+            # Extract content between table markers
+            table_sections = re.findall(r'--- TABLE \d+ ---(.*?)--- END TABLE \d+ ---', text, re.DOTALL)
+            
+            for table_content in table_sections:
+                table_rows = table_content.strip().split('\n')
+                if len(table_rows) < 2:  # Need at least header and one data row
+                    continue
+                
+                # Try to identify column structure
+                table_results = self._parse_table_rows(table_rows)
+                results.extend(table_results)
+        
+        return results
+    
+    def _extract_from_column_headers(self, lines: List[str]) -> List[Dict[str, Any]]:
+        """Extract test results by identifying column headers and processing rows."""
+        results = []
+        
+        # Common header patterns for medical reports
+        header_patterns = [
+            # Standard lab report headers
+            r'(?:specimen|sample)\s+(?:investigation|test|parameter)\s+(?:result|value)\s+(?:unit|units?)\s+(?:reference|normal|ref)',
+            r'(?:test|investigation|parameter)\s+(?:result|value)\s+(?:unit|units?)\s+(?:reference|ref|interval)',
+            r'(?:investigation|test)\s+(?:result|value)\s+(?:unit)\s+(?:reference|range)',
+            r'(?:parameter|test)\s+(?:value|result)\s+(?:units?)\s+(?:ref|reference)',
+            # Simplified patterns
+            r'(?:test|investigation)\s+(?:result|value)\s+(?:unit)',
+            r'(?:investigation)\s+(?:result)\s+(?:unit)\s+(?:reference)',
+        ]
+        
+        header_line_idx = None
+        column_positions = None
+        
+        # Find header line
+        for i, line in enumerate(lines):
+            line_lower = re.sub(r'\s+', ' ', line.lower().strip())
+            
+            for pattern in header_patterns:
+                if re.search(pattern, line_lower):
+                    header_line_idx = i
+                    column_positions = self._identify_column_positions(line)
+                    break
+            
+            if header_line_idx is not None:
+                break
+        
+        # If header found, process subsequent rows
+        if header_line_idx is not None and column_positions:
+            for i in range(header_line_idx + 1, len(lines)):
+                if not lines[i].strip():
+                    continue
+                    
+                row_result = self._parse_table_row_with_positions(lines[i], column_positions)
+                if row_result:
+                    results.append(row_result)
+        
+        return results
+    
+    def _identify_column_positions(self, header_line: str) -> Dict[str, int]:
+        """Identify column positions from header line."""
+        header_lower = header_line.lower()
+        positions = {}
+        
+        # Find key column positions
+        investigation_terms = ['investigation', 'test', 'parameter', 'specimen']
+        result_terms = ['result', 'value']
+        unit_terms = ['unit', 'units']
+        reference_terms = ['reference', 'ref', 'normal', 'interval', 'range']
+        
+        for term in investigation_terms:
+            pos = header_lower.find(term)
+            if pos != -1:
+                positions['investigation'] = pos
+                break
+        
+        for term in result_terms:
+            pos = header_lower.find(term)
+            if pos != -1:
+                positions['result'] = pos
+                break
+        
+        for term in unit_terms:
+            pos = header_lower.find(term)
+            if pos != -1:
+                positions['unit'] = pos
+                break
+        
+        for term in reference_terms:
+            pos = header_lower.find(term)
+            if pos != -1:
+                positions['reference'] = pos
+                break
+        
+        return positions
+    
+    def _parse_table_rows(self, table_rows: List[str]) -> List[Dict[str, Any]]:
+        """Parse table rows extracted from PDF tables."""
+        results = []
+        
+        if not table_rows:
+            return results
+        
+        # Try to identify if first row contains headers
+        first_row = table_rows[0].lower()
+        has_headers = any(term in first_row for term in ['investigation', 'test', 'result', 'unit', 'reference'])
+        
+        start_idx = 1 if has_headers else 0
+        
+        for i in range(start_idx, len(table_rows)):
+            row = table_rows[i].strip()
+            if not row:
+                continue
+            
+            # Split by tabs or multiple spaces
+            cells = re.split(r'\t+|\s{3,}', row)
+            cells = [cell.strip() for cell in cells if cell.strip()]
+            
+            if len(cells) >= 3:  # Need at least test, result, unit
+                try:
+                    test_name = cells[0]
+                    result_value = None
+                    unit = ''
+                    reference_range = ''
+                    
+                    # Try to find numeric value
+                    for j, cell in enumerate(cells[1:], 1):
+                        try:
+                            result_value = float(cell)
+                            # Unit is likely next column if exists
+                            if j + 1 < len(cells):
+                                unit = cells[j + 1]
+                            # Reference range might be after unit
+                            if j + 2 < len(cells):
+                                reference_range = cells[j + 2]
+                            break
+                        except ValueError:
+                            continue
+                    
+                    if result_value is not None and self._is_valid_test_name(test_name):
+                        results.append({
+                            'test_type': test_name.title(),
+                            'value': result_value,
+                            'unit': unit,
+                            'reference_range': reference_range,
+                            'source': 'table_extraction'
+                        })
+                
+                except (ValueError, IndexError):
+                    continue
+        
+        return results
+    
+    def _parse_table_row_with_positions(self, row: str, positions: Dict[str, int]) -> Optional[Dict[str, Any]]:
+        """Parse a table row using identified column positions."""
+        if not positions.get('investigation') or not positions.get('result'):
+            return None
+        
+        try:
+            # Extract investigation name
+            inv_start = positions['investigation']
+            result_start = positions.get('result', len(row))
+            
+            investigation = row[inv_start:result_start].strip()
+            if not self._is_valid_test_name(investigation):
+                return None
+            
+            # Extract result value
+            unit_start = positions.get('unit', len(row))
+            result_text = row[result_start:unit_start].strip()
+            
+            # Find numeric value in result text
+            numeric_match = re.search(r'(\d+(?:\.\d+)?)', result_text)
+            if not numeric_match:
+                return None
+            
+            result_value = float(numeric_match.group(1))
+            
+            # Extract unit
+            unit = ''
+            if 'unit' in positions:
+                ref_start = positions.get('reference', len(row))
+                unit = row[unit_start:ref_start].strip()
+                # Clean unit
+                unit = re.sub(r'[^\w/\%\^µμ]', '', unit)
+            
+            # Extract reference range
+            reference_range = ''
+            if 'reference' in positions:
+                reference_range = row[positions['reference']:].strip()
+            
+            return {
+                'test_type': investigation.title(),
+                'value': result_value,
+                'unit': unit,
+                'reference_range': reference_range,
+                'source': 'column_parsing'
+            }
+        
+        except (ValueError, IndexError):
+            return None
+    
+    def _extract_ocr_table_patterns(self, text: str) -> List[Dict[str, Any]]:
+        """Extract test results using OCR-specific table patterns."""
+        results = []
+        lines = text.split('\n')
+        
+        # OCR-specific patterns for table data
+        ocr_table_patterns = [
+            # Tab-separated or multiple spaces with investigation, result, unit pattern
+            r'^([A-Za-z][A-Za-z\s\(\)\/\-\.]{2,40})\s*[\t\s]{2,}(\d+(?:\.\d+)?)\s*[\t\s]*([A-Za-z\/\%\^µμmM]*)\s*[\t\s]*([^\n\r]*?)$',
+            # Pipe-separated or similar delimited format
+            r'^([A-Za-z][A-Za-z\s\(\)\/\-\.]{2,40})\s*[\|\:]\s*(\d+(?:\.\d+)?)\s*[\|\:]?\s*([A-Za-z\/\%\^µμmM]*)\s*[\|\:]?\s*([^\n\r]*?)$',
+            # Investigation followed by numeric value and optional unit
+            r'^([A-Za-z][A-Za-z\s\(\)\/\-\.]{2,40})\s+(\d+(?:\.\d+)?)\s*([A-Za-z\/\%\^µμmM]*)\s*(.*)$',
+        ]
+        
+        for line in lines:
+            line = line.strip()
+            if len(line) < 5:
+                continue
+            
+            for pattern in ocr_table_patterns:
+                match = re.match(pattern, line, re.IGNORECASE)
+                if match:
+                    try:
+                        test_name = match.group(1).strip()
+                        value_str = match.group(2).strip()
+                        unit = match.group(3).strip() if match.group(3) else ''
+                        reference = match.group(4).strip() if match.group(4) else ''
+                        
+                        # Validate test name
+                        if not self._is_valid_test_name(test_name):
+                            continue
+                        
+                        value = float(value_str)
+                        if value < 0 or value > 100000:
+                            continue
+                        
+                        results.append({
+                            'test_type': test_name.title(),
+                            'value': value,
+                            'unit': unit,
+                            'reference_range': reference,
+                            'source': 'ocr_table'
+                        })
+                        break
+                    
+                    except (ValueError, IndexError):
+                        continue
+        
+        return results
+    
+    def _is_valid_test_name(self, name: str) -> bool:
+        """Check if a name looks like a valid medical test name."""
+        if not name or len(name) < 2 or len(name) > 60:
+            return False
+        
+        # Remove common invalid patterns
+        invalid_patterns = [
+            r'^\d+$',  # Only numbers
+            r'^[^a-zA-Z]*$',  # No letters
+            r'page\s*\d+',  # Page numbers
+            r'report|header|footer|address|phone|email|total|subtotal',  # Common non-test words
+        ]
+        
+        name_lower = name.lower().strip()
+        for pattern in invalid_patterns:
+            if re.search(pattern, name_lower):
+                return False
+        
+        # Check if it contains medical-related terms
+        medical_terms = [
+            'glucose', 'cholesterol', 'hemoglobin', 'hematocrit', 'platelet', 'creatinine',
+            'bilirubin', 'albumin', 'protein', 'sodium', 'potassium', 'calcium', 'iron',
+            'vitamin', 'thyroid', 'liver', 'kidney', 'blood', 'serum', 'plasma', 'urea',
+            'chloride', 'magnesium', 'phosphorus', 'tsh', 'triglycerides', 'hdl', 'ldl',
+            'hba1c', 'ferritin', 'folate', 'b12', 'zinc', 'copper', 'selenium'
+        ]
+        
+        # If it contains medical terms, it's likely valid
+        for term in medical_terms:
+            if term in name_lower:
+                return True
+        
+        # Check for common medical abbreviations
+        medical_abbrevs = [
+            'alt', 'ast', 'ggt', 'alp', 'ldh', 'ck', 'tsh', 't3', 't4', 'ptt', 'pt',
+            'inr', 'esr', 'crp', 'rf', 'ana', 'hiv', 'hcv', 'hbv', 'psa', 'cea',
+            'afp', 'ca125', 'ca199', 'wbc', 'rbc', 'mcv', 'mch', 'mchc', 'rdw'
+        ]
+        
+        name_normalized = re.sub(r'[^\w]', '', name_lower)
+        if name_normalized in medical_abbrevs:
+            return True
+        
+        # If name has at least 3 characters and contains letters, consider it potentially valid
+        if len(name) >= 3 and re.search(r'[a-zA-Z]{2,}', name):
+            return True
+        
+        return False
+    
+    def _remove_duplicates(self, results: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """Remove duplicate test results."""
+        unique_results = []
+        seen = {}
+        
+        # Sort by source priority (structured table extraction preferred)
+        source_priority = {
+            'table_extraction': 0,
+            'column_parsing': 1, 
+            'ocr_table': 2,
+            'tabular': 3,
+            'line_analysis': 4,
+            'regex': 5,
+            'generic': 6
+        }
+        
+        results.sort(key=lambda x: source_priority.get(x.get('source', 'generic'), 10))
+        
+        for result in results:
+            test_name = result['test_type'].lower().strip()
+            test_value = round(result['value'], 2)
+            
+            # Create key for duplicate detection
+            test_key = re.sub(r'[^a-z0-9]', '', test_name)
+            
+            # Check for duplicates
+            is_duplicate = False
+            for existing_key, existing_result in list(seen.items()):
+                existing_name = re.sub(r'[^a-z0-9]', '', existing_key)
+                
+                # Check name similarity
+                name_similarity = self._calculate_name_similarity(test_key, existing_name)
+                
+                if name_similarity > 0.8 and len(test_key) > 2:
+                    value_diff = abs(test_value - round(existing_result['value'], 2))
+                    
+                    if value_diff < 0.1:  # Values are very close
+                        # Keep the one with better source priority
+                        current_priority = source_priority.get(result.get('source', 'generic'), 10)
+                        existing_priority = source_priority.get(existing_result.get('source', 'generic'), 10)
+                        
+                        if current_priority < existing_priority:
+                            # Replace existing with current (better source)
                             seen[existing_key] = result
                             unique_results = [r for r in unique_results if r != existing_result]
                             unique_results.append(result)
