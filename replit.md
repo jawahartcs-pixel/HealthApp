@@ -155,6 +155,15 @@ Preferred communication style: Simple, everyday language.
   - Proper handling of both extracted and manual-only test scenarios
   - Dedicated save button for manual test entries with validation
 
+### July 18, 2025 - Common Unit Field for Investigation Standards
+- **Enhanced Investigation Standards Schema**: Added common unit field for both male and female reference ranges
+  - Added common_unit column to investigation_standards table with automatic migration
+  - Updated UI to use single common unit field instead of separate male/female unit fields
+  - Modified all forms (add new standard, edit existing, create from document extraction) to use common unit
+  - Backward compatibility maintained by falling back to existing male_unit or female_unit fields
+  - Updated display formatting to show common unit with reference ranges
+  - Streamlined interface reduces data entry and ensures consistency across gender ranges
+
 ### July 16, 2025 - Image Upload Support & Standards Creation from Reports
 - **Image File Support**: Added comprehensive support for image uploads in file parser
   - Support for JPEG, PNG, BMP, and TIFF image formats
