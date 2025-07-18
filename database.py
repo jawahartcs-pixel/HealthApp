@@ -99,15 +99,15 @@ class Database:
             return cursor.lastrowid
     
     def add_test_result(self, patient_id: int, test_date: date, test_type: str, 
-                       test_value: float, unit: str = None, reference_range: str = None, user_id: int = None) -> bool:
+                       test_value: float, unit: str = None, user_id: int = None) -> bool:
         """Add a test result to the database."""
         try:
             with sqlite3.connect(self.db_path) as conn:
                 cursor = conn.cursor()
                 cursor.execute('''
-                    INSERT INTO test_results (patient_id, test_date, test_type, test_value, unit, reference_range, user_id)
-                    VALUES (?, ?, ?, ?, ?, ?, ?)
-                ''', (patient_id, test_date, test_type, test_value, unit, reference_range, user_id))
+                    INSERT INTO test_results (patient_id, test_date, test_type, test_value, unit, user_id)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                ''', (patient_id, test_date, test_type, test_value, unit, user_id))
                 conn.commit()
                 return True
         except Exception as e:
@@ -161,8 +161,7 @@ class Database:
                         tr.test_date,
                         tr.test_type,
                         tr.test_value,
-                        tr.unit,
-                        tr.reference_range
+                        tr.unit
                     FROM test_results tr
                     JOIN patients p ON tr.patient_id = p.patient_id
                     WHERE p.patient_name = ? AND p.user_id = ?
@@ -174,8 +173,7 @@ class Database:
                         tr.test_date,
                         tr.test_type,
                         tr.test_value,
-                        tr.unit,
-                        tr.reference_range
+                        tr.unit
                     FROM test_results tr
                     JOIN patients p ON tr.patient_id = p.patient_id
                     WHERE p.patient_name = ? AND p.user_id IS NULL
@@ -203,8 +201,7 @@ class Database:
                     tr.test_date,
                     tr.test_type,
                     tr.test_value,
-                    tr.unit,
-                    tr.reference_range
+                    tr.unit
                 FROM test_results tr
                 JOIN patients p ON tr.patient_id = p.patient_id
                 WHERE 1=1
@@ -244,8 +241,7 @@ class Database:
                     tr.test_date,
                     tr.test_type,
                     tr.test_value,
-                    tr.unit,
-                    tr.reference_range
+                    tr.unit
                 FROM test_results tr
                 JOIN patients p ON tr.patient_id = p.patient_id
                 ORDER BY tr.test_date DESC, p.patient_name, tr.test_type
@@ -260,8 +256,7 @@ class Database:
                 SELECT 
                     tr.test_date,
                     tr.test_value,
-                    tr.unit,
-                    tr.reference_range
+                    tr.unit
                 FROM test_results tr
                 JOIN patients p ON tr.patient_id = p.patient_id
                 WHERE p.patient_name = ? AND tr.test_type = ?
@@ -309,16 +304,16 @@ class Database:
             return False
     
     def update_test_result(self, result_id: int, test_type: str, value: float, 
-                          unit: str, test_date: date, reference_range: str = None) -> bool:
+                          unit: str, test_date: date) -> bool:
         """Update a specific test result by ID."""
         try:
             with sqlite3.connect(self.db_path) as conn:
                 cursor = conn.cursor()
                 cursor.execute('''
                     UPDATE test_results 
-                    SET test_type = ?, test_value = ?, unit = ?, test_date = ?, reference_range = ?
+                    SET test_type = ?, test_value = ?, unit = ?, test_date = ?
                     WHERE result_id = ?
-                ''', (test_type, value, unit, test_date, reference_range, result_id))
+                ''', (test_type, value, unit, test_date, result_id))
                 conn.commit()
                 return cursor.rowcount > 0
         except Exception as e:
@@ -380,8 +375,7 @@ class Database:
                     tr.test_date,
                     tr.test_type,
                     tr.test_value,
-                    tr.unit,
-                    tr.reference_range
+                    tr.unit
                 FROM test_results tr
                 JOIN patients p ON tr.patient_id = p.patient_id
                 WHERE p.patient_name = ?
@@ -399,7 +393,6 @@ class Database:
                     tr.test_type,
                     tr.test_value,
                     tr.unit,
-                    tr.reference_range,
                     COUNT(*) as count
                 FROM test_results tr
                 JOIN patients p ON tr.patient_id = p.patient_id
