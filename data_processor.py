@@ -38,12 +38,21 @@ class DataProcessor:
                     # The UI layer has already handled standardization vs custom choice
                     test_type_to_save = result['test_type']
                     
+                    # Use provided reference range, or try to get standard one if empty
+                    reference_range = result.get('reference_range', '')
+                    if not reference_range:
+                        # Try to get reference range for the exact test type provided
+                        _, match_info = self.standards.standardize_test_name(test_type_to_save)
+                        if match_info:
+                            reference_range = self.standards.get_reference_range(test_type_to_save, 'both')
+                    
                     success = self.db.add_test_result(
                         patient_id=patient_id,
                         test_date=test_date,
                         test_type=test_type_to_save,
                         test_value=result['value'],
                         unit=result.get('unit', ''),
+                        reference_range=reference_range,
                         user_id=user_id
                     )
                     if success:
@@ -231,7 +240,8 @@ class DataProcessor:
                     'date': test[0],
                     'test_type': test[1],
                     'value': test[2],
-                    'unit': test[3]
+                    'unit': test[3],
+                    'reference_range': test[4]
                 })
             
             # Calculate summary statistics
