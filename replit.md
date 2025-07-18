@@ -121,6 +121,67 @@ Preferred communication style: Simple, everyday language.
 
 ## Recent Changes
 
+### July 16, 2025 - Automatic Reference Range Extraction for Investigation Standards
+- **Enhanced Investigation Standards Creation**: Added automatic reference range extraction and form population
+  - Full test extraction data stored in session state with reference ranges, units, and values
+  - Intelligent reference range parsing supporting multiple formats (5.0-15.0, <10, >5, etc.)
+  - Automatic population of minimum and maximum values for both male and female ranges
+  - Unit extraction and auto-population from document data
+  - Visual indicator showing extracted reference range with caption explaining auto-population
+  - Support for various range formats including numeric ranges, single value operators, and text descriptions
+  - Fallback handling for unparseable ranges with sensible defaults
+  - Enhanced test display showing reference ranges alongside investigation names during extraction
+  - Streamlined form experience reducing manual data entry for investigation standard creation
+  - Added comprehensive debugging interface showing extracted test data structure for troubleshooting
+  - Enhanced reference range patterns to handle medical report formats including parentheses, brackets, and comparison operators
+  - Improved contextual scanning around test results for better reference range detection
+  - Extended pattern matching for "up to", "below", and other medical range expressions
+  - **Replaced Fuzzy Matching with Strict Case-Insensitive Matching**: Removed fuzzy matching to prevent incorrect matches
+  - **Dual-Option Workflow**: Added flexible standard creation system with two options regardless of match status:
+    - Create new investigation standard with full form and reference range parsing
+    - Add extracted test name to existing standard's aliases with dropdown selection
+  - **Enhanced Investigation Standards Management**: Both options available whether match is found or not
+  - **Improved User Control**: Users can now choose between creating new standards or updating existing ones
+  - **Case-Insensitive Exact Matching**: Strict matching prevents false positives while allowing case variations
+
+### July 16, 2025 - Image Upload Support & Standards Creation from Reports
+- **Image File Support**: Added comprehensive support for image uploads in file parser
+  - Support for JPEG, PNG, BMP, and TIFF image formats
+  - Direct OCR processing for image files using Tesseract
+  - Integration with existing OCR enhancement and cleaning functions
+  - Full document snippet display instead of cropped portions for better context
+- **Main Upload Page Image Integration**: Added image format support to primary upload functionality
+  - All image formats (JPG, JPEG, PNG, BMP, TIFF) now supported in main upload page
+  - Automatic OCR processing for image files with enhanced text extraction
+  - Updated file uploader help text to include image format instructions
+  - Seamless integration with existing extraction and editing workflow
+- **Investigation Standards Creation from Reports**: Enhanced tab with individual creation dialogs
+  - Complete file upload and processing logic for all supported formats
+  - Support for all file formats: PDF, Word, Excel, CSV, XML, and Images
+  - Removed camera access prompt from standards page
+  - Individual inline creation forms for each extracted investigation type
+  - Automatic alias checking without fuzzy matching logging
+  - Create checkbox enabled only for new investigation types not found in existing aliases
+  - Extracted test name automatically added to aliases during standard creation
+  - Expandable sections for each investigation with pre-populated forms
+  - Image snippet display functionality for each extracted investigation type
+  - "View Snippet" buttons next to each investigation showing document context
+  - Integration with image snippet extractor for PDF and image file processing
+  - Three-column layout with investigation details, action status, and snippet access
+  - OCR extraction enabled by default for better text recognition from images and scanned documents
+  - Side-by-side document preview showing full document image alongside extracted investigation list
+  - Enhanced image snippet extractor with support for both PDF and direct image file processing
+  - Full document display without trimming for complete context during investigation standard creation
+  - Text highlighting functionality showing blue boxes around extracted investigation types in document images
+  - Highlighted document snippets for both full document view and individual investigation snippets
+  - Visual indicators with blue rectangles around found text similar to main upload page functionality
+  - Side-by-side layout for each extracted investigation showing document snippet with highlighted text alongside investigation details and creation form
+  - Removed global document preview in favor of individual snippet displays for each investigation type
+  - Streamlined interface with document snippets directly integrated into each investigation expandable section
+  - Enhanced text matching algorithm for better OCR text recognition with partial word matching and medical term handling
+  - Debug functionality showing OCR extracted text when visual snippets are not available for troubleshooting
+  - Improved fallback behavior returning full document when specific text highlighting fails
+
 ### July 16, 2025 - Reference Range Extraction & Display
 - **Enhanced Reference Range Extraction**: Added comprehensive reference range detection to file parser
   - Enhanced tabular patterns to capture reference ranges from various formats
