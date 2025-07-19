@@ -829,44 +829,19 @@ Extraction Method: {result.get('source', 'regex')}""")
                                 st.image(uploaded_file, caption=f"Full Document: {uploaded_file.name}", use_container_width=True)
                         
                         elif uploaded_file.type == 'application/pdf':
-                            # For PDF files, convert to images and highlight
-                            pdf_bytes = uploaded_file.getvalue()
-                            images = convert_from_bytes(pdf_bytes, dpi=300, fmt='PNG')
+                            # For PDF files, use the snippet extractor directly
+                            highlighted_image = snippet_extractor.highlight_text_in_image(
+                                uploaded_file, extracted_test_names
+                            )
                             
-                            if images:
-                                for i, image in enumerate(images):
-                                    # Convert PIL image to bytes for highlighting
-                                    img_bytes = io.BytesIO()
-                                    image.save(img_bytes, format='PNG')
-                                    img_bytes.seek(0)
-                                    
-                                    # Create a temporary file-like object
-                                    class TempImageFile:
-                                        def __init__(self, image_bytes, name):
-                                            self.image_bytes = image_bytes
-                                            self.name = name
-                                            self.type = 'image/png'
-                                        
-                                        def getvalue(self):
-                                            return self.image_bytes.getvalue()
-                                        
-                                        def read(self):
-                                            return self.image_bytes.read()
-                                        
-                                        def seek(self, pos):
-                                            return self.image_bytes.seek(pos)
-                                    
-                                    temp_img = TempImageFile(img_bytes, f"page_{i+1}.png")
-                                    
-                                    # Try to highlight extracted text
-                                    highlighted_image = snippet_extractor.highlight_text_in_image(
-                                        temp_img, extracted_test_names
-                                    )
-                                    
-                                    if highlighted_image:
-                                        st.image(highlighted_image, caption=f"Page {i+1} of {uploaded_file.name} (Green boxes = extracted tests)", use_container_width=True)
-                                    else:
-                                        # Fallback to original image
+                            if highlighted_image:
+                                st.image(highlighted_image, caption=f"Document: {uploaded_file.name} (Green boxes = extracted tests)", use_container_width=True)
+                            else:
+                                # Fallback to convert and display without highlighting
+                                pdf_bytes = uploaded_file.getvalue()
+                                images = convert_from_bytes(pdf_bytes, dpi=300, fmt='PNG')
+                                if images:
+                                    for i, image in enumerate(images):
                                         st.image(image, caption=f"Page {i+1} of {uploaded_file.name}", use_container_width=True)
                         
                         else:
