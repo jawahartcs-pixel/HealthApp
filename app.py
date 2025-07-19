@@ -804,53 +804,129 @@ Extraction Method: {result.get('source', 'regex')}""")
                     # Manual test entry section - always shown at bottom
                     st.divider()
                     
-                    # Display full document for reference
+                    # Display full document for reference with highlighting
                     st.markdown("### 📄 Document Reference")
-                    st.caption("Full document image for reference while adding manual tests - click to zoom")
+                    st.caption("Full document image with highlighted extracted data - green boxes show already extracted tests")
+                    
+                    # Get extracted test names for highlighting
+                    extracted_test_names = []
+                    if 'extraction_results' in st.session_state and st.session_state['extraction_results']:
+                        extracted_test_names = [result.get('test_type', '') for result in st.session_state['extraction_results']]
                     
                     try:
+                        # Use ImageSnippetExtractor for highlighting
+                        snippet_extractor = ImageSnippetExtractor()
+                        
                         if uploaded_file.type.startswith('image'):
-                            # For image files, display directly
-                            st.image(uploaded_file, caption=f"Full Document: {uploaded_file.name}", use_column_width=True)
-                        else:
-                            # For PDF and other formats, convert to images and display
-                            if uploaded_file.type == 'application/pdf':
-                                # Convert PDF to images at high DPI for clarity
-                                pdf_bytes = uploaded_file.getvalue()
-                                images = convert_from_bytes(pdf_bytes, dpi=300, fmt='PNG')
-                                
-                                if images:
-                                    for i, image in enumerate(images):
-                                        st.image(image, caption=f"Page {i+1} of {uploaded_file.name}", use_column_width=True)
+                            # For image files, display with highlighting
+                            highlighted_image = snippet_extractor.highlight_text_in_image(
+                                uploaded_file, extracted_test_names
+                            )
+                            if highlighted_image:
+                                st.image(highlighted_image, caption=f"Full Document: {uploaded_file.name} (Green boxes = extracted tests)", use_container_width=True)
                             else:
-                                # For other file types, try to show text content
-                                with tempfile.NamedTemporaryFile(delete=False, suffix=os.path.splitext(uploaded_file.name)[1]) as tmp_file:
-                                    tmp_file.write(uploaded_file.getvalue())
-                                    tmp_file.flush()
+                                # Fallback to original image
+                                st.image(uploaded_file, caption=f"Full Document: {uploaded_file.name}", use_container_width=True)
+                        
+                        elif uploaded_file.type == 'application/pdf':
+                            # For PDF files, convert to images and highlight
+                            pdf_bytes = uploaded_file.getvalue()
+                            images = convert_from_bytes(pdf_bytes, dpi=300, fmt='PNG')
+                            
+                            if images:
+                                for i, image in enumerate(images):
+                                    # Convert PIL image to bytes for highlighting
+                                    img_bytes = io.BytesIO()
+                                    image.save(img_bytes, format='PNG')
+                                    img_bytes.seek(0)
                                     
-                                    # Try to extract text from document
-                                    try:
-                                        if uploaded_file.name.lower().endswith(('.docx', '.doc')):
-                                            st.info(f"Document type: {uploaded_file.type}")
-                                            st.markdown("**Full document text extracted for reference:**")
+                                    # Create a temporary file-like object
+                                    class TempImageFile:
+                                        def __init__(self, image_bytes, name):
+                                            self.image_bytes = image_bytes
+                                            self.name = name
+                                            self.type = 'image/png'
+                                        
+                                        def getvalue(self):
+                                            return self.image_bytes.getvalue()
+                                        
+                                        def read(self):
+                                            return self.image_bytes.read()
+                                        
+                                        def seek(self, pos):
+                                            return self.image_bytes.seek(pos)
+                                    
+                                    temp_img = TempImageFile(img_bytes, f"page_{i+1}.png")
+                                    
+                                    # Try to highlight extracted text
+                                    highlighted_image = snippet_extractor.highlight_text_in_image(
+                                        temp_img, extracted_test_names
+                                    )
+                                    
+                                    if highlighted_image:
+                                        st.image(highlighted_image, caption=f"Page {i+1} of {uploaded_file.name} (Green boxes = extracted tests)", use_container_width=True)
+                                    else:
+                                        # Fallback to original image
+                                        st.image(image, caption=f"Page {i+1} of {uploaded_file.name}", use_container_width=True)
+                        
+                        else:
+                            # For other file types, show text content with highlighting
+                            with tempfile.NamedTemporaryFile(delete=False, suffix=os.path.splitext(uploaded_file.name)[1]) as tmp_file:
+                                tmp_file.write(uploaded_file.getvalue())
+                                tmp_file.flush()
+                                
+                                try:
+                                    if uploaded_file.name.lower().endswith(('.docx', '.doc')):
+                                        st.info(f"Document type: {uploaded_file.type}")
+                                        st.markdown("**Full document text extracted for reference:**")
+                                        
+                                        # Extract text for Word documents
+                                        if uploaded_file.name.lower().endswith('.docx'):
+                                            from docx import Document
+                                            doc = Document(tmp_file.name)
+                                            full_text = '\n'.join([paragraph.text for paragraph in doc.paragraphs])
                                             
-                                            # Extract text for Word documents
-                                            if uploaded_file.name.lower().endswith('.docx'):
-                                                from docx import Document
-                                                doc = Document(tmp_file.name)
-                                                full_text = '\n'.join([paragraph.text for paragraph in doc.paragraphs])
-                                                st.text_area("Document Content", value=full_text, height=300, disabled=True)
-                                            else:
-                                                st.info("Word document format detected - text extraction available")
+                                            # Highlight extracted test names in the text
+                                            highlighted_text = full_text
+                                            for test_name in extracted_test_names:
+                                                if test_name and len(test_name) > 2:
+                                                    highlighted_text = highlighted_text.replace(
+                                                        test_name, f"🟢 **{test_name}** 🟢"
+                                                    )
+                                            
+                                            st.markdown("**Extracted tests are highlighted with 🟢 markers:**")
+                                            st.text_area("Document Content", value=highlighted_text, height=300, disabled=True)
                                         else:
-                                            st.info(f"Document format: {uploaded_file.type} - showing available content")
-                                    
-                                    finally:
-                                        os.unlink(tmp_file.name)
+                                            st.info("Word document format detected - text extraction available")
+                                    else:
+                                        st.info(f"Document format: {uploaded_file.type} - showing available content")
+                                
+                                finally:
+                                    os.unlink(tmp_file.name)
+                        
+                        # Show summary of extracted vs remaining tests
+                        if extracted_test_names:
+                            st.success(f"✅ {len(extracted_test_names)} tests already extracted: {', '.join(extracted_test_names[:3])}{'...' if len(extracted_test_names) > 3 else ''}")
+                            st.info("💡 Look for test results in the document that are NOT highlighted in green - these need to be added manually")
+                        else:
+                            st.info("⚠️ No tests were automatically extracted - you'll need to add all test results manually")
                                     
                     except Exception as e:
-                        st.warning(f"Could not display document preview: {str(e)}")
-                        st.info("Document is available for processing, but preview is not available")
+                        st.warning(f"Could not display document preview with highlighting: {str(e)}")
+                        st.info("Document is available for processing, but preview highlighting is not available")
+                        
+                        # Fallback to basic display
+                        try:
+                            if uploaded_file.type.startswith('image'):
+                                st.image(uploaded_file, caption=f"Full Document: {uploaded_file.name}", use_container_width=True)
+                            elif uploaded_file.type == 'application/pdf':
+                                pdf_bytes = uploaded_file.getvalue()
+                                images = convert_from_bytes(pdf_bytes, dpi=300, fmt='PNG')
+                                if images:
+                                    for i, image in enumerate(images):
+                                        st.image(image, caption=f"Page {i+1} of {uploaded_file.name}", use_container_width=True)
+                        except:
+                            st.error("Unable to display document preview")
                     
                     st.divider()
                     st.markdown("### 📝 Add Additional Tests (Manual Entry)")
