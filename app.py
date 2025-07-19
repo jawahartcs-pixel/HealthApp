@@ -810,8 +810,8 @@ Extraction Method: {result.get('source', 'regex')}""")
                     
                     # Get extracted test names for highlighting
                     extracted_test_names = []
-                    if 'extraction_results' in st.session_state and st.session_state['extraction_results']:
-                        extracted_test_names = [result.get('test_type', '') for result in st.session_state['extraction_results']]
+                    if has_extracted_results and test_data.get('results'):
+                        extracted_test_names = [result.get('test_type', '') for result in test_data['results']]
                     
                     try:
                         # Use ImageSnippetExtractor for highlighting

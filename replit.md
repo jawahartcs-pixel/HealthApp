@@ -232,6 +232,11 @@ Preferred communication style: Simple, everyday language.
   - Text highlighting with green markers for Word documents showing extracted test names
   - Fallback display with error handling when highlighting is not available
   - Integration with ImageSnippetExtractor for precise text location and highlighting functionality
+- **Fixed Highlighting Data Source**: Corrected extraction results access for proper test name highlighting
+  - Fixed connection between test_data extraction results and highlighting function
+  - Proper display of extracted test count and names in document preview summary
+  - Accurate green box highlighting around extracted test names in PDF and image documents
+  - Resolved session state data access issues for reliable highlighting functionality
 
 ### July 16, 2025 - Image Upload Support & Standards Creation from Reports
 - **Image File Support**: Added comprehensive support for image uploads in file parser
