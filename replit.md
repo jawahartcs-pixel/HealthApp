@@ -199,10 +199,18 @@ Preferred communication style: Simple, everyday language.
   - Real-time record count display showing filtered vs total standards
   - Computed display columns showing formatted ranges and units for better readability
 - **Flexible Edit Workflow**: Maintained both viewing and editing capabilities in single interface
-  - Excel table mode optimized for viewing, sorting, and bulk data operations
-  - Detailed cards mode preserving full inline editing with Update/Delete buttons
+  - Excel table mode with full inline editing capabilities and new record creation
+  - Detailed cards mode preserving original expandable interface with Update/Delete buttons
   - Professional column configuration with appropriate width sizing for different data types
-  - Quick actions section with refresh functionality and navigation hints
+  - Dynamic row addition and modification detection with save confirmation workflow
+- **Enhanced Excel Mode Features**: Full spreadsheet-like functionality for data management
+  - Direct cell editing with validation for standard names, categories, and reference ranges
+  - Category dropdown selection with predefined medical categories
+  - Number formatting for range values with decimal precision
+  - Add new rows functionality with '+' button for creating investigation standards
+  - Change detection system showing previews of modifications and additions before saving
+  - Batch operations for updating multiple records simultaneously
+  - User-friendly instructions and tooltips for Excel mode operations
 
 ### July 16, 2025 - Image Upload Support & Standards Creation from Reports
 - **Image File Support**: Added comprehensive support for image uploads in file parser

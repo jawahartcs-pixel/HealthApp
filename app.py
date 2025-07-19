@@ -2393,16 +2393,128 @@ def investigation_standards_page(investigation_standards):
             st.markdown(f"**Showing {len(display_df)} of {len(standards_df)} total standards**")
             
             if view_mode == "📊 Excel Table (Sortable)":
-                # Excel-like sortable table
+                # Prepare editable DataFrame with proper structure
+                edit_df = filtered_df.copy()
+                
+                # Add computed columns for display but keep original data for editing
+                edit_df['computed_unit'] = edit_df.apply(
+                    lambda row: row.get('common_unit') or row.get('male_unit') or row.get('female_unit') or '', 
+                    axis=1
+                )
+                
+                # Define column configuration for editing
+                edit_column_config = {
+                    'standard_name': st.column_config.TextColumn('Standard Name', width='medium', required=True),
+                    'category': st.column_config.SelectboxColumn(
+                        'Category', 
+                        width='small',
+                        options=["Complete Blood Count", "Lipid Profile", "Liver Function", "Kidney Function", "Thyroid Function", "Electrolytes", "Diabetes", "Other"],
+                        required=True
+                    ),
+                    'computed_unit': st.column_config.TextColumn('Unit', width='small'),
+                    'male_range_min': st.column_config.NumberColumn('Male Min', width='small', format="%.2f"),
+                    'male_range_max': st.column_config.NumberColumn('Male Max', width='small', format="%.2f"),
+                    'female_range_min': st.column_config.NumberColumn('Female Min', width='small', format="%.2f"),
+                    'female_range_max': st.column_config.NumberColumn('Female Max', width='small', format="%.2f"),
+                    'aliases': st.column_config.TextColumn('Aliases', width='large', help="Comma-separated list"),
+                    'description': st.column_config.TextColumn('Description', width='large')
+                }
+                
+                # Select columns for editing
+                edit_columns = [
+                    'standard_name', 'category', 'computed_unit',
+                    'male_range_min', 'male_range_max', 'female_range_min', 'female_range_max',
+                    'aliases', 'description'
+                ]
+                
+                # Excel-like editable table
                 edited_df = st.data_editor(
-                    display_df[display_columns],
-                    column_config=column_config,
+                    edit_df[edit_columns],
+                    column_config=edit_column_config,
                     use_container_width=True,
                     num_rows="dynamic",
-                    disabled=["Common Unit", "Male Range", "Female Range"],  # Make computed columns read-only
                     hide_index=True,
                     key="standards_data_editor"
                 )
+                
+                # Process changes and additions
+                if not edited_df.equals(edit_df[edit_columns]):
+                    st.markdown("---")
+                    st.subheader("💾 Save Changes")
+                    
+                    # Check for new rows (additions)
+                    if len(edited_df) > len(edit_df):
+                        new_rows = edited_df.iloc[len(edit_df):].copy()
+                        st.write("**New Standards to Add:**")
+                        st.dataframe(new_rows, use_container_width=True)
+                        
+                        if st.button("✅ Add New Standards", type="primary"):
+                            success_count = 0
+                            for idx, row in new_rows.iterrows():
+                                if pd.notna(row['standard_name']) and row['standard_name'].strip():
+                                    standard_data = {
+                                        'standard_name': row['standard_name'].strip(),
+                                        'aliases': row['aliases'] if pd.notna(row['aliases']) else '',
+                                        'male_range_min': row['male_range_min'] if pd.notna(row['male_range_min']) else 0.0,
+                                        'male_range_max': row['male_range_max'] if pd.notna(row['male_range_max']) else 0.0,
+                                        'female_range_min': row['female_range_min'] if pd.notna(row['female_range_min']) else 0.0,
+                                        'female_range_max': row['female_range_max'] if pd.notna(row['female_range_max']) else 0.0,
+                                        'male_unit': row['computed_unit'] if pd.notna(row['computed_unit']) else '',
+                                        'female_unit': row['computed_unit'] if pd.notna(row['computed_unit']) else '',
+                                        'common_unit': row['computed_unit'] if pd.notna(row['computed_unit']) else '',
+                                        'description': row['description'] if pd.notna(row['description']) else '',
+                                        'category': row['category'] if pd.notna(row['category']) else 'Other'
+                                    }
+                                    
+                                    if investigation_standards.add_standard(standard_data):
+                                        success_count += 1
+                            
+                            if success_count > 0:
+                                st.success(f"Successfully added {success_count} new standards!")
+                                st.rerun()
+                            else:
+                                st.error("Failed to add new standards. Please check the data.")
+                    
+                    # Check for modifications to existing rows
+                    existing_changes = []
+                    for idx in range(min(len(edited_df), len(edit_df))):
+                        original_row = edit_df.iloc[idx]
+                        edited_row = edited_df.iloc[idx]
+                        
+                        # Check if any field changed
+                        if not original_row[edit_columns].equals(edited_row):
+                            existing_changes.append((original_row['id'], edited_row, original_row))
+                    
+                    if existing_changes:
+                        st.write("**Modified Standards:**")
+                        changes_df = pd.DataFrame([change[1] for change in existing_changes])
+                        st.dataframe(changes_df, use_container_width=True)
+                        
+                        if st.button("💾 Update Modified Standards", type="primary"):
+                            success_count = 0
+                            for record_id, edited_row, original_row in existing_changes:
+                                update_data = {
+                                    'standard_name': edited_row['standard_name'],
+                                    'aliases': edited_row['aliases'] if pd.notna(edited_row['aliases']) else '',
+                                    'male_range_min': edited_row['male_range_min'] if pd.notna(edited_row['male_range_min']) else 0.0,
+                                    'male_range_max': edited_row['male_range_max'] if pd.notna(edited_row['male_range_max']) else 0.0,
+                                    'female_range_min': edited_row['female_range_min'] if pd.notna(edited_row['female_range_min']) else 0.0,
+                                    'female_range_max': edited_row['female_range_max'] if pd.notna(edited_row['female_range_max']) else 0.0,
+                                    'male_unit': edited_row['computed_unit'] if pd.notna(edited_row['computed_unit']) else '',
+                                    'female_unit': edited_row['computed_unit'] if pd.notna(edited_row['computed_unit']) else '',
+                                    'common_unit': edited_row['computed_unit'] if pd.notna(edited_row['computed_unit']) else '',
+                                    'description': edited_row['description'] if pd.notna(edited_row['description']) else '',
+                                    'category': edited_row['category'] if pd.notna(edited_row['category']) else 'Other'
+                                }
+                                
+                                if investigation_standards.update_standard(record_id, update_data):
+                                    success_count += 1
+                            
+                            if success_count > 0:
+                                st.success(f"Successfully updated {success_count} standards!")
+                                st.rerun()
+                            else:
+                                st.error("Failed to update standards. Please try again.")
             
             else:
                 # Original detailed expandable cards format
@@ -2492,11 +2604,24 @@ def investigation_standards_page(investigation_standards):
                         st.rerun()
                 
                 with col2:
-                    if st.button("➕ Add New Standard"):
-                        st.info("💡 Tip: Use the 'Add New Standard' tab to create new standards")
+                    st.info("📝 Edit cells directly in the table above")
                 
                 with col3:
-                    st.info("💡 Switch to 'Detailed Cards' view to edit standards directly")
+                    st.info("➕ Click the '+' button in table to add new rows")
+                
+                # Instructions
+                st.markdown("""
+                **How to use Excel Table mode:**
+                - ✏️ **Edit existing records**: Click any cell to modify values
+                - ➕ **Add new records**: Click the '+' button at the bottom of the table to add rows
+                - 💾 **Save changes**: Use the save buttons that appear when you make changes
+                - 📊 **Sort & Filter**: Use the column headers and filter controls above
+                """)
+            
+            else:
+                # For detailed cards mode
+                st.markdown("---")
+                st.markdown("**💡 Tip:** Each card allows direct inline editing with Update/Delete buttons")
         
         else:
             st.info("No investigation standards found. Add some standards to get started.")
