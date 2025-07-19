@@ -899,6 +899,99 @@ class FileParser:
         
         return unique_results
     
+    def scan_text_against_standards(self, text: str, investigation_standards) -> List[Dict[str, Any]]:
+        """Scan document text against investigation standards table to find values."""
+        results = []
+        
+        if not investigation_standards:
+            return results
+            
+        # Get all standards from the database
+        all_standards = investigation_standards.get_all_standards()
+        
+        for standard in all_standards:
+            standard_name = standard['standard_name']
+            aliases = standard.get('aliases', '')
+            common_unit = standard.get('common_unit') or standard.get('male_unit', '')
+            
+            # Create search patterns from standard name and aliases
+            search_terms = [standard_name]
+            if aliases:
+                search_terms.extend([alias.strip() for alias in aliases.split(',') if alias.strip()])
+            
+            # Look for each term in the document text
+            for term in search_terms:
+                if not term:
+                    continue
+                    
+                # Create flexible pattern to find test name and value
+                # Look for the term followed by value patterns
+                patterns = [
+                    # Pattern 1: Term : Value Unit
+                    rf'{re.escape(term)}\s*[:\-]?\s*(\d+(?:\.\d+)?)\s*([a-zA-Z/%×^²³⁰¹²³⁴⁵⁶⁷⁸⁹μµ/\-\s]*)',
+                    # Pattern 2: Term Value Unit (tabular format)
+                    rf'{re.escape(term)}\s+(\d+(?:\.\d+)?)\s*([a-zA-Z/%×^²³⁰¹²³⁴⁵⁶⁷⁸⁹μµ/\-\s]*)',
+                    # Pattern 3: Value near term (within 50 characters)
+                    rf'(?:{re.escape(term)}.{{0,50}}?)(\d+(?:\.\d+)?)\s*([a-zA-Z/%×^²³⁰¹²³⁴⁵⁶⁷⁸⁹μµ/\-\s]*)',
+                ]
+                
+                for pattern in patterns:
+                    matches = re.finditer(pattern, text, re.IGNORECASE)
+                    
+                    for match in matches:
+                        try:
+                            value = float(match.group(1))
+                            extracted_unit = match.group(2).strip() if len(match.groups()) > 1 else ''
+                            
+                            # Clean up extracted unit
+                            extracted_unit = re.sub(r'\s+', ' ', extracted_unit).strip()
+                            if not extracted_unit:
+                                extracted_unit = common_unit
+                            
+                            # Create reference range string
+                            male_min = standard.get('male_range_min', '')
+                            male_max = standard.get('male_range_max', '')
+                            female_min = standard.get('female_range_min', '')
+                            female_max = standard.get('female_range_max', '')
+                            
+                            ref_range = ''
+                            if male_min and male_max:
+                                if female_min and female_max and (male_min != female_min or male_max != female_max):
+                                    ref_range = f"M: {male_min}-{male_max}, F: {female_min}-{female_max}"
+                                else:
+                                    ref_range = f"{male_min}-{male_max}"
+                            
+                            result = {
+                                'test_type': standard_name,
+                                'value': value,
+                                'unit': extracted_unit,
+                                'reference_range': ref_range,
+                                'source': 'standards_scan',
+                                'matched_term': term,
+                                'category': standard.get('category', ''),
+                                'description': standard.get('description', '')
+                            }
+                            
+                            # Check for duplicates before adding
+                            is_duplicate = False
+                            for existing in results:
+                                if (existing['test_type'] == standard_name and 
+                                    abs(existing['value'] - value) < 0.01):
+                                    is_duplicate = True
+                                    break
+                            
+                            if not is_duplicate:
+                                results.append(result)
+                                break  # Found a match for this standard, move to next
+                            
+                        except (ValueError, IndexError):
+                            continue
+                    
+                    if results and results[-1]['test_type'] == standard_name:
+                        break  # Found a match for this standard, move to next standard
+        
+        return results
+    
     def _is_medical_terminology(self, test_name: str) -> bool:
         """Check if test name is a valid medical terminology."""
         # Normalize test name for comparison

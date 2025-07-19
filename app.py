@@ -231,10 +231,161 @@ def upload_results_page(file_parser, data_processor, user_id):
                     
                     if not has_extracted_results:
                         st.warning("No blood test data automatically detected in the file")
-                        st.info("💡 You can still manually add test results using the section below")
-                        # Show extracted text for debugging
-                        with st.expander("Debug: Show extracted text"):
-                            st.text_area("Extracted text", extracted_text[:1000] + "..." if len(extracted_text) > 1000 else extracted_text, height=200)
+                        st.info("💡 Now trying standards-based extraction...")
+                        
+                        # Try standards-based extraction even when no original results
+                        investigation_standards = st.session_state.get('investigation_standards')
+                        if investigation_standards and extracted_text:
+                            standards_results = file_parser.scan_text_against_standards(extracted_text, investigation_standards)
+                            
+                            if standards_results:
+                                # Create two-column layout for Excel table and document preview
+                                col1, col2 = st.columns([1.2, 0.8])
+                                
+                                with col1:
+                                    st.success(f"Found {len(standards_results)} tests using standards-based extraction!")
+                                    st.subheader("📊 Standards-Based Extraction Results")
+                                    
+                                    # Create DataFrame for Excel-like display
+                                    df_data = []
+                                    for i, result in enumerate(standards_results):
+                                        df_data.append({
+                                            'Include': True,
+                                            'Investigation': result['test_type'],
+                                            'Value': result['value'],
+                                            'Unit': result['unit'],
+                                            'Reference Range': result['reference_range'],
+                                            'Category': result.get('category', ''),
+                                            'Matched Term': result.get('matched_term', ''),
+                                        })
+                                    
+                                    # Display editable dataframe
+                                    if df_data:
+                                        df = pd.DataFrame(df_data)
+                                        
+                                        # Configure column editor
+                                        column_config = {
+                                            'Include': st.column_config.CheckboxColumn(
+                                                'Include',
+                                                help='Check to include this test in results',
+                                                default=True
+                                            ),
+                                            'Investigation': st.column_config.TextColumn(
+                                                'Investigation Type',
+                                                help='Standardized investigation name',
+                                                width='medium'
+                                            ),
+                                            'Value': st.column_config.NumberColumn(
+                                                'Value',
+                                                help='Test result value',
+                                                format='%.2f',
+                                                width='small'
+                                            ),
+                                            'Unit': st.column_config.TextColumn(
+                                                'Unit',
+                                                help='Measurement unit',
+                                                width='small'
+                                            ),
+                                            'Reference Range': st.column_config.TextColumn(
+                                                'Reference Range',
+                                                help='Normal range for this test',
+                                                width='medium'
+                                            ),
+                                            'Category': st.column_config.TextColumn(
+                                                'Category',
+                                                help='Test category',
+                                                width='small'
+                                            ),
+                                            'Matched Term': st.column_config.TextColumn(
+                                                'Matched Term',
+                                                help='Document term that matched',
+                                                width='small'
+                                            )
+                                        }
+                                        
+                                        # Store the editable results
+                                        edited_df = st.data_editor(
+                                            df,
+                                            column_config=column_config,
+                                            use_container_width=True,
+                                            num_rows="dynamic",
+                                            key=f"standards_results_no_original_{uploaded_file.name}",
+                                            height=400
+                                        )
+                                        
+                                        # Store edited results in session state for saving
+                                        st.session_state[f'standards_extracted_{uploaded_file.name}'] = edited_df
+                                        
+                                        # Show summary and save button
+                                        included_count = len(edited_df[edited_df['Include'] == True])
+                                        st.caption(f"Ready to save: {included_count} tests selected")
+                                        
+                                        # Save button for standards-based results (no original results case)
+                                        if st.button("💾 Save Standards-Based Results", key=f"save_standards_no_orig_{uploaded_file.name}", type="primary"):
+                                            if patient_name:
+                                                with st.spinner("Saving standards-based results..."):
+                                                    # Convert edited dataframe to test results
+                                                    standards_final_results = []
+                                                    for _, row in edited_df.iterrows():
+                                                        if row['Include']:
+                                                            standards_final_results.append({
+                                                                'test_type': row['Investigation'],
+                                                                'value': row['Value'],
+                                                                'unit': row['Unit'],
+                                                                'reference_range': row['Reference Range']
+                                                            })
+                                                    
+                                                    # Save using data processor
+                                                    success = data_processor.save_test_results(
+                                                        patient_name=patient_name,
+                                                        test_date=test_date,
+                                                        test_results=standards_final_results,
+                                                        user_id=user_id
+                                                    )
+                                                    
+                                                    if success:
+                                                        st.success(f"Successfully saved {len(standards_final_results)} standards-based test results for {patient_name}")
+                                                    else:
+                                                        st.error("Failed to save standards-based test results to database")
+                                            else:
+                                                st.warning("Please enter a patient name to save results")
+                                
+                                with col2:
+                                    st.subheader("📄 Document Preview")
+                                    with st.expander("📖 View Original Document Content", expanded=True):
+                                        # Display file type and size
+                                        file_size = len(uploaded_file.getvalue())
+                                        st.caption(f"File: {uploaded_file.name} | Size: {file_size:,} bytes | Type: {uploaded_file.type}")
+                                        
+                                        # Show extracted text in a scrollable container
+                                        if extracted_text:
+                                            # Limit text length for display
+                                            display_text = extracted_text[:3000] + "\n\n... (text truncated for display)" if len(extracted_text) > 3000 else extracted_text
+                                            
+                                            st.text_area(
+                                                "Extracted Document Text",
+                                                value=display_text,
+                                                height=400,
+                                                help="This is the text extracted from your document. Compare with the parsed results below to verify accuracy.",
+                                                label_visibility="collapsed"
+                                            )
+                                        else:
+                                            st.warning("No text could be extracted from this document.")
+                                
+                                # Set flag to show save button
+                                has_extracted_results = True
+                                
+                            else:
+                                st.warning("No tests found even with standards-based extraction")
+                                st.info("💡 You can manually add test results using the section below")
+                                # Show extracted text for debugging
+                                with st.expander("Debug: Show extracted text"):
+                                    st.text_area("Extracted text", extracted_text[:1000] + "..." if len(extracted_text) > 1000 else extracted_text, height=200)
+                        else:
+                            st.warning("Investigation standards not available")
+                            # Show extracted text for debugging
+                            with st.expander("Debug: Show extracted text"):
+                                st.text_area("Extracted text", extracted_text[:1000] + "..." if len(extracted_text) > 1000 else extracted_text, height=200)
                     
                     status_text.text("Processing patient information...")
                     progress_bar.progress(75)
@@ -265,16 +416,138 @@ def upload_results_page(file_parser, data_processor, user_id):
                     
                     # Test results preview and editing
                     if has_extracted_results:
-                        # Document preview and results comparison
-                        col1, col2 = st.columns([1, 1])
+                        # Create two-column layout for Excel table and document preview
+                        col1, col2 = st.columns([1.2, 0.8])
                         
                         with col1:
-                            st.subheader(f"📋 Review Test Results ({len(test_data['results'])} tests found)")
-                            st.write("Review and edit the extracted test results, then add any missing tests:")
+                            st.subheader("📊 Standards-Based Extraction Results")
+                            
+                            # Scan document text against investigation standards
+                            investigation_standards = st.session_state.get('investigation_standards')
+                            if investigation_standards and extracted_text:
+                                standards_results = file_parser.scan_text_against_standards(extracted_text, investigation_standards)
+                                
+                                if standards_results:
+                                    st.success(f"Found {len(standards_results)} tests matching investigation standards")
+                                    
+                                    # Create DataFrame for Excel-like display
+                                    df_data = []
+                                    for i, result in enumerate(standards_results):
+                                        df_data.append({
+                                            'Include': True,
+                                            'Investigation': result['test_type'],
+                                            'Value': result['value'],
+                                            'Unit': result['unit'],
+                                            'Reference Range': result['reference_range'],
+                                            'Category': result.get('category', ''),
+                                            'Matched Term': result.get('matched_term', ''),
+                                        })
+                                    
+                                    # Display editable dataframe
+                                    if df_data:
+                                        df = pd.DataFrame(df_data)
+                                        
+                                        # Configure column editor
+                                        column_config = {
+                                            'Include': st.column_config.CheckboxColumn(
+                                                'Include',
+                                                help='Check to include this test in results',
+                                                default=True
+                                            ),
+                                            'Investigation': st.column_config.TextColumn(
+                                                'Investigation Type',
+                                                help='Standardized investigation name',
+                                                width='medium'
+                                            ),
+                                            'Value': st.column_config.NumberColumn(
+                                                'Value',
+                                                help='Test result value',
+                                                format='%.2f',
+                                                width='small'
+                                            ),
+                                            'Unit': st.column_config.TextColumn(
+                                                'Unit',
+                                                help='Measurement unit',
+                                                width='small'
+                                            ),
+                                            'Reference Range': st.column_config.TextColumn(
+                                                'Reference Range',
+                                                help='Normal range for this test',
+                                                width='medium'
+                                            ),
+                                            'Category': st.column_config.TextColumn(
+                                                'Category',
+                                                help='Test category',
+                                                width='small'
+                                            ),
+                                            'Matched Term': st.column_config.TextColumn(
+                                                'Matched Term',
+                                                help='Document term that matched',
+                                                width='small'
+                                            )
+                                        }
+                                        
+                                        # Store the editable results
+                                        edited_df = st.data_editor(
+                                            df,
+                                            column_config=column_config,
+                                            use_container_width=True,
+                                            num_rows="dynamic",
+                                            key=f"standards_results_{uploaded_file.name}",
+                                            height=400
+                                        )
+                                        
+                                        # Store edited results in session state for saving
+                                        st.session_state[f'standards_extracted_{uploaded_file.name}'] = edited_df
+                                        
+                                        # Show summary and save button
+                                        included_count = len(edited_df[edited_df['Include'] == True])
+                                        st.caption(f"Ready to save: {included_count} tests selected")
+                                        
+                                        # Save button for standards-based results
+                                        if st.button("💾 Save Standards-Based Results", key=f"save_standards_{uploaded_file.name}", type="primary"):
+                                            if patient_name:
+                                                with st.spinner("Saving standards-based results..."):
+                                                    # Convert edited dataframe to test results
+                                                    standards_final_results = []
+                                                    for _, row in edited_df.iterrows():
+                                                        if row['Include']:
+                                                            standards_final_results.append({
+                                                                'test_type': row['Investigation'],
+                                                                'value': row['Value'],
+                                                                'unit': row['Unit'],
+                                                                'reference_range': row['Reference Range']
+                                                            })
+                                                    
+                                                    # Save using data processor
+                                                    success = data_processor.save_test_results(
+                                                        patient_name=patient_name,
+                                                        test_date=test_date,
+                                                        test_results=standards_final_results,
+                                                        user_id=user_id
+                                                    )
+                                                    
+                                                    if success:
+                                                        st.success(f"Successfully saved {len(standards_final_results)} standards-based test results for {patient_name}")
+                                                    else:
+                                                        st.error("Failed to save standards-based test results to database")
+                                            else:
+                                                st.warning("Please enter a patient name to save results")
+                                        
+                                else:
+                                    st.warning("No tests found matching investigation standards")
+                                    st.info("💡 Try using the original extraction results below or add tests manually")
+                            else:
+                                st.warning("Investigation standards not available or no text extracted")
+                            
+                            # Show original extraction results as fallback
+                            if test_data.get('results'):
+                                with st.expander(f"📋 Original Extraction Results ({len(test_data['results'])} tests found)", expanded=False):
+                                    st.write("Review and edit the originally extracted test results:")
                         
                         with col2:
                             st.subheader("📄 Document Preview")
-                            with st.expander("📖 View Original Document Content", expanded=False):
+                            with st.expander("📖 View Original Document Content", expanded=True):
                                 # Display file type and size
                                 file_size = len(uploaded_file.getvalue())
                                 st.caption(f"File: {uploaded_file.name} | Size: {file_size:,} bytes | Type: {uploaded_file.type}")
