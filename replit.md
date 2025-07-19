@@ -245,6 +245,8 @@ Preferred communication style: Simple, everyday language.
   - Flexible pattern matching supporting various medical document formats
   - Automatic unit extraction and reference range population from standards database
   - Duplicate detection and validation to ensure data quality
+  - Document position tracking to preserve original document order in Excel display
+  - Results sorted by appearance order in document rather than standards table order
 - **Excel-Style Editable Interface**: Created professional data entry interface with editable table format
   - Standards-based results displayed in editable DataFrame with column configuration
   - Include/exclude checkboxes for selective data entry
