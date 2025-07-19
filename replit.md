@@ -238,6 +238,33 @@ Preferred communication style: Simple, everyday language.
   - Accurate green box highlighting around extracted test names in PDF and image documents
   - Resolved session state data access issues for reliable highlighting functionality
 
+### July 19, 2025 - Standards-Based Document Scanning with Excel Interface
+- **Automated Standards-Based Extraction**: Added intelligent document scanning against investigation standards table
+  - New scan_text_against_standards method in FileParser for comprehensive pattern matching
+  - Scans document text against all investigation standards names and aliases
+  - Flexible pattern matching supporting various medical document formats
+  - Automatic unit extraction and reference range population from standards database
+  - Duplicate detection and validation to ensure data quality
+- **Excel-Style Editable Interface**: Created professional data entry interface with editable table format
+  - Standards-based results displayed in editable DataFrame with column configuration
+  - Include/exclude checkboxes for selective data entry
+  - Inline editing for investigation types, values, units, and reference ranges
+  - Category and matched term columns for transparency and verification
+  - Dynamic row management with add/remove capabilities
+  - Professional column width configuration for optimal display
+- **Enhanced Document Layout**: Restructured interface with Excel table and document preview side-by-side
+  - Left column shows editable Excel-style extraction results (60% width)
+  - Right column displays expanded document content by default (40% width)
+  - Seamless integration between standards-based and original extraction methods
+  - Fallback support when standards-based extraction finds no results
+  - Separate save buttons for different extraction methods
+- **Comprehensive Save Functionality**: Added dedicated save workflow for standards-based results
+  - Independent save buttons for standards-based and original extraction results
+  - Automatic conversion from DataFrame to database format
+  - Full integration with existing data processor and database systems
+  - Success/error feedback with detailed result counts
+  - Patient name validation and proper error handling
+
 ### July 16, 2025 - Image Upload Support & Standards Creation from Reports
 - **Image File Support**: Added comprehensive support for image uploads in file parser
   - Support for JPEG, PNG, BMP, and TIFF image formats
