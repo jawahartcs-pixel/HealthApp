@@ -212,6 +212,20 @@ Preferred communication style: Simple, everyday language.
   - Batch operations for updating multiple records simultaneously
   - User-friendly instructions and tooltips for Excel mode operations
 
+### July 19, 2025 - Full Document Preview for Manual Test Entry
+- **Enhanced Document Reference Display**: Added comprehensive document preview above manual test entry section
+  - High-resolution document display (300 DPI) for clear text visibility during manual entry
+  - Support for all file formats: PDF pages, images, Word documents, and other formats
+  - Full-page document images displayed with zoom capability for detailed reference
+  - Multi-page PDF support showing all pages sequentially for complete document review
+  - Word document text extraction displayed in scrollable text area for easy copying
+  - Error handling with graceful fallbacks when document preview is not available
+- **Improved Manual Test Workflow**: Enhanced user experience for adding missed test results
+  - Document reference positioned strategically above manual test entry forms
+  - Clear visual separation between document preview and input sections
+  - Maintained all existing manual entry functionality while adding visual reference
+  - Support for zooming and detailed inspection of document content during data entry
+
 ### July 16, 2025 - Image Upload Support & Standards Creation from Reports
 - **Image File Support**: Added comprehensive support for image uploads in file parser
   - Support for JPEG, PNG, BMP, and TIFF image formats

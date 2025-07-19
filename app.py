@@ -16,6 +16,10 @@ from anomaly_detection import AnomalyDetector
 from utils import validate_date, format_test_value
 from image_snippet_extractor import ImageSnippetExtractor
 from investigation_standards import InvestigationStandards
+from pdf2image import convert_from_bytes
+from PIL import Image
+import tempfile
+import io
 
 # Initialize database and components
 @st.cache_resource
@@ -798,6 +802,56 @@ Extraction Method: {result.get('source', 'regex')}""")
                             st.warning("Please enter a patient name to save results")
                     
                     # Manual test entry section - always shown at bottom
+                    st.divider()
+                    
+                    # Display full document for reference
+                    st.markdown("### 📄 Document Reference")
+                    st.caption("Full document image for reference while adding manual tests - click to zoom")
+                    
+                    try:
+                        if uploaded_file.type.startswith('image'):
+                            # For image files, display directly
+                            st.image(uploaded_file, caption=f"Full Document: {uploaded_file.name}", use_column_width=True)
+                        else:
+                            # For PDF and other formats, convert to images and display
+                            if uploaded_file.type == 'application/pdf':
+                                # Convert PDF to images at high DPI for clarity
+                                pdf_bytes = uploaded_file.getvalue()
+                                images = convert_from_bytes(pdf_bytes, dpi=300, fmt='PNG')
+                                
+                                if images:
+                                    for i, image in enumerate(images):
+                                        st.image(image, caption=f"Page {i+1} of {uploaded_file.name}", use_column_width=True)
+                            else:
+                                # For other file types, try to show text content
+                                with tempfile.NamedTemporaryFile(delete=False, suffix=os.path.splitext(uploaded_file.name)[1]) as tmp_file:
+                                    tmp_file.write(uploaded_file.getvalue())
+                                    tmp_file.flush()
+                                    
+                                    # Try to extract text from document
+                                    try:
+                                        if uploaded_file.name.lower().endswith(('.docx', '.doc')):
+                                            st.info(f"Document type: {uploaded_file.type}")
+                                            st.markdown("**Full document text extracted for reference:**")
+                                            
+                                            # Extract text for Word documents
+                                            if uploaded_file.name.lower().endswith('.docx'):
+                                                from docx import Document
+                                                doc = Document(tmp_file.name)
+                                                full_text = '\n'.join([paragraph.text for paragraph in doc.paragraphs])
+                                                st.text_area("Document Content", value=full_text, height=300, disabled=True)
+                                            else:
+                                                st.info("Word document format detected - text extraction available")
+                                        else:
+                                            st.info(f"Document format: {uploaded_file.type} - showing available content")
+                                    
+                                    finally:
+                                        os.unlink(tmp_file.name)
+                                    
+                    except Exception as e:
+                        st.warning(f"Could not display document preview: {str(e)}")
+                        st.info("Document is available for processing, but preview is not available")
+                    
                     st.divider()
                     st.markdown("### 📝 Add Additional Tests (Manual Entry)")
                     st.caption("Add test results that weren't automatically detected or scanned from the document")
