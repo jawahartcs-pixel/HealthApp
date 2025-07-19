@@ -969,7 +969,8 @@ class FileParser:
                                 'source': 'standards_scan',
                                 'matched_term': term,
                                 'category': standard.get('category', ''),
-                                'description': standard.get('description', '')
+                                'description': standard.get('description', ''),
+                                'document_position': match.start()  # Track position in document
                             }
                             
                             # Check for duplicates before adding
@@ -989,6 +990,9 @@ class FileParser:
                     
                     if results and results[-1]['test_type'] == standard_name:
                         break  # Found a match for this standard, move to next standard
+        
+        # Sort results by document position to maintain original document order
+        results.sort(key=lambda x: x.get('document_position', float('inf')))
         
         return results
     
