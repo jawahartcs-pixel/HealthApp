@@ -225,6 +225,13 @@ Preferred communication style: Simple, everyday language.
   - Clear visual separation between document preview and input sections
   - Maintained all existing manual entry functionality while adding visual reference
   - Support for zooming and detailed inspection of document content during data entry
+- **Intelligent Extraction Highlighting**: Visual indicators showing already extracted data in document preview
+  - Green box highlighting around extracted test names in PDF and image documents using OCR text matching
+  - Summary display showing count of extracted tests with names for quick reference
+  - Clear guidance messages indicating which tests still need manual entry
+  - Text highlighting with green markers for Word documents showing extracted test names
+  - Fallback display with error handling when highlighting is not available
+  - Integration with ImageSnippetExtractor for precise text location and highlighting functionality
 
 ### July 16, 2025 - Image Upload Support & Standards Creation from Reports
 - **Image File Support**: Added comprehensive support for image uploads in file parser
