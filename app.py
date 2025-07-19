@@ -2299,91 +2299,215 @@ def investigation_standards_page(investigation_standards):
                 avg_aliases = standards_df['aliases'].str.split(',').str.len().mean()
                 st.metric("Avg Aliases", f"{avg_aliases:.1f}")
             
-            # Filter by category
-            categories = ['All'] + sorted(standards_df['category'].unique().tolist())
-            selected_category = st.selectbox("Filter by Category", categories)
+            st.markdown("---")
+            
+            # Filter and sort controls
+            col1, col2, col3 = st.columns([2, 2, 1])
+            
+            with col1:
+                # Filter by category
+                categories = ['All'] + sorted(standards_df['category'].unique().tolist())
+                selected_category = st.selectbox("Filter by Category", categories)
+            
+            with col2:
+                # Search functionality
+                search_term = st.text_input("Search Standards", placeholder="Search by name, aliases, or category...")
+            
+            with col3:
+                # Export button
+                if st.button("📥 Export CSV"):
+                    csv_data = standards_df.to_csv(index=False)
+                    st.download_button(
+                        label="Download CSV",
+                        data=csv_data,
+                        file_name=f"investigation_standards_{pd.Timestamp.now().strftime('%Y%m%d_%H%M')}.csv",
+                        mime="text/csv"
+                    )
+            
+            # Apply filters
+            filtered_df = standards_df.copy()
             
             if selected_category != 'All':
-                filtered_standards = standards_df[standards_df['category'] == selected_category]
-            else:
-                filtered_standards = standards_df
+                filtered_df = filtered_df[filtered_df['category'] == selected_category]
             
-            # Display standards in an editable table-like format
-            st.subheader("Standards Details")
+            if search_term:
+                search_mask = (
+                    filtered_df['standard_name'].str.contains(search_term, case=False, na=False) |
+                    filtered_df['aliases'].str.contains(search_term, case=False, na=False) |
+                    filtered_df['category'].str.contains(search_term, case=False, na=False) |
+                    filtered_df['description'].str.contains(search_term, case=False, na=False)
+                )
+                filtered_df = filtered_df[search_mask]
             
-            for idx, standard in filtered_standards.iterrows():
-                with st.expander(f"🧪 {standard['standard_name']} ({standard['category']})"):
-                    col1, col2 = st.columns(2)
+            # Prepare display DataFrame
+            display_df = filtered_df.copy()
+            
+            # Format columns for better display
+            display_df['Common Unit'] = display_df.apply(
+                lambda row: row.get('common_unit') or row.get('male_unit') or row.get('female_unit') or 'Not specified', 
+                axis=1
+            )
+            
+            display_df['Male Range'] = display_df.apply(
+                lambda row: f"{row['male_range_min']}-{row['male_range_max']}" if pd.notna(row['male_range_min']) and pd.notna(row['male_range_max']) else 'Not specified',
+                axis=1
+            )
+            
+            display_df['Female Range'] = display_df.apply(
+                lambda row: f"{row['female_range_min']}-{row['female_range_max']}" if pd.notna(row['female_range_min']) and pd.notna(row['female_range_max']) else 'Not specified',
+                axis=1
+            )
+            
+            # Truncate long aliases for display
+            display_df['Aliases (truncated)'] = display_df['aliases'].apply(
+                lambda x: x[:50] + "..." if pd.notna(x) and len(str(x)) > 50 else (x if pd.notna(x) else "None")
+            )
+            
+            # Select columns for display
+            display_columns = [
+                'standard_name', 'category', 'Common Unit', 
+                'Male Range', 'Female Range', 'Aliases (truncated)', 'description'
+            ]
+            
+            # Rename columns for better display
+            column_config = {
+                'standard_name': st.column_config.TextColumn('Standard Name', width='medium'),
+                'category': st.column_config.TextColumn('Category', width='small'),
+                'Common Unit': st.column_config.TextColumn('Unit', width='small'),
+                'Male Range': st.column_config.TextColumn('Male Range', width='small'),
+                'Female Range': st.column_config.TextColumn('Female Range', width='small'),
+                'Aliases (truncated)': st.column_config.TextColumn('Aliases', width='large'),
+                'description': st.column_config.TextColumn('Description', width='large')
+            }
+            
+            # Display the data editor (Excel-like table)
+            st.subheader(f"Standards Data ({len(display_df)} records)")
+            
+            edited_df = st.data_editor(
+                display_df[display_columns],
+                column_config=column_config,
+                use_container_width=True,
+                num_rows="dynamic",
+                disabled=["Common Unit", "Male Range", "Female Range"],  # Make computed columns read-only
+                hide_index=True,
+                key="standards_data_editor"
+            )
+            
+            st.markdown(f"**Showing {len(display_df)} of {len(standards_df)} total standards**")
+            
+            # Action buttons below the table
+            st.markdown("---")
+            st.subheader("Bulk Actions")
+            
+            col1, col2, col3 = st.columns(3)
+            
+            with col1:
+                if st.button("🔄 Refresh Data"):
+                    st.rerun()
+            
+            with col2:
+                if st.button("➕ Add New Standard"):
+                    # Switch to Add New Standard tab
+                    st.session_state.active_tab = 1
+                    st.rerun()
+            
+            with col3:
+                # Show detailed edit option
+                selected_row = st.selectbox(
+                    "Edit Standard (detailed view)", 
+                    options=range(len(display_df)), 
+                    format_func=lambda x: display_df.iloc[x]['standard_name'],
+                    help="Select a standard to edit in detailed view"
+                )
+                
+                if st.button("✏️ Edit Selected"):
+                    # Show detailed edit form for selected standard
+                    st.session_state.edit_standard_id = filtered_df.iloc[selected_row]['id']
+                    st.session_state.show_detailed_edit = True
+            
+            # Show detailed edit form if requested
+            if st.session_state.get('show_detailed_edit', False):
+                edit_id = st.session_state.get('edit_standard_id')
+                if edit_id:
+                    standard_to_edit = filtered_df[filtered_df['id'] == edit_id].iloc[0]
                     
-                    with col1:
-                        st.markdown("**📝 Basic Information**")
-                        edit_name = st.text_input("Standard Name", value=standard['standard_name'], key=f"name_{standard['id']}")
-                        edit_category = st.text_input("Category", value=standard['category'], key=f"cat_{standard['id']}")
-                        edit_description = st.text_area("Description", value=standard['description'] or '', key=f"desc_{standard['id']}")
-                        edit_aliases = st.text_area("Aliases (comma-separated)", value=standard['aliases'] or '', key=f"alias_{standard['id']}")
+                    st.markdown("---")
+                    st.subheader(f"✏️ Editing: {standard_to_edit['standard_name']}")
                     
-                    with col2:
-                        st.markdown("**🚹🚺 Reference Ranges**")
+                    with st.form(f"edit_standard_{edit_id}"):
+                        col1, col2 = st.columns(2)
                         
-                        # Common unit
-                        st.markdown("**Common Unit:**")
-                        # Use common_unit if available, otherwise fallback to male_unit or female_unit
-                        current_unit = standard.get('common_unit') or standard.get('male_unit') or standard.get('female_unit') or ''
-                        common_unit_edit = st.text_input("Unit (for both ranges)", value=current_unit, key=f"common_unit_{standard['id']}")
+                        with col1:
+                            st.markdown("**Basic Information**")
+                            edit_name = st.text_input("Standard Name", value=standard_to_edit['standard_name'])
+                            edit_category = st.selectbox("Category", 
+                                ["Complete Blood Count", "Lipid Profile", "Liver Function", "Kidney Function", "Thyroid Function", "Electrolytes", "Diabetes", "Other"],
+                                index=["Complete Blood Count", "Lipid Profile", "Liver Function", "Kidney Function", "Thyroid Function", "Electrolytes", "Diabetes", "Other"].index(standard_to_edit['category']) if standard_to_edit['category'] in ["Complete Blood Count", "Lipid Profile", "Liver Function", "Kidney Function", "Thyroid Function", "Electrolytes", "Diabetes", "Other"] else 0
+                            )
+                            edit_description = st.text_area("Description", value=standard_to_edit['description'] or '')
+                            edit_aliases = st.text_area("Aliases (comma-separated)", value=standard_to_edit['aliases'] or '')
                         
-                        # Male ranges
-                        st.markdown("**Male Range:**")
-                        col_m1, col_m2 = st.columns(2)
-                        with col_m1:
-                            male_min = st.number_input("Min", value=float(standard['male_range_min']) if standard['male_range_min'] else 0.0, key=f"m_min_{standard['id']}")
-                        with col_m2:
-                            male_max = st.number_input("Max", value=float(standard['male_range_max']) if standard['male_range_max'] else 0.0, key=f"m_max_{standard['id']}")
+                        with col2:
+                            st.markdown("**Reference Ranges**")
+                            
+                            # Common unit
+                            current_unit = standard_to_edit.get('common_unit') or standard_to_edit.get('male_unit') or standard_to_edit.get('female_unit') or ''
+                            common_unit_edit = st.text_input("Common Unit", value=current_unit)
+                            
+                            # Male ranges
+                            st.markdown("**Male Range:**")
+                            col_m1, col_m2 = st.columns(2)
+                            with col_m1:
+                                male_min = st.number_input("Male Min", value=float(standard_to_edit['male_range_min']) if standard_to_edit['male_range_min'] else 0.0)
+                            with col_m2:
+                                male_max = st.number_input("Male Max", value=float(standard_to_edit['male_range_max']) if standard_to_edit['male_range_max'] else 0.0)
+                            
+                            # Female ranges
+                            st.markdown("**Female Range:**")
+                            col_f1, col_f2 = st.columns(2)
+                            with col_f1:
+                                female_min = st.number_input("Female Min", value=float(standard_to_edit['female_range_min']) if standard_to_edit['female_range_min'] else 0.0)
+                            with col_f2:
+                                female_max = st.number_input("Female Max", value=float(standard_to_edit['female_range_max']) if standard_to_edit['female_range_max'] else 0.0)
                         
-                        # Female ranges
-                        st.markdown("**Female Range:**")
-                        col_f1, col_f2 = st.columns(2)
-                        with col_f1:
-                            female_min = st.number_input("Min", value=float(standard['female_range_min']) if standard['female_range_min'] else 0.0, key=f"f_min_{standard['id']}")
-                        with col_f2:
-                            female_max = st.number_input("Max", value=float(standard['female_range_max']) if standard['female_range_max'] else 0.0, key=f"f_max_{standard['id']}")
-                    
-                    # Action buttons
-                    col1, col2, col3 = st.columns(3)
-                    
-                    with col1:
-                        if st.button("💾 Update", key=f"update_{standard['id']}"):
+                        # Form buttons
+                        col1, col2, col3 = st.columns(3)
+                        with col1:
+                            update_submitted = st.form_submit_button("💾 Update Standard", type="primary")
+                        with col2:
+                            if st.form_submit_button("🗑️ Delete Standard"):
+                                if investigation_standards.delete_standard(edit_id):
+                                    st.success("Standard deleted successfully!")
+                                    st.session_state.show_detailed_edit = False
+                                    st.rerun()
+                                else:
+                                    st.error("Failed to delete standard")
+                        with col3:
+                            if st.form_submit_button("❌ Cancel"):
+                                st.session_state.show_detailed_edit = False
+                                st.rerun()
+                        
+                        if update_submitted:
                             update_data = {
                                 'standard_name': edit_name,
                                 'aliases': edit_aliases,
                                 'male_range_min': male_min,
                                 'male_range_max': male_max,
-                                'male_unit': common_unit_edit,  # Use common unit for male
+                                'male_unit': common_unit_edit,
                                 'female_range_min': female_min,
                                 'female_range_max': female_max,
-                                'female_unit': common_unit_edit,  # Use common unit for female
+                                'female_unit': common_unit_edit,
                                 'common_unit': common_unit_edit,
                                 'description': edit_description,
                                 'category': edit_category
                             }
                             
-                            if investigation_standards.update_standard(standard['id'], update_data):
+                            if investigation_standards.update_standard(edit_id, update_data):
                                 st.success("Standard updated successfully!")
+                                st.session_state.show_detailed_edit = False
                                 st.rerun()
                             else:
                                 st.error("Failed to update standard")
-                    
-                    with col2:
-                        if st.button("🗑️ Delete", key=f"delete_{standard['id']}"):
-                            if investigation_standards.delete_standard(standard['id']):
-                                st.success("Standard deleted successfully!")
-                                st.rerun()
-                            else:
-                                st.error("Failed to delete standard")
-                    
-                    with col3:
-                        # Show current reference ranges with common unit
-                        display_unit = current_unit or "No unit"
-                        st.info(f"Unit: {display_unit}\nM: {male_min}-{male_max}\nF: {female_min}-{female_max}")
         
         else:
             st.info("No investigation standards found. Add some standards to get started.")
