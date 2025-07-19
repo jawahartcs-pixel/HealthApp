@@ -251,10 +251,31 @@ class ImageSnippetExtractor:
         # Draw highlights for all found coordinates
         for coord in found_coords:
             x, y, w, h = coord
-            # Draw blue rectangle around found text
-            draw.rectangle([(x-2, y-2), (x + w + 2, y + h + 2)], outline='blue', width=3)
+            # Draw green rectangle around found text
+            draw.rectangle([(x-2, y-2), (x + w + 2, y + h + 2)], outline='green', width=3)
         
         # Convert to bytes
         img_buffer = io.BytesIO()
         highlighted_image.save(img_buffer, format='PNG')
         return img_buffer.getvalue()
+    
+    def highlight_text_in_image(self, uploaded_file, test_names: list):
+        """Highlight extracted test names in the uploaded document image."""
+        try:
+            if uploaded_file.type.startswith('image'):
+                # For image files, process directly
+                image_bytes = uploaded_file.getvalue()
+                if self.process_image_for_snippets(image_bytes):
+                    return Image.open(io.BytesIO(self.get_document_with_highlights(test_names)))
+            
+            elif uploaded_file.type == 'application/pdf':
+                # For PDF files, process and return highlighted image
+                pdf_bytes = uploaded_file.getvalue()
+                if self.process_pdf_for_snippets(pdf_bytes):
+                    return Image.open(io.BytesIO(self.get_document_with_highlights(test_names)))
+            
+            return None
+            
+        except Exception as e:
+            print(f"Error highlighting text in image: {str(e)}")
+            return None
