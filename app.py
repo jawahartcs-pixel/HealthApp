@@ -516,6 +516,9 @@ def upload_results_page(file_parser, data_processor, user_id):
                                         included_count = len(edited_df[edited_df['Include'] == True])
                                         st.caption(f"Ready to save: {included_count} tests selected")
                                         
+                                        # Don't show original extraction when standards-based works
+                                        st.session_state[f'show_original_extraction_{uploaded_file.name}'] = False
+                                        
                                         # Save button for standards-based results
                                         if st.button("💾 Save Standards-Based Results", key=f"save_standards_{uploaded_file.name}", type="primary"):
                                             if patient_name:
@@ -549,11 +552,15 @@ def upload_results_page(file_parser, data_processor, user_id):
                                 else:
                                     st.warning("No tests found matching investigation standards")
                                     st.info("💡 Try using the original extraction results below or add tests manually")
+                                    # Set flag to show original extraction when standards-based fails
+                                    st.session_state[f'show_original_extraction_{uploaded_file.name}'] = True
                             else:
                                 st.warning("Investigation standards not available or no text extracted")
+                                # Set flag to show original extraction when standards not available
+                                st.session_state[f'show_original_extraction_{uploaded_file.name}'] = True
                             
-                            # Show original extraction results as fallback
-                            if test_data.get('results'):
+                            # Only show original extraction results when standards-based extraction fails or finds no results
+                            if test_data.get('results') and st.session_state.get(f'show_original_extraction_{uploaded_file.name}', False):
                                 with st.expander(f"📋 Original Extraction Results ({len(test_data['results'])} tests found)", expanded=False):
                                     st.write("Review and edit the originally extracted test results:")
                         
@@ -604,8 +611,9 @@ def upload_results_page(file_parser, data_processor, user_id):
                         # Create form for editing - full width below the preview
                         st.markdown("---")  # Separator line
                         
-                        # Quick search buttons for extracted tests (outside form)
-                        if test_data.get('results'):
+                        # Only show original extraction editing interface when standards-based extraction is not available
+                        if test_data.get('results') and st.session_state.get(f'show_original_extraction_{uploaded_file.name}', False):
+                            # Quick search buttons for extracted tests (outside form)
                             st.write("**Quick Search in Document:**")
                             search_cols = st.columns(min(len(test_data['results']), 6))  # Max 6 buttons per row
                             for i, result in enumerate(test_data['results'][:6]):  # Show first 6 tests
@@ -619,23 +627,21 @@ def upload_results_page(file_parser, data_processor, user_id):
                             if len(test_data['results']) > 6:
                                 st.caption(f"Showing first 6 of {len(test_data['results'])} tests")
                         
-
-                        
-                        with st.form(key=f"edit_results_{uploaded_file.name}"):
-                            st.write("**Review & Edit Extracted Tests:**")
-                            st.caption("💡 Left side shows original extracted data, right side allows editing before saving")
-                            
-                            for i, result in enumerate(test_data['results']):
-                                # Get context text for this specific test
-                                test_context = _get_test_context(extracted_text, result)
+                            with st.form(key=f"edit_results_{uploaded_file.name}"):
+                                st.write("**Review & Edit Extracted Tests:**")
+                                st.caption("💡 Left side shows original extracted data, right side allows editing before saving")
                                 
-                                # Create expandable section for each test
-                                with st.expander(f"Test {i+1}: {result['test_type']} = {result['value']} {result.get('unit', '')}", expanded=True):
-                                    left_col, right_col = st.columns([1, 1])
+                                for i, result in enumerate(test_data['results']):
+                                    # Get context text for this specific test
+                                    test_context = _get_test_context(extracted_text, result)
                                     
-                                    # Left side - Original extracted data (read-only display)
-                                    with left_col:
-                                        st.markdown("**📄 Original Extracted Data:**")
+                                    # Create expandable section for each test
+                                    with st.expander(f"Test {i+1}: {result['test_type']} = {result['value']} {result.get('unit', '')}", expanded=True):
+                                        left_col, right_col = st.columns([1, 1])
+                                        
+                                        # Left side - Original extracted data (read-only display)
+                                        with left_col:
+                                            st.markdown("**📄 Original Extracted Data:**")
                                         
                                         # Show image snippet for OCR documents
                                         if snippet_extractor:

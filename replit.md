@@ -121,13 +121,17 @@ Preferred communication style: Simple, everyday language.
 
 ## Recent Changes
 
-### July 20, 2025 - Enhanced Date Extraction & Investigation Standards Management
+### July 20, 2025 - Enhanced Date Extraction & UI Improvement
 - **Improved Date Extraction Logic**: Fixed year parsing issues where 2022 was incorrectly parsed as 2020
   - Implemented smart date parsing with explicit 2-digit year handling
   - Added debug logging to track date extraction process for troubleshooting
-  - Enhanced century detection logic for 2-digit years (assumes 20xx for years 00-49, 19xx for 50-99)
+  - Enhanced century detection logic for 2-digit years (years 00-79 become 20xx, 80-99 become 19xx)
   - Prioritized 4-digit year formats over 2-digit to avoid ambiguity
   - Restructured date parsing into separate methods for better maintainability and debugging
+- **Hidden Redundant UI Section**: Enhanced user interface by hiding "Review & Edit Extracted Tests" section when standards-based extraction works
+  - Added conditional display logic to show original extraction interface only when standards-based extraction fails
+  - Improved workflow by eliminating duplicate test entry sections when standards-based method is successful
+  - Streamlined user experience by reducing cognitive load when automated extraction works properly
 
 ### July 20, 2025 - Enhanced Investigation Standards Management: Fixed Excel Editing & Expanded Categories
 - **Fixed Excel Editing Constraint Violations**: Added validation to prevent duplicate standard names during updates
