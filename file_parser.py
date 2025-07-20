@@ -786,8 +786,9 @@ class FileParser:
                 
                 # Handle 2-digit year formats explicitly
                 if 'YY' in format_name and not 'YYYY' in format_name:
-                    # For 2-digit years, be more explicit about century
-                    if parsed_date.year < 1950:  # Likely means 20xx, not 19xx
+                    # For 2-digit years, assume current century for medical reports
+                    # Medical reports are typically recent (last 50 years)
+                    if parsed_date.year < 1980:  # Years 00-79 become 20xx
                         parsed_date = parsed_date.replace(year=parsed_date.year + 100)
                 
                 # Validate that the date is reasonable (not in future, not too old)
