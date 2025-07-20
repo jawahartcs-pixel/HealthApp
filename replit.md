@@ -121,6 +121,14 @@ Preferred communication style: Simple, everyday language.
 
 ## Recent Changes
 
+### July 20, 2025 - Enhanced Date Extraction & Investigation Standards Management
+- **Improved Date Extraction Logic**: Fixed year parsing issues where 2022 was incorrectly parsed as 2020
+  - Implemented smart date parsing with explicit 2-digit year handling
+  - Added debug logging to track date extraction process for troubleshooting
+  - Enhanced century detection logic for 2-digit years (assumes 20xx for years 00-49, 19xx for 50-99)
+  - Prioritized 4-digit year formats over 2-digit to avoid ambiguity
+  - Restructured date parsing into separate methods for better maintainability and debugging
+
 ### July 20, 2025 - Enhanced Investigation Standards Management: Fixed Excel Editing & Expanded Categories
 - **Fixed Excel Editing Constraint Violations**: Added validation to prevent duplicate standard names during updates
   - Added duplicate name checking in update_standard method before database operations

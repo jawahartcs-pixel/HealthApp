@@ -729,59 +729,77 @@ class FileParser:
         return ""
     
     def _extract_test_date(self, text: str) -> Optional[date]:
-        """Extract test date from text, prioritizing DD-MM-YY format at document top."""
+        """Extract test date from text with improved year parsing."""
         # Focus on first 500 characters for test date (document top)
         top_text = text[:500]
         
         # Try top text first
-        for pattern in self.date_patterns:
-            match = re.search(pattern, top_text, re.IGNORECASE)
-            if match:
-                date_str = match.group(1)
-                try:
-                    # Try DD-MM-YY formats first (user preference)
-                    date_formats = [
-                        '%d-%m-%y', '%d/%m/%y',   # DD-MM-YY, DD/MM/YY
-                        '%d-%m-%Y', '%d/%m/%Y',   # DD-MM-YYYY, DD/MM/YYYY
-                        '%m-%d-%Y', '%m/%d/%Y',   # MM-DD-YYYY, MM/DD/YYYY
-                        '%Y-%m-%d', '%Y/%m/%d'    # YYYY-MM-DD, YYYY/MM/DD
-                    ]
-                    
-                    for date_format in date_formats:
-                        try:
-                            parsed_date = datetime.strptime(date_str, date_format).date()
-                            # Validate that the date is reasonable
-                            if parsed_date <= date.today() and parsed_date.year >= 1900:
-                                return parsed_date
-                        except ValueError:
-                            continue
-                except:
-                    continue
-        
+        found_date = self._parse_date_from_text(top_text)
+        if found_date:
+            return found_date
+            
         # If not found in top, check full text
+        found_date = self._parse_date_from_text(text)
+        if found_date:
+            return found_date
+        
+        return date.today()  # Default to today if no date found
+    
+    def _parse_date_from_text(self, text: str) -> Optional[date]:
+        """Parse date from text with robust year handling."""
         for pattern in self.date_patterns:
             match = re.search(pattern, text, re.IGNORECASE)
             if match:
                 date_str = match.group(1)
-                try:
-                    date_formats = [
-                        '%d-%m-%y', '%d/%m/%y',   # DD-MM-YY, DD/MM/YY
-                        '%d-%m-%Y', '%d/%m/%Y',   # DD-MM-YYYY, DD/MM/YYYY  
-                        '%m-%d-%Y', '%m/%d/%Y',   # MM-DD-YYYY, MM/DD/YYYY
-                        '%Y-%m-%d', '%Y/%m/%d'    # YYYY-MM-DD, YYYY/MM/DD
-                    ]
+                
+                # Debug: print what we found
+                print(f"Found date string: '{date_str}'")
+                
+                # Try to parse with smart year handling
+                parsed_date = self._smart_date_parse(date_str)
+                if parsed_date:
+                    print(f"Successfully parsed as: {parsed_date}")
+                    return parsed_date
                     
-                    for date_format in date_formats:
-                        try:
-                            parsed_date = datetime.strptime(date_str, date_format).date()
-                            if parsed_date <= date.today() and parsed_date.year >= 1900:
-                                return parsed_date
-                        except ValueError:
-                            continue
-                except:
-                    continue
+        return None
+    
+    def _smart_date_parse(self, date_str: str) -> Optional[date]:
+        """Smart date parsing with explicit year handling."""
+        # Clean the date string
+        date_str = date_str.strip()
         
-        return date.today()  # Default to today if no date found
+        # Define formats to try
+        date_formats = [
+            ('%d-%m-%Y', 'DD-MM-YYYY'),
+            ('%d/%m/%Y', 'DD/MM/YYYY'),
+            ('%d-%m-%y', 'DD-MM-YY'),
+            ('%d/%m/%y', 'DD/MM/YY'),
+            ('%m-%d-%Y', 'MM-DD-YYYY'),
+            ('%m/%d/%Y', 'MM/DD/YYYY'),
+            ('%Y-%m-%d', 'YYYY-MM-DD'),
+            ('%Y/%m/%d', 'YYYY/MM/DD')
+        ]
+        
+        for date_format, format_name in date_formats:
+            try:
+                parsed_date = datetime.strptime(date_str, date_format).date()
+                
+                # Handle 2-digit year formats explicitly
+                if 'YY' in format_name and not 'YYYY' in format_name:
+                    # For 2-digit years, be more explicit about century
+                    if parsed_date.year < 1950:  # Likely means 20xx, not 19xx
+                        parsed_date = parsed_date.replace(year=parsed_date.year + 100)
+                
+                # Validate that the date is reasonable (not in future, not too old)
+                if parsed_date <= date.today() and parsed_date.year >= 1900:
+                    print(f"Parsed '{date_str}' as {parsed_date} using format {format_name}")
+                    return parsed_date
+                    
+            except ValueError:
+                continue
+                
+        print(f"Could not parse date string: '{date_str}'")
+        return None
     
     def _extract_test_results(self, text: str) -> List[Dict[str, Any]]:
         """Extract test results from text."""
