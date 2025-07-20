@@ -247,9 +247,6 @@ Preferred communication style: Simple, everyday language.
   - Duplicate detection and validation to ensure data quality
   - Document position tracking to preserve original document order in Excel display
   - Results sorted by appearance order in document rather than standards table order
-  - Intelligent duplicate handling with unit comparison for Include checkbox state
-  - Include checkbox enabled only when investigation type AND unit match perfectly
-  - Include checkbox disabled for investigation types with unit mismatches to prevent data conflicts
 - **Excel-Style Editable Interface**: Created professional data entry interface with editable table format
   - Standards-based results displayed in editable DataFrame with column configuration
   - Include/exclude checkboxes for selective data entry

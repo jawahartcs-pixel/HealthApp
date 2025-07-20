@@ -973,26 +973,13 @@ class FileParser:
                                 'document_position': match.start()  # Track position in document
                             }
                             
-                            # Check for duplicates and determine if this should be included
+                            # Check for duplicates before adding
                             is_duplicate = False
-                            should_include = True
-                            
                             for existing in results:
-                                if existing['test_type'] == standard_name:
-                                    # Same investigation type found
-                                    if existing['unit'] == extracted_unit:
-                                        # Same investigation type AND same unit - this is a true duplicate
-                                        if abs(existing['value'] - value) < 0.01:
-                                            is_duplicate = True
-                                            break
-                                    else:
-                                        # Same investigation type but different unit
-                                        # Disable include for the existing one and this one
-                                        existing['include_by_default'] = False
-                                        should_include = False
-                            
-                            # Add include_by_default flag to result
-                            result['include_by_default'] = should_include
+                                if (existing['test_type'] == standard_name and 
+                                    abs(existing['value'] - value) < 0.01):
+                                    is_duplicate = True
+                                    break
                             
                             if not is_duplicate:
                                 results.append(result)
