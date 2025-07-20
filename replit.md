@@ -145,6 +145,22 @@ Preferred communication style: Simple, everyday language.
   - Focused interface on essential data: Include, Investigation, Value, Unit, Matched Term
   - Reduced cognitive load during test result review and editing
 
+### July 20, 2025 - Enhanced Data Management & UI Improvements
+- **Excel-Style Data Editor**: Added comprehensive spreadsheet interface for data management
+  - New "Excel-Style Data Editor" option in Manage Data page for intuitive data entry and editing
+  - Support for both new patient creation and existing patient data modification
+  - Dynamic row management with add/edit capabilities in single interface
+  - Batch processing for multiple test result entries with progress feedback
+  - Professional column configuration with data validation and required field enforcement
+- **Full Document Text Display**: Removed text truncation limitations in Document Preview
+  - Document Preview now displays complete extracted text without character limits
+  - Enhanced readability for comprehensive document review during manual test entry
+  - Improved debugging and verification capabilities for extraction accuracy
+- **Form Field Auto-Clear**: Enhanced Investigation Standards Management user experience
+  - Form fields automatically clear after successful investigation standard addition
+  - Streamlined workflow for adding multiple standards without manual form clearing
+  - Session state management for consistent form behavior
+
 ### July 20, 2025 - Enhanced Investigation Standards Management: Fixed Excel Editing & Expanded Categories
 - **Fixed Excel Editing Constraint Violations**: Added validation to prevent duplicate standard names during updates
   - Added duplicate name checking in update_standard method before database operations

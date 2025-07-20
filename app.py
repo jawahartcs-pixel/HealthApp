@@ -626,8 +626,8 @@ def upload_results_page(file_parser, data_processor, user_id):
                                 
                                 # Fallback to text display
                                 if extracted_text:
-                                    # Limit text length for display
-                                    display_text = extracted_text[:2000] + "\n\n... (text truncated for display)" if len(extracted_text) > 2000 else extracted_text
+                                    # Display full extracted text
+                                    display_text = extracted_text
                                     st.text_area(
                                         "Extracted Document Text",
                                         value=display_text,
@@ -1137,8 +1137,8 @@ Extraction Method: {result.get('source', 'regex')}""")
                         
                         # Show extracted text in a scrollable container
                         if extracted_text:
-                            # Limit text length for display
-                            display_text = extracted_text[:3000] + "\n\n... (text truncated for display)" if len(extracted_text) > 3000 else extracted_text
+                            # Display full extracted text
+                            display_text = extracted_text
                             
                             st.text_area(
                                 "Extracted Document Text",
@@ -1695,11 +1695,157 @@ def manage_data_page(db, user_id):
     # Management options
     management_type = st.selectbox(
         "Choose management type",
-        ["Select an option", "View & Edit Patient Data", "Delete Individual Test Results", "Delete Report by Date", "Delete by Test Type", "Delete Patient Data", "Delete All Data"],
+        ["Select an option", "Excel-Style Data Editor", "View & Edit Patient Data", "Delete Individual Test Results", "Delete Report by Date", "Delete by Test Type", "Delete Patient Data", "Delete All Data"],
         index=0
     )
     
-    if management_type == "View & Edit Patient Data":
+    if management_type == "Excel-Style Data Editor":
+        st.subheader("📊 Excel-Style Data Editor")
+        st.info("Add new test results or edit existing data in a spreadsheet-like interface")
+        
+        # Patient selection
+        patients = db.get_all_patients()
+        if not patients:
+            st.warning("No patients found. Upload some test results first.")
+            return
+        
+        patient_names = [patient[1] for patient in patients]
+        selected_patient = st.selectbox("Select Patient (or choose 'Add New Patient')", 
+                                      options=["Add New Patient"] + patient_names, 
+                                      index=None, 
+                                      placeholder="Choose a patient...")
+        
+        if selected_patient:
+            # Get existing data for the patient (if not adding new)
+            if selected_patient != "Add New Patient":
+                existing_data = db.get_patient_test_results_with_ids(selected_patient)
+                df_data = []
+                for row in existing_data:
+                    df_data.append({
+                        'ID': row[0],
+                        'Date': row[1],
+                        'Test Type': row[2],
+                        'Value': float(row[3]) if row[3] else 0.0,
+                        'Unit': row[4] or '',
+                        'Reference Range': row[5] or '',
+                        'Patient Name': selected_patient,
+                        'Action': 'existing'
+                    })
+            else:
+                df_data = []
+            
+            # Add some empty rows for new entries
+            for i in range(5):
+                df_data.append({
+                    'ID': 0,  # 0 indicates new entry
+                    'Date': pd.Timestamp.now().strftime('%Y-%m-%d'),
+                    'Test Type': '',
+                    'Value': 0.0,
+                    'Unit': '',
+                    'Reference Range': '',
+                    'Patient Name': selected_patient if selected_patient != "Add New Patient" else '',
+                    'Action': 'new'
+                })
+            
+            # Create DataFrame
+            edit_df = pd.DataFrame(df_data)
+            
+            # Configure editable columns
+            column_config = {
+                'ID': st.column_config.NumberColumn('ID', width='small', disabled=True, help='0 = New Entry'),
+                'Date': st.column_config.DateColumn('Date', width='medium', required=True),
+                'Test Type': st.column_config.TextColumn('Test Type', width='medium', required=True),
+                'Value': st.column_config.NumberColumn('Value', width='small', format="%.2f", required=True),
+                'Unit': st.column_config.TextColumn('Unit', width='small'),
+                'Reference Range': st.column_config.TextColumn('Reference Range', width='medium'),
+                'Patient Name': st.column_config.TextColumn('Patient Name', width='medium', required=True),
+                'Action': st.column_config.TextColumn('Action', width='small', disabled=True)
+            }
+            
+            st.markdown("---")
+            st.markdown("**Instructions:**")
+            st.markdown("- **New entries**: ID = 0, fill in all required fields")
+            st.markdown("- **Existing entries**: ID > 0, edit any field to update")
+            st.markdown("- **Patient Name**: Required for all entries (especially new patients)")
+            st.markdown("- **Required fields**: Date, Test Type, Value, Patient Name")
+            
+            # Excel-style editor
+            edited_df = st.data_editor(
+                edit_df,
+                column_config=column_config,
+                use_container_width=True,
+                num_rows="dynamic",
+                hide_index=True,
+                key="excel_data_editor"
+            )
+            
+            # Process changes
+            st.markdown("---")
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                if st.button("💾 Save All Changes", type="primary"):
+                    success_count = 0
+                    error_count = 0
+                    
+                    with st.spinner("Processing changes..."):
+                        for _, row in edited_df.iterrows():
+                            # Skip empty rows
+                            if not row['Test Type'] or not row['Patient Name'] or row['Value'] == 0.0:
+                                continue
+                            
+                            try:
+                                if row['ID'] == 0:  # New entry
+                                    # Add new test result
+                                    new_result = {
+                                        'test_type': row['Test Type'],
+                                        'value': row['Value'],
+                                        'unit': row['Unit'],
+                                        'reference_range': row['Reference Range']
+                                    }
+                                    
+                                    data_processor = DataProcessor(db)
+                                    if data_processor.save_test_results(
+                                        patient_name=row['Patient Name'],
+                                        test_date=pd.to_datetime(row['Date']).date(),
+                                        test_results=[new_result],
+                                        user_id=user_id
+                                    ):
+                                        success_count += 1
+                                    else:
+                                        error_count += 1
+                                        
+                                else:  # Update existing entry
+                                    if db.update_test_result(
+                                        result_id=row['ID'],
+                                        test_type=row['Test Type'],
+                                        value=row['Value'],
+                                        unit=row['Unit'],
+                                        test_date=pd.to_datetime(row['Date']).date(),
+                                        reference_range=row['Reference Range']
+                                    ):
+                                        success_count += 1
+                                    else:
+                                        error_count += 1
+                                        
+                            except Exception as e:
+                                st.error(f"Error processing row: {str(e)}")
+                                error_count += 1
+                    
+                    # Show results
+                    if success_count > 0:
+                        st.success(f"✅ Successfully processed {success_count} entries!")
+                    if error_count > 0:
+                        st.error(f"❌ Failed to process {error_count} entries")
+                    
+                    if success_count > 0:
+                        st.rerun()
+            
+            with col2:
+                if st.button("🔄 Reset Form"):
+                    st.rerun()
+    
+    elif management_type == "View & Edit Patient Data":
         st.subheader("📊 View & Edit Patient Data")
         
         # Patient selection
@@ -3099,6 +3245,11 @@ def investigation_standards_page(investigation_standards):
                     
                     if investigation_standards.add_standard(new_standard):
                         st.success(f"✅ Successfully added '{new_name}' to investigation standards!")
+                        # Clear form by deleting session state keys
+                        form_keys = ["new_common_unit", "new_m_min", "new_m_max", "new_f_min", "new_f_max"]
+                        for key in form_keys:
+                            if key in st.session_state:
+                                del st.session_state[key]
                         st.rerun()
                     else:
                         st.error("❌ Failed to add standard. Name might already exist.")
