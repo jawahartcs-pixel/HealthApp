@@ -240,7 +240,7 @@ def upload_results_page(file_parser, data_processor, user_id):
                             
                             if standards_results:
                                 # Create two-column layout for Excel table and document preview
-                                col1, col2 = st.columns([1.2, 0.8])
+                                col1, col2 = st.columns([0.8, 1.2])
                                 
                                 with col1:
                                     st.success(f"Found {len(standards_results)} tests using standards-based extraction!")
@@ -260,8 +260,6 @@ def upload_results_page(file_parser, data_processor, user_id):
                                             'Investigation': result['test_type'],
                                             'Value': result['value'],
                                             'Unit': result['unit'],
-                                            'Reference Range': result['reference_range'],
-                                            'Category': result.get('category', ''),
                                             'Matched Term': result.get('matched_term', ''),
                                         })
                                     
@@ -290,16 +288,6 @@ def upload_results_page(file_parser, data_processor, user_id):
                                             'Unit': st.column_config.TextColumn(
                                                 'Unit',
                                                 help='Measurement unit',
-                                                width='small'
-                                            ),
-                                            'Reference Range': st.column_config.TextColumn(
-                                                'Reference Range',
-                                                help='Normal range for this test',
-                                                width='medium'
-                                            ),
-                                            'Category': st.column_config.TextColumn(
-                                                'Category',
-                                                help='Test category',
                                                 width='small'
                                             ),
                                             'Matched Term': st.column_config.TextColumn(
@@ -337,8 +325,7 @@ def upload_results_page(file_parser, data_processor, user_id):
                                                             standards_final_results.append({
                                                                 'test_type': row['Investigation'],
                                                                 'value': row['Value'],
-                                                                'unit': row['Unit'],
-                                                                'reference_range': row['Reference Range']
+                                                                'unit': row['Unit']
                                                             })
                                                     
                                                     # Save using data processor
@@ -423,7 +410,7 @@ def upload_results_page(file_parser, data_processor, user_id):
                     # Test results preview and editing
                     if has_extracted_results:
                         # Create two-column layout for Excel table and document preview
-                        col1, col2 = st.columns([1.2, 0.8])
+                        col1, col2 = st.columns([0.8, 1.2])
                         
                         with col1:
                             st.subheader("📊 Standards-Based Extraction Results")
@@ -450,8 +437,6 @@ def upload_results_page(file_parser, data_processor, user_id):
                                             'Investigation': result['test_type'],
                                             'Value': result['value'],
                                             'Unit': result['unit'],
-                                            'Reference Range': result['reference_range'],
-                                            'Category': result.get('category', ''),
                                             'Matched Term': result.get('matched_term', ''),
                                         })
                                     
@@ -480,16 +465,6 @@ def upload_results_page(file_parser, data_processor, user_id):
                                             'Unit': st.column_config.TextColumn(
                                                 'Unit',
                                                 help='Measurement unit',
-                                                width='small'
-                                            ),
-                                            'Reference Range': st.column_config.TextColumn(
-                                                'Reference Range',
-                                                help='Normal range for this test',
-                                                width='medium'
-                                            ),
-                                            'Category': st.column_config.TextColumn(
-                                                'Category',
-                                                help='Test category',
                                                 width='small'
                                             ),
                                             'Matched Term': st.column_config.TextColumn(
@@ -530,8 +505,7 @@ def upload_results_page(file_parser, data_processor, user_id):
                                                             standards_final_results.append({
                                                                 'test_type': row['Investigation'],
                                                                 'value': row['Value'],
-                                                                'unit': row['Unit'],
-                                                                'reference_range': row['Reference Range']
+                                                                'unit': row['Unit']
                                                             })
                                                     
                                                     # Save using data processor

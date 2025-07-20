@@ -135,6 +135,15 @@ Preferred communication style: Simple, everyday language.
   - Moved Document Preview (text-based) to bottom section for detailed text review
   - Improved workflow by showing visual document reference immediately alongside extraction results
   - Enhanced manual test entry workflow with text preview positioned conveniently below
+- **Adjusted Column Widths**: Optimized layout proportions for better usability
+  - Reduced Standards-Based Extraction Results width from 1.2 to 0.8 (narrower)
+  - Increased Document Reference width from 0.8 to 1.2 (wider)
+  - Enhanced visual document verification experience with larger document display
+- **Streamlined Excel Form**: Simplified data entry interface by removing unnecessary columns
+  - Removed Reference Range column from standards-based extraction Excel forms
+  - Removed Category column from standards-based extraction Excel forms  
+  - Focused interface on essential data: Include, Investigation, Value, Unit, Matched Term
+  - Reduced cognitive load during test result review and editing
 
 ### July 20, 2025 - Enhanced Investigation Standards Management: Fixed Excel Editing & Expanded Categories
 - **Fixed Excel Editing Constraint Violations**: Added validation to prevent duplicate standard names during updates
