@@ -2798,7 +2798,7 @@ def investigation_standards_page(investigation_standards):
                     'category': st.column_config.SelectboxColumn(
                         'Category', 
                         width='small',
-                        options=["Complete Blood Count", "Lipid Profile", "Liver Function", "Kidney Function", "Thyroid Function", "Electrolytes", "Diabetes", "Other"],
+                        options=investigation_standards.get_predefined_categories(),
                         required=True
                     ),
                     'computed_unit': st.column_config.TextColumn('Unit', width='small'),
@@ -2882,6 +2882,8 @@ def investigation_standards_page(investigation_standards):
                         
                         if st.button("💾 Update Modified Standards", type="primary"):
                             success_count = 0
+                            failed_updates = []
+                            
                             for record_id, edited_row, original_row in existing_changes:
                                 update_data = {
                                     'standard_name': edited_row['standard_name'],
@@ -2899,12 +2901,19 @@ def investigation_standards_page(investigation_standards):
                                 
                                 if investigation_standards.update_standard(record_id, update_data):
                                     success_count += 1
+                                else:
+                                    failed_updates.append(edited_row['standard_name'])
                             
                             if success_count > 0:
                                 st.success(f"Successfully updated {success_count} standards!")
+                                if failed_updates:
+                                    st.warning(f"Failed to update {len(failed_updates)} standards: {', '.join(failed_updates)}. Check for duplicate names.")
                                 st.rerun()
                             else:
-                                st.error("Failed to update standards. Please try again.")
+                                if failed_updates:
+                                    st.error(f"Failed to update standards: {', '.join(failed_updates)}. Please check for duplicate standard names.")
+                                else:
+                                    st.error("Failed to update standards. Please try again.")
             
             else:
                 # Original detailed expandable cards format
@@ -2915,7 +2924,12 @@ def investigation_standards_page(investigation_standards):
                         with col1:
                             st.markdown("**📝 Basic Information**")
                             edit_name = st.text_input("Standard Name", value=standard['standard_name'], key=f"name_{standard['id']}")
-                            edit_category = st.text_input("Category", value=standard['category'], key=f"cat_{standard['id']}")
+                            edit_category = st.selectbox("Category", 
+                                investigation_standards.get_predefined_categories(),
+                                index=investigation_standards.get_predefined_categories().index(standard['category']) 
+                                      if standard['category'] in investigation_standards.get_predefined_categories() 
+                                      else investigation_standards.get_predefined_categories().index('Other'),
+                                key=f"cat_{standard['id']}")
                             edit_description = st.text_area("Description", value=standard['description'] or '', key=f"desc_{standard['id']}")
                             edit_aliases = st.text_area("Aliases (comma-separated)", value=standard['aliases'] or '', key=f"alias_{standard['id']}")
                         
@@ -3024,9 +3038,7 @@ def investigation_standards_page(investigation_standards):
             
             with col1:
                 new_name = st.text_input("Standard Name*", placeholder="e.g., Total Bilirubin")
-                new_category = st.selectbox("Category*", 
-                    ["Complete Blood Count", "Lipid Profile", "Liver Function", "Kidney Function", 
-                     "Thyroid Function", "Diabetes", "Electrolytes", "Cardiac Markers", "Other"])
+                new_category = st.selectbox("Category*", investigation_standards.get_predefined_categories())
                 new_description = st.text_area("Description", placeholder="Brief description of the test")
                 new_aliases = st.text_area("Aliases (comma-separated)", 
                     placeholder="bilirubin, total bil, tbil")
@@ -3490,9 +3502,7 @@ def investigation_standards_page(investigation_standards):
                                             # Category
                                             category = st.selectbox(
                                                 "Category", 
-                                                ["Blood Chemistry", "Hematology", "Lipid Profile", "Liver Function", 
-                                                 "Kidney Function", "Thyroid Function", "Cardiac Markers", "Diabetes Markers",
-                                                 "Electrolytes", "Vitamins", "Hormones", "Other"],
+                                                investigation_standards.get_predefined_categories(),
                                                 key=f"category_{form_key}"
                                             )
                                             
