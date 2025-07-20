@@ -66,13 +66,19 @@ class Visualization:
             fig.add_trace(go.Scatter(
                 x=filtered_data['Date'],
                 y=filtered_data['Value'],
-                mode='lines+markers',
+                mode='markers+lines',
                 name=test_type,
-                line=dict(color=color, width=3),
-                marker=dict(size=8, color=color),
+                line=dict(color=color, width=2, dash='solid'),
+                marker=dict(
+                    size=10, 
+                    color=color,
+                    symbol='circle',
+                    line=dict(width=2, color='white')
+                ),
                 hovertemplate='<b>%{fullData.name}</b><br>' +
-                              'Date: %{x}<br>' +
+                              'Date: %{x|%Y-%m-%d}<br>' +
                               'Value: %{y}<br>' +
+                              'Unit: ' + (filtered_data['Unit'].iloc[0] if not filtered_data['Unit'].isna().all() else '') + '<br>' +
                               '<extra></extra>'
             ))
             
@@ -82,41 +88,66 @@ class Visualization:
                 if ref_range and ref_range != '':
                     self._add_reference_range(fig, ref_range, filtered_data['Date'].min(), filtered_data['Date'].max())
             
-            # Calculate trend line
-            if len(filtered_data) >= 2:
-                self._add_trend_line(fig, filtered_data, color)
+            # Remove trend line to show all individual data points clearly
+            # Focus on actual data points rather than averaged trend
             
             # Update layout with proper date handling
             unit = filtered_data['Unit'].iloc[0] if not filtered_data['Unit'].isna().all() else ''
             
             fig.update_layout(
-                title=f"{test_type} Trend for {patient_name}",
+                title=dict(
+                    text=f"<b>{test_type}</b> - {patient_name}",
+                    font=dict(size=14),
+                    x=0.5,
+                    xanchor='center'
+                ),
                 xaxis_title="Date",
                 yaxis_title=f"Value ({unit})" if unit else "Value",
                 hovermode='x unified',
                 showlegend=False,
                 template='plotly_white',
-                height=400,
+                height=280,
+                margin=dict(l=50, r=50, t=50, b=50),
                 xaxis=dict(
                     type='date',
                     showgrid=True,
                     gridwidth=1,
-                    gridcolor='lightgray',
-                    tickformat='%Y-%m-%d',
-                    # Auto-adjust ticks based on data range
+                    gridcolor='#E8E8E8',
+                    tickformat='%m/%d',
+                    tickfont=dict(size=10),
                     autorange=True,
                     range=[filtered_data['Date'].min(), filtered_data['Date'].max()]
                 ),
                 yaxis=dict(
                     showgrid=True,
                     gridwidth=1,
-                    gridcolor='lightgray',
-                    zeroline=False
+                    gridcolor='#E8E8E8',
+                    zeroline=False,
+                    tickfont=dict(size=10)
                 )
             )
             
-            # Add annotations for latest value and trend
-            self._add_trend_annotations(fig, filtered_data, test_type)
+            # Add annotation for latest value only
+            if len(filtered_data) > 0:
+                latest_value = filtered_data.iloc[-1]['Value']
+                latest_date = filtered_data.iloc[-1]['Date']
+                
+                fig.add_annotation(
+                    x=latest_date,
+                    y=latest_value,
+                    text=f"<b>{latest_value}</b>",
+                    showarrow=True,
+                    arrowhead=2,
+                    arrowsize=1,
+                    arrowwidth=2,
+                    arrowcolor=color,
+                    ax=20,
+                    ay=-30,
+                    font=dict(size=12, color=color),
+                    bgcolor="white",
+                    bordercolor=color,
+                    borderwidth=2
+                )
             
             return fig
             
