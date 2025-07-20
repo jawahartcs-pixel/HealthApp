@@ -2794,6 +2794,7 @@ def investigation_standards_page(investigation_standards):
                 
                 # Define column configuration for editing
                 edit_column_config = {
+                    'id': st.column_config.NumberColumn('ID', width='small', disabled=True),
                     'standard_name': st.column_config.TextColumn('Standard Name', width='medium', required=True),
                     'category': st.column_config.SelectboxColumn(
                         'Category', 
@@ -2810,9 +2811,9 @@ def investigation_standards_page(investigation_standards):
                     'description': st.column_config.TextColumn('Description', width='large')
                 }
                 
-                # Select columns for editing
+                # Select columns for editing (include id for tracking)
                 edit_columns = [
-                    'standard_name', 'category', 'computed_unit',
+                    'id', 'standard_name', 'category', 'computed_unit',
                     'male_range_min', 'male_range_max', 'female_range_min', 'female_range_max',
                     'aliases', 'description'
                 ]
@@ -2835,32 +2836,36 @@ def investigation_standards_page(investigation_standards):
                     st.markdown("---")
                     st.subheader("💾 Save Changes")
                     
-                    # Check for new rows (additions)
-                    if len(edited_df) > len(edit_df):
-                        new_rows = edited_df.iloc[len(edit_df):].copy()
+                    # Check for new rows (rows without ID or with ID=0)
+                    new_rows = []
+                    for idx, row in edited_df.iterrows():
+                        if (pd.isna(row['id']) or row['id'] == 0) and pd.notna(row['standard_name']) and str(row['standard_name']).strip():
+                            new_rows.append(row)
+                    
+                    if new_rows:
                         st.write("**New Standards to Add:**")
-                        st.dataframe(new_rows, use_container_width=True)
+                        new_rows_df = pd.DataFrame(new_rows)
+                        st.dataframe(new_rows_df, use_container_width=True)
                         
                         if st.button("✅ Add New Standards", type="primary"):
                             success_count = 0
-                            for idx, row in new_rows.iterrows():
-                                if pd.notna(row['standard_name']) and row['standard_name'].strip():
-                                    standard_data = {
-                                        'standard_name': row['standard_name'].strip(),
-                                        'aliases': row['aliases'] if pd.notna(row['aliases']) else '',
-                                        'male_range_min': row['male_range_min'] if pd.notna(row['male_range_min']) else 0.0,
-                                        'male_range_max': row['male_range_max'] if pd.notna(row['male_range_max']) else 0.0,
-                                        'female_range_min': row['female_range_min'] if pd.notna(row['female_range_min']) else 0.0,
-                                        'female_range_max': row['female_range_max'] if pd.notna(row['female_range_max']) else 0.0,
-                                        'male_unit': row['computed_unit'] if pd.notna(row['computed_unit']) else '',
-                                        'female_unit': row['computed_unit'] if pd.notna(row['computed_unit']) else '',
-                                        'common_unit': row['computed_unit'] if pd.notna(row['computed_unit']) else '',
-                                        'description': row['description'] if pd.notna(row['description']) else '',
-                                        'category': row['category'] if pd.notna(row['category']) else 'Other'
-                                    }
-                                    
-                                    if investigation_standards.add_standard(standard_data):
-                                        success_count += 1
+                            for row in new_rows:
+                                standard_data = {
+                                    'standard_name': str(row['standard_name']).strip(),
+                                    'aliases': row['aliases'] if pd.notna(row['aliases']) else '',
+                                    'male_range_min': row['male_range_min'] if pd.notna(row['male_range_min']) else 0.0,
+                                    'male_range_max': row['male_range_max'] if pd.notna(row['male_range_max']) else 0.0,
+                                    'female_range_min': row['female_range_min'] if pd.notna(row['female_range_min']) else 0.0,
+                                    'female_range_max': row['female_range_max'] if pd.notna(row['female_range_max']) else 0.0,
+                                    'male_unit': row['computed_unit'] if pd.notna(row['computed_unit']) else '',
+                                    'female_unit': row['computed_unit'] if pd.notna(row['computed_unit']) else '',
+                                    'common_unit': row['computed_unit'] if pd.notna(row['computed_unit']) else '',
+                                    'description': row['description'] if pd.notna(row['description']) else '',
+                                    'category': row['category'] if pd.notna(row['category']) else 'Other'
+                                }
+                                
+                                if investigation_standards.add_standard(standard_data):
+                                    success_count += 1
                             
                             if success_count > 0:
                                 st.success(f"Successfully added {success_count} new standards!")
@@ -2868,15 +2873,23 @@ def investigation_standards_page(investigation_standards):
                             else:
                                 st.error("Failed to add new standards. Please check the data.")
                     
-                    # Check for modifications to existing rows
+                    # Check for modifications to existing rows (by ID, not position)
                     existing_changes = []
-                    for idx in range(min(len(edited_df), len(edit_df))):
-                        original_row = edit_df.iloc[idx]
-                        edited_row = edited_df.iloc[idx]
-                        
-                        # Check if any field changed
-                        if not original_row[edit_columns].equals(edited_row):
-                            existing_changes.append((original_row['id'], edited_row, original_row))
+                    for idx, edited_row in edited_df.iterrows():
+                        # Skip rows without ID (new rows) or with empty/null ID
+                        if pd.isna(edited_row['id']) or edited_row['id'] == 0:
+                            continue
+                            
+                        record_id = int(edited_row['id'])
+                        # Find the original row with matching ID
+                        original_rows = edit_df[edit_df['id'] == record_id]
+                        if len(original_rows) > 0:
+                            original_row = original_rows.iloc[0]
+                            
+                            # Check if any field changed (excluding id column)
+                            edit_cols_without_id = [col for col in edit_columns if col != 'id']
+                            if not original_row[edit_cols_without_id].equals(edited_row[edit_cols_without_id]):
+                                existing_changes.append((record_id, edited_row, original_row))
                     
                     if existing_changes:
                         st.write("**Modified Standards:**")
