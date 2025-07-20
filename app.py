@@ -611,6 +611,9 @@ def upload_results_page(file_parser, data_processor, user_id):
                         # Create form for editing - full width below the preview
                         st.markdown("---")  # Separator line
                         
+                        # Initialize save_clicked to avoid UnboundLocalError
+                        save_clicked = False
+                        
                         # Only show original extraction editing interface when standards-based extraction is not available
                         if test_data.get('results') and st.session_state.get(f'show_original_extraction_{uploaded_file.name}', False):
                             # Quick search buttons for extracted tests (outside form)
@@ -841,8 +844,8 @@ Extraction Method: {result.get('source', 'regex')}""")
                                         # Empty column to maintain layout
                                         st.write("")
                             
-                            # Save button
-                            save_clicked = st.form_submit_button("💾 Save Results", type="primary")
+                                # Save button
+                                save_clicked = st.form_submit_button("💾 Save Results", type="primary")
                         
                         if save_clicked and patient_name:
                             with st.spinner("Saving results..."):

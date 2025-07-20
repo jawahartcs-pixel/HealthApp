@@ -753,7 +753,7 @@ class FileParser:
                 date_str = match.group(1)
                 
                 # Debug: print what we found
-                print(f"Found date string: '{date_str}'")
+                print(f"Found date string: '{date_str}' in text")
                 
                 # Try to parse with smart year handling
                 parsed_date = self._smart_date_parse(date_str)
@@ -784,17 +784,16 @@ class FileParser:
             try:
                 parsed_date = datetime.strptime(date_str, date_format).date()
                 
-                # Handle 2-digit year formats explicitly
-                if 'YY' in format_name and not 'YYYY' in format_name:
-                    # For 2-digit years, assume current century for medical reports
-                    # Medical reports are typically recent (last 50 years)
-                    if parsed_date.year < 1980:  # Years 00-79 become 20xx
-                        parsed_date = parsed_date.replace(year=parsed_date.year + 100)
+                # Python's strptime handles 2-digit years correctly:
+                # 00-68 become 2000-2068, 69-99 become 1969-1999
+                # No additional handling needed for medical reports
                 
                 # Validate that the date is reasonable (not in future, not too old)
                 if parsed_date <= date.today() and parsed_date.year >= 1900:
-                    print(f"Parsed '{date_str}' as {parsed_date} using format {format_name}")
+                    print(f"✅ Successfully parsed '{date_str}' as {parsed_date} using format {format_name}")
                     return parsed_date
+                else:
+                    print(f"❌ Date {parsed_date} failed validation (too old/future)")
                     
             except ValueError:
                 continue
