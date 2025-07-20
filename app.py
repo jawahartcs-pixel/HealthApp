@@ -248,9 +248,15 @@ def upload_results_page(file_parser, data_processor, user_id):
                                     
                                     # Create DataFrame for Excel-like display
                                     df_data = []
+                                    seen_investigations = set()
                                     for i, result in enumerate(standards_results):
+                                        investigation_name = result['test_type']
+                                        # Only enable Include for first occurrence of each investigation
+                                        is_first_occurrence = investigation_name not in seen_investigations
+                                        seen_investigations.add(investigation_name)
+                                        
                                         df_data.append({
-                                            'Include': True,
+                                            'Include': is_first_occurrence,
                                             'Investigation': result['test_type'],
                                             'Value': result['value'],
                                             'Unit': result['unit'],
@@ -432,9 +438,15 @@ def upload_results_page(file_parser, data_processor, user_id):
                                     
                                     # Create DataFrame for Excel-like display
                                     df_data = []
+                                    seen_investigations = set()
                                     for i, result in enumerate(standards_results):
+                                        investigation_name = result['test_type']
+                                        # Only enable Include for first occurrence of each investigation
+                                        is_first_occurrence = investigation_name not in seen_investigations
+                                        seen_investigations.add(investigation_name)
+                                        
                                         df_data.append({
-                                            'Include': True,
+                                            'Include': is_first_occurrence,
                                             'Investigation': result['test_type'],
                                             'Value': result['value'],
                                             'Unit': result['unit'],
