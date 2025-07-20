@@ -1750,6 +1750,9 @@ def manage_data_page(db, user_id):
             # Create DataFrame
             edit_df = pd.DataFrame(df_data)
             
+            # Convert Date column to proper datetime type
+            edit_df['Date'] = pd.to_datetime(edit_df['Date'])
+            
             # Configure editable columns
             column_config = {
                 'ID': st.column_config.NumberColumn('ID', width='small', disabled=True, help='0 = New Entry'),
@@ -3198,11 +3201,11 @@ def investigation_standards_page(investigation_standards):
             col1, col2 = st.columns(2)
             
             with col1:
-                new_name = st.text_input("Standard Name*", placeholder="e.g., Total Bilirubin")
-                new_category = st.selectbox("Category*", investigation_standards.get_predefined_categories())
-                new_description = st.text_area("Description", placeholder="Brief description of the test")
+                new_name = st.text_input("Standard Name*", placeholder="e.g., Total Bilirubin", key="new_name")
+                new_category = st.selectbox("Category*", investigation_standards.get_predefined_categories(), key="new_category")
+                new_description = st.text_area("Description", placeholder="Brief description of the test", key="new_description")
                 new_aliases = st.text_area("Aliases (comma-separated)", 
-                    placeholder="bilirubin, total bil, tbil")
+                    placeholder="bilirubin, total bil, tbil", key="new_aliases")
             
             with col2:
                 st.markdown("**Reference Ranges**")
@@ -3246,7 +3249,7 @@ def investigation_standards_page(investigation_standards):
                     if investigation_standards.add_standard(new_standard):
                         st.success(f"✅ Successfully added '{new_name}' to investigation standards!")
                         # Clear form by deleting session state keys
-                        form_keys = ["new_common_unit", "new_m_min", "new_m_max", "new_f_min", "new_f_max"]
+                        form_keys = ["new_name", "new_category", "new_description", "new_aliases", "new_common_unit", "new_m_min", "new_m_max", "new_f_min", "new_f_max"]
                         for key in form_keys:
                             if key in st.session_state:
                                 del st.session_state[key]
