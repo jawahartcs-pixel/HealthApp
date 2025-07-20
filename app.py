@@ -250,7 +250,7 @@ def upload_results_page(file_parser, data_processor, user_id):
                                     df_data = []
                                     for i, result in enumerate(standards_results):
                                         df_data.append({
-                                            'Include': result.get('include_by_default', True),
+                                            'Include': True,
                                             'Investigation': result['test_type'],
                                             'Value': result['value'],
                                             'Unit': result['unit'],
@@ -434,7 +434,7 @@ def upload_results_page(file_parser, data_processor, user_id):
                                     df_data = []
                                     for i, result in enumerate(standards_results):
                                         df_data.append({
-                                            'Include': result.get('include_by_default', True),
+                                            'Include': True,
                                             'Investigation': result['test_type'],
                                             'Value': result['value'],
                                             'Unit': result['unit'],
