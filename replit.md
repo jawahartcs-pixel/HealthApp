@@ -121,6 +121,25 @@ Preferred communication style: Simple, everyday language.
 
 ## Recent Changes
 
+### July 20, 2025 - Enhanced Investigation Standards Management: Fixed Excel Editing & Expanded Categories
+- **Fixed Excel Editing Constraint Violations**: Added validation to prevent duplicate standard names during updates
+  - Added duplicate name checking in update_standard method before database operations
+  - Enhanced error handling with specific feedback for failed updates showing duplicate name conflicts
+  - Improved user feedback showing which standards failed to update and why
+  - Fixed UNIQUE constraint failed errors that occurred when editing existing investigation standards
+- **Expanded Medical Categories**: Added comprehensive predefined category list for better organization
+  - Extended categories from 8 to 21 medical specialties including new categories:
+    - Cardiac Markers, Electrolytes, Vitamins & Minerals, Hormones, Inflammatory Markers
+    - Coagulation Studies, Tumor Markers, Immunology, Infectious Disease, Toxicology
+    - Metabolic Panel, Bone Markers, Autoimmune, Hematology, and Other
+  - Updated all category selection interfaces (Excel table, Add New Standard, Extract from Reports, Detailed Cards)
+  - Replaced hardcoded category lists with centralized get_predefined_categories method
+  - Enhanced dropdown selections throughout investigation standards management interface
+- **Improved User Experience**: Enhanced form validation and error messaging
+  - Better error messages showing specific failed standard names and reasons
+  - Consistent category selection across all investigation standards interfaces
+  - Professional medical category organization for improved data management
+
 ### July 16, 2025 - Automatic Reference Range Extraction for Investigation Standards
 - **Enhanced Investigation Standards Creation**: Added automatic reference range extraction and form population
   - Full test extraction data stored in session state with reference ranges, units, and values

@@ -300,6 +300,16 @@ class InvestigationStandards:
             with sqlite3.connect(self.db_path) as conn:
                 cursor = conn.cursor()
                 
+                # Check if the new standard name already exists for a different record
+                cursor.execute('''
+                    SELECT id FROM investigation_standards 
+                    WHERE standard_name = ? AND id != ?
+                ''', (standard_data['standard_name'], standard_id))
+                
+                if cursor.fetchone():
+                    print(f"Error updating standard: Standard name '{standard_data['standard_name']}' already exists")
+                    return False
+                
                 # Check if common_unit column exists
                 cursor.execute("PRAGMA table_info(investigation_standards)")
                 columns = [column[1] for column in cursor.fetchall()]
@@ -338,6 +348,32 @@ class InvestigationStandards:
         except Exception as e:
             print(f"Error updating standard: {e}")
             return False
+    
+    def get_predefined_categories(self) -> List[str]:
+        """Get predefined medical categories for investigation standards."""
+        return [
+            'Complete Blood Count',
+            'Lipid Profile',
+            'Liver Function',
+            'Kidney Function',
+            'Thyroid Function',
+            'Diabetes',
+            'Cardiac Markers',
+            'Electrolytes',
+            'Vitamins & Minerals',
+            'Hormones',
+            'Inflammatory Markers',
+            'Coagulation Studies',
+            'Tumor Markers',
+            'Immunology',
+            'Infectious Disease',
+            'Toxicology',
+            'Metabolic Panel',
+            'Bone Markers',
+            'Autoimmune',
+            'Hematology',
+            'Other'
+        ]
     
     def delete_standard(self, standard_id: int) -> bool:
         """Delete an investigation standard."""
