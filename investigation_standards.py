@@ -306,8 +306,9 @@ class InvestigationStandards:
                     WHERE standard_name = ? AND id != ?
                 ''', (standard_data['standard_name'], standard_id))
                 
-                if cursor.fetchone():
-                    print(f"Error updating standard: Standard name '{standard_data['standard_name']}' already exists")
+                existing_record = cursor.fetchone()
+                if existing_record:
+                    print(f"Error updating standard: Standard name '{standard_data['standard_name']}' already exists (ID: {existing_record[0]})")
                     return False
                 
                 # Check if common_unit column exists
@@ -374,6 +375,42 @@ class InvestigationStandards:
             'Hematology',
             'Other'
         ]
+    
+    def check_standard_name_exists(self, name: str, exclude_id: int = None) -> bool:
+        """Check if a standard name already exists (case-insensitive)."""
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.cursor()
+            if exclude_id:
+                cursor.execute('''
+                    SELECT id FROM investigation_standards 
+                    WHERE LOWER(standard_name) = LOWER(?) AND id != ?
+                ''', (name, exclude_id))
+            else:
+                cursor.execute('''
+                    SELECT id FROM investigation_standards 
+                    WHERE LOWER(standard_name) = LOWER(?)
+                ''', (name,))
+            return cursor.fetchone() is not None
+    
+    def get_similar_standard_names(self, name: str, limit: int = 5) -> List[str]:
+        """Get standard names similar to the provided name."""
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.cursor()
+            cursor.execute('SELECT standard_name FROM investigation_standards')
+            all_names = [row[0] for row in cursor.fetchall()]
+            
+            # Simple similarity check based on common words
+            name_lower = name.lower()
+            similar = []
+            
+            for existing_name in all_names:
+                existing_lower = existing_name.lower()
+                # Check if names share common words or substrings
+                if (name_lower in existing_lower or existing_lower in name_lower or
+                    any(word in existing_lower for word in name_lower.split() if len(word) > 2)):
+                    similar.append(existing_name)
+            
+            return similar[:limit]
     
     def delete_standard(self, standard_id: int) -> bool:
         """Delete an investigation standard."""

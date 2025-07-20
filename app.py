@@ -2817,6 +2817,9 @@ def investigation_standards_page(investigation_standards):
                     'aliases', 'description'
                 ]
                 
+                # Warning about unique names
+                st.info("ℹ️ **Important:** Standard names must be unique. If you change a name to one that already exists, the update will fail.")
+                
                 # Excel-like editable table
                 edited_df = st.data_editor(
                     edit_df[edit_columns],
@@ -2911,7 +2914,22 @@ def investigation_standards_page(investigation_standards):
                                 st.rerun()
                             else:
                                 if failed_updates:
-                                    st.error(f"Failed to update standards: {', '.join(failed_updates)}. Please check for duplicate standard names.")
+                                    st.error(f"❌ Failed to update standards: **{', '.join(failed_updates)}**")
+                                    st.info("💡 **Tip:** These standard names already exist in the database. Please use unique names or update the existing records instead.")
+                                    
+                                    # Show suggestions for similar names
+                                    for failed_name in failed_updates:
+                                        similar_names = investigation_standards.get_similar_standard_names(failed_name)
+                                        if similar_names:
+                                            st.warning(f"🔍 **'{failed_name}'** conflicts with existing standards: {', '.join(similar_names)}")
+                                    
+                                    # Show existing standards for reference
+                                    with st.expander("📋 View all existing standard names for reference"):
+                                        all_standards = investigation_standards.get_all_standards()
+                                        existing_names = sorted([s['standard_name'] for s in all_standards])
+                                        st.write("**Current standard names in database:**")
+                                        for i, name in enumerate(existing_names, 1):
+                                            st.write(f"{i}. {name}")
                                 else:
                                     st.error("Failed to update standards. Please try again.")
             
