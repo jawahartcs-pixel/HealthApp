@@ -228,3 +228,87 @@ class SimpleAnomalyDetector:
             }
         except Exception as e:
             return {'error': f'Summary generation failed: {str(e)}'}
+    
+    def get_patient_anomaly_summary(self, patient_name: str, user_id: int = None) -> Dict[str, Any]:
+        """Get anomaly summary for a specific patient."""
+        try:
+            # Get patient-specific anomaly analysis
+            results = self.detect_anomalies(patient_name, user_id)
+            
+            if 'error' in results:
+                return results
+            
+            # Compile summary
+            total_anomalies = 0
+            severity_counts = {'high': 0, 'medium': 0, 'low': 0}
+            anomaly_types = {}
+            
+            for method, data in results.items():
+                if method in ['statistical_outliers', 'temporal_anomalies', 'isolation_forest']:
+                    if isinstance(data, dict) and 'anomalies' in data:
+                        anomalies = data['anomalies']
+                        total_anomalies += len(anomalies)
+                        
+                        for anomaly in anomalies:
+                            severity = anomaly.get('severity', 'medium')
+                            severity_counts[severity] = severity_counts.get(severity, 0) + 1
+                            
+                            method_name = anomaly.get('method', method)
+                            if method_name not in anomaly_types:
+                                anomaly_types[method_name] = []
+                            anomaly_types[method_name].append(anomaly)
+            
+            return {
+                'patient_name': patient_name,
+                'total_anomalies': total_anomalies,
+                'severity_breakdown': severity_counts,
+                'anomaly_types': anomaly_types,
+                'detailed_results': results,
+                'status': 'success'
+            }
+            
+        except Exception as e:
+            return {'error': f'Patient anomaly summary failed: {str(e)}', 'status': 'error'}
+    
+    def get_all_patients_summary(self, user_id: int = None) -> Dict[str, Any]:
+        """Get anomaly summary for all patients."""
+        try:
+            # Get all patients anomaly analysis
+            results = self.detect_anomalies(None, user_id)
+            
+            if 'error' in results:
+                return results
+            
+            # Compile summary for all patients
+            total_anomalies = 0
+            severity_counts = {'high': 0, 'medium': 0, 'low': 0}
+            patient_summaries = {}
+            
+            for method, data in results.items():
+                if method in ['statistical_outliers', 'temporal_anomalies', 'isolation_forest']:
+                    if isinstance(data, dict) and 'anomalies' in data:
+                        anomalies = data['anomalies']
+                        total_anomalies += len(anomalies)
+                        
+                        for anomaly in anomalies:
+                            severity = anomaly.get('severity', 'medium')
+                            severity_counts[severity] = severity_counts.get(severity, 0) + 1
+                            
+                            patient = anomaly.get('patient_name', 'Unknown')
+                            if patient not in patient_summaries:
+                                patient_summaries[patient] = {'count': 0, 'high': 0, 'medium': 0, 'low': 0}
+                            
+                            patient_summaries[patient]['count'] += 1
+                            patient_summaries[patient][severity] += 1
+            
+            return {
+                'total_anomalies': total_anomalies,
+                'severity_breakdown': severity_counts,
+                'patient_summaries': patient_summaries,
+                'detailed_results': results,
+                'total_patients': len(patient_summaries),
+                'status': 'success'
+            }
+            
+        except Exception as e:
+            return {'error': f'All patients summary failed: {str(e)}', 'status': 'error'}

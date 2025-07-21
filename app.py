@@ -16,6 +16,7 @@ from anomaly_detection_simple import SimpleAnomalyDetector
 from utils import validate_date, format_test_value
 from image_snippet_extractor import ImageSnippetExtractor
 from investigation_standards import InvestigationStandards
+from pdf_report_generator import PDFReportGenerator
 from pdf2image import convert_from_bytes
 from PIL import Image
 import tempfile
@@ -1391,14 +1392,40 @@ def patient_dashboard_page(db, visualization, alert_system, user_id):
         st.info("No patients found. Please upload some blood test results first.")
         return
     
-    # Patient selection
-    patient_names = [patient[1] for patient in patients]
-    selected_patient = st.selectbox(
-        "Select Patient",
-        options=patient_names,
-        index=None,
-        placeholder="Choose a patient to view dashboard..."
-    )
+    # Patient selection and dashboard controls
+    col1, col2, col3 = st.columns([2, 1, 1])
+    
+    with col1:
+        patient_names = [patient[1] for patient in patients]
+        selected_patient = st.selectbox(
+            "Select Patient",
+            options=patient_names,
+            index=None,
+            placeholder="Choose a patient to view dashboard..."
+        )
+    
+    with col2:
+        chart_type = st.selectbox("Chart Type", ["2D Standard", "3D Enhanced", "3D Multi-Test"])
+    
+    with col3:
+        # PDF Report download
+        if st.button("📄 Generate PDF Report"):
+            if selected_patient:
+                try:
+                    pdf_generator = PDFReportGenerator(db)
+                    pdf_bytes = pdf_generator.generate_patient_report(selected_patient, user_id)
+                    
+                    st.download_button(
+                        label="Download PDF Report",
+                        data=pdf_bytes,
+                        file_name=f"{selected_patient}_blood_test_report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf",
+                        mime="application/pdf"
+                    )
+                    st.success("✅ PDF report generated successfully!")
+                except Exception as e:
+                    st.error(f"Error generating PDF report: {str(e)}")
+            else:
+                st.warning("Please select a patient first")
     
     if selected_patient:
         # Get patient data
