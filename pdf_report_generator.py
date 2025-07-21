@@ -59,6 +59,9 @@ class PDFReportGenerator:
     
     def generate_patient_report(self, patient_name: str, user_id: int = None) -> bytes:
         """Generate comprehensive PDF report for a patient."""
+        # Initialize temp files list for cleanup
+        self._temp_files = []
+        
         try:
             # Create PDF buffer
             buffer = io.BytesIO()
@@ -89,9 +92,29 @@ class PDFReportGenerator:
             
             # Get PDF bytes
             buffer.seek(0)
-            return buffer.getvalue()
+            pdf_bytes = buffer.getvalue()
+            
+            # Clean up temporary files
+            if hasattr(self, '_temp_files'):
+                for temp_file in self._temp_files:
+                    try:
+                        if os.path.exists(temp_file):
+                            os.unlink(temp_file)
+                    except Exception:
+                        pass  # Ignore cleanup errors
+                self._temp_files = []
+            
+            return pdf_bytes
             
         except Exception as e:
+            # Clean up temporary files on error
+            if hasattr(self, '_temp_files'):
+                for temp_file in self._temp_files:
+                    try:
+                        if os.path.exists(temp_file):
+                            os.unlink(temp_file)
+                    except Exception:
+                        pass
             raise Exception(f"Failed to generate PDF report: {str(e)}")
     
     def _create_title_page(self, patient_name: str) -> List:
@@ -269,6 +292,12 @@ class PDFReportGenerator:
             # Create matplotlib figure
             plt.figure(figsize=(8, 4))
             plt.plot(df['test_date'], df['test_value'], marker='o', linewidth=2, markersize=6)
+            
+            # Add value labels on each data point
+            for i, (date, value) in enumerate(zip(df['test_date'], df['test_value'])):
+                plt.annotate(f'{value:.2f}', (date, value), 
+                           textcoords="offset points", xytext=(0,10), ha='center', fontsize=8)
+            
             plt.title(f'{test_type} Trend Over Time', fontsize=14, fontweight='bold')
             plt.xlabel('Date', fontsize=12)
             plt.ylabel('Value', fontsize=12)
@@ -276,22 +305,21 @@ class PDFReportGenerator:
             plt.xticks(rotation=45)
             plt.tight_layout()
             
-            # Save to bytes buffer instead of temp file
-            import io
-            buffer = io.BytesIO()
-            plt.savefig(buffer, format='png', dpi=150, bbox_inches='tight')
+            # Save to temporary file with proper cleanup
+            temp_file = tempfile.NamedTemporaryFile(delete=False, suffix='.png')
+            temp_filename = temp_file.name
+            temp_file.close()
+            
+            plt.savefig(temp_filename, format='png', dpi=150, bbox_inches='tight')
             plt.close()
             
-            # Reset buffer position
-            buffer.seek(0)
+            # Create ReportLab Image from file
+            image = Image(temp_filename, width=6*inch, height=3*inch)
             
-            # Create ReportLab Image from buffer
-            from reportlab.lib.utils import ImageReader
-            img_reader = ImageReader(buffer)
-            image = Image(img_reader, width=6*inch, height=3*inch)
-            
-            # Close buffer
-            buffer.close()
+            # Store temp file path for later cleanup
+            if not hasattr(self, '_temp_files'):
+                self._temp_files = []
+            self._temp_files.append(temp_filename)
             
             return image
             

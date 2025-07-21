@@ -128,26 +128,18 @@ class Visualization:
                 )
             )
             
-            # Add annotation for latest value only
-            if len(filtered_data) > 0:
-                latest_value = filtered_data.iloc[-1]['Value']
-                latest_date = filtered_data.iloc[-1]['Date']
-                
+            # Add value annotations for ALL data points
+            for i, row in filtered_data.iterrows():
                 fig.add_annotation(
-                    x=latest_date,
-                    y=latest_value,
-                    text=f"<b>{latest_value}</b>",
-                    showarrow=True,
-                    arrowhead=2,
-                    arrowsize=1,
-                    arrowwidth=2,
-                    arrowcolor=color,
-                    ax=20,
-                    ay=-30,
-                    font=dict(size=12, color=color),
-                    bgcolor="white",
+                    x=row['Date'],
+                    y=row['Value'],
+                    text=f"{row['Value']:.1f}",
+                    showarrow=False,
+                    yshift=15,
+                    font=dict(size=9, color=color),
+                    bgcolor="rgba(255,255,255,0.8)",
                     bordercolor=color,
-                    borderwidth=2
+                    borderwidth=1
                 )
             
             return fig
@@ -711,6 +703,20 @@ class Visualization:
                 )
             )
             
+            # Add value annotations for ALL data points
+            for i, row in filtered_data.iterrows():
+                fig.add_annotation(
+                    x=row['Date'],
+                    y=row['Value'],
+                    text=f"{row['Value']:.1f}",
+                    showarrow=False,
+                    yshift=15,
+                    font=dict(size=10, color=color, weight='bold'),
+                    bgcolor="rgba(255,255,255,0.9)",
+                    bordercolor=color,
+                    borderwidth=1
+                )
+            
             return fig
             
         except Exception as e:
@@ -745,6 +751,20 @@ class Visualization:
                         ),
                         hovertemplate=f'<b>{test_type}</b><br>Value: %{{y}}<br>Date: %{{x|%Y-%m-%d}}<extra></extra>'
                     ))
+                    
+                    # Add value annotations for this test type
+                    for idx, row in test_data.iterrows():
+                        fig.add_annotation(
+                            x=row['Date'],
+                            y=row['Value'],
+                            text=f"{row['Value']:.1f}",
+                            showarrow=False,
+                            yshift=12,
+                            font=dict(size=8, color=color),
+                            bgcolor="rgba(255,255,255,0.8)",
+                            bordercolor=color,
+                            borderwidth=1
+                        )
             
             # Enhanced styling for grouped chart
             fig.update_layout(
