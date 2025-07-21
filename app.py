@@ -2822,13 +2822,14 @@ def display_all_patients_analysis(results):
             """, unsafe_allow_html=True)
     
     # Detailed anomalies table
-    if results['anomalies']:
+    anomalies = results.get('anomalies', [])
+    if anomalies:
         st.subheader("📋 Detailed Anomalies")
         
         anomaly_data = []
-        for anomaly in results['anomalies']:
+        for anomaly in anomalies:
             anomaly_data.append({
-                'Patient': anomaly['patient_name'],
+                'Patient': anomaly.get('patient_name', 'Unknown'),
                 'Date': anomaly.get('test_date', 'N/A'),
                 'Method': anomaly.get('detection_method', 'N/A'),
                 'Severity': anomaly.get('severity', 'medium'),
@@ -2868,10 +2869,11 @@ def display_patient_analysis(results, patient_name):
         st.metric("Medium Severity", severity_dist.get('medium', 0))
     
     # Patient-specific anomalies
-    if results['anomalies']:
+    patient_anomalies = results.get('anomalies', [])
+    if patient_anomalies:
         st.subheader("📊 Anomaly Details")
         
-        for anomaly in results['anomalies']:
+        for anomaly in patient_anomalies:
             with st.expander(f"{anomaly.get('detection_method', 'Unknown')} - {anomaly.get('severity', 'medium').title()} Severity"):
                 st.markdown(f"**Date:** {anomaly.get('test_date', 'N/A')}")
                 st.markdown(f"**Method:** {anomaly.get('detection_method', 'N/A')}")
