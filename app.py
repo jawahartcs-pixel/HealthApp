@@ -17,6 +17,7 @@ from utils import validate_date, format_test_value
 from image_snippet_extractor import ImageSnippetExtractor
 from investigation_standards import InvestigationStandards
 from pdf_report_generator import PDFReportGenerator
+from medication_reminder import MedicationReminder
 from test_categories import categorize_test_types, get_category_colors
 from pdf2image import convert_from_bytes
 from PIL import Image
@@ -39,7 +40,8 @@ def init_components():
     auth_ui = AuthUI(auth_system)
     anomaly_detector = SimpleAnomalyDetector(db)
     investigation_standards = InvestigationStandards()
-    return db, file_parser, data_processor, visualization, alert_system, auth_system, auth_ui, anomaly_detector, investigation_standards
+    medication_reminder = MedicationReminder(db)
+    return db, file_parser, data_processor, visualization, alert_system, auth_system, auth_ui, anomaly_detector, investigation_standards, medication_reminder
 
 def main():
     st.set_page_config(
@@ -53,7 +55,7 @@ def main():
     st.markdown("Upload, manage, and visualize patient blood test results")
     
     # Initialize components
-    db, file_parser, data_processor, visualization, alert_system, auth_system, auth_ui, anomaly_detector, investigation_standards = init_components()
+    db, file_parser, data_processor, visualization, alert_system, auth_system, auth_ui, anomaly_detector, investigation_standards, medication_reminder = init_components()
     
     # Store investigation_standards in session state for access in upload page
     st.session_state['investigation_standards'] = investigation_standards
@@ -70,7 +72,7 @@ def main():
     auth_ui.sidebar_user_info()
     
     # Page selection
-    pages = ["Upload Results", "View Patients", "Patient Dashboard", "Search & Filter", "Export Data", "Manage Data", "Alert Dashboard", "AI Anomaly Detection", "Investigation Standards"]
+    pages = ["Upload Results", "View Patients", "Patient Dashboard", "Search & Filter", "Export Data", "Manage Data", "Alert Dashboard", "AI Anomaly Detection", "Medication Reminders", "Investigation Standards"]
     
     # Add profile page for logged-in users
     if st.session_state.get('user_id'):
@@ -97,6 +99,8 @@ def main():
         alert_dashboard_page(alert_system, current_user_id)
     elif page == "AI Anomaly Detection":
         ai_anomaly_detection_page(anomaly_detector, current_user_id)
+    elif page == "Medication Reminders":
+        medication_reminders_page(medication_reminder, db, current_user_id)
     elif page == "Investigation Standards":
         investigation_standards_page(investigation_standards)
     elif page == "Profile":
@@ -3938,6 +3942,329 @@ def investigation_standards_page(investigation_standards):
                                                     st.error(f"Error updating aliases: {str(e)}")
                                     else:
                                         st.error("Selected standard not found")
+
+def medication_reminders_page(medication_reminder, db, user_id):
+    """Medication reminders and adherence tracking page."""
+    st.header("💊 Medication Reminders & Adherence Tracking")
+    
+    # Get all patients for the current user
+    patients = db.get_all_patients(user_id)
+    
+    if not patients:
+        st.info("No patients found. Please add patients from the 'View Patients' page first.")
+        return
+    
+    # Create tabs for different medication features
+    tab1, tab2, tab3, tab4, tab5 = st.tabs([
+        "📋 My Medications", 
+        "➕ Add Medication", 
+        "✅ Daily Tracking", 
+        "📊 Adherence Stats", 
+        "🎯 Effectiveness Analysis"
+    ])
+    
+    with tab1:
+        st.subheader("Current Medications")
+        
+        # Patient selector
+        patient_names = [patient[0] for patient in patients]
+        selected_patient = st.selectbox(
+            "Select Patient", 
+            patient_names,
+            key="med_patient_selector"
+        )
+        
+        if selected_patient:
+            medications = medication_reminder.get_patient_medications(selected_patient)
+            
+            if medications:
+                for med in medications:
+                    with st.expander(f"💊 {med['medication_name']} - {med['dosage']}", expanded=False):
+                        col1, col2 = st.columns(2)
+                        
+                        with col1:
+                            st.write(f"**Frequency:** {med['frequency']}")
+                            st.write(f"**Start Date:** {med['start_date']}")
+                            if med['end_date']:
+                                st.write(f"**End Date:** {med['end_date']}")
+                            st.write(f"**Indication:** {med.get('indication', 'Not specified')}")
+                        
+                        with col2:
+                            st.write(f"**Doctor:** {med.get('doctor_name', 'Not specified')}")
+                            st.write(f"**Status:** {'Active' if med['active'] else 'Inactive'}")
+                            if med['instructions']:
+                                st.write(f"**Instructions:** {med['instructions']}")
+                        
+                        # Show schedule
+                        if med['schedule']:
+                            st.write("**Schedule:**")
+                            for sched in med['schedule']:
+                                days_names = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
+                                days_str = ', '.join([days_names[d-1] for d in sched['days']])
+                                st.write(f"⏰ {sched['time']} - {days_str}")
+                        
+                        # Action buttons
+                        col3, col4 = st.columns(2)
+                        with col3:
+                            if st.button(f"Deactivate", key=f"deactivate_{med['id']}"):
+                                if medication_reminder.deactivate_medication(med['id']):
+                                    st.success("Medication deactivated successfully!")
+                                    st.rerun()
+                        
+                        with col4:
+                            if st.button(f"Edit", key=f"edit_{med['id']}"):
+                                st.session_state[f'editing_med_{med["id"]}'] = True
+                                st.rerun()
+            else:
+                st.info(f"No medications found for {selected_patient}. Add medications using the 'Add Medication' tab.")
+    
+    with tab2:
+        st.subheader("Add New Medication")
+        
+        with st.form("add_medication_form"):
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                med_patient = st.selectbox("Patient", patient_names, key="add_med_patient")
+                med_name = st.text_input("Medication Name", placeholder="e.g., Metformin")
+                med_dosage = st.text_input("Dosage", placeholder="e.g., 500mg")
+                med_frequency = st.selectbox("Frequency", [
+                    "Once daily", "Twice daily", "Three times daily", "Four times daily",
+                    "Every other day", "Weekly", "As needed", "Custom"
+                ])
+            
+            with col2:
+                start_date = st.date_input("Start Date", value=datetime.now().date())
+                end_date = st.date_input("End Date (optional)", value=None)
+                doctor_name = st.text_input("Doctor Name (optional)")
+                indication = st.text_input("Indication", placeholder="What is this medication for?")
+            
+            instructions = st.text_area("Instructions", placeholder="Special instructions for taking this medication")
+            
+            # Schedule section
+            st.subheader("Reminder Schedule")
+            num_times = st.number_input("How many times per day?", min_value=1, max_value=6, value=1)
+            
+            schedule_times = []
+            schedule_days = []
+            
+            cols = st.columns(min(num_times, 3))
+            for i in range(num_times):
+                with cols[i % 3]:
+                    time_input = st.time_input(f"Time {i+1}", key=f"time_{i}")
+                    schedule_times.append(time_input.strftime('%H:%M:%S'))
+            
+            # Days of week
+            st.write("Select days of the week:")
+            days_col1, days_col2 = st.columns(2)
+            
+            with days_col1:
+                mon = st.checkbox("Monday", value=True)
+                tue = st.checkbox("Tuesday", value=True)
+                wed = st.checkbox("Wednesday", value=True)
+                thu = st.checkbox("Thursday", value=True)
+            
+            with days_col2:
+                fri = st.checkbox("Friday", value=True)
+                sat = st.checkbox("Saturday", value=True)
+                sun = st.checkbox("Sunday", value=True)
+            
+            selected_days = []
+            if mon: selected_days.append(1)
+            if tue: selected_days.append(2)
+            if wed: selected_days.append(3)
+            if thu: selected_days.append(4)
+            if fri: selected_days.append(5)
+            if sat: selected_days.append(6)
+            if sun: selected_days.append(7)
+            
+            submitted = st.form_submit_button("Add Medication")
+            
+            if submitted and med_patient and med_name and med_dosage:
+                # Prepare schedule data
+                schedule_data = []
+                for time_str in schedule_times:
+                    schedule_data.append({
+                        'time': time_str,
+                        'days': selected_days,
+                        'reminder_enabled': True
+                    })
+                
+                medication_data = {
+                    'patient_name': med_patient,
+                    'medication_name': med_name,
+                    'dosage': med_dosage,
+                    'frequency': med_frequency,
+                    'start_date': start_date.strftime('%Y-%m-%d'),
+                    'end_date': end_date.strftime('%Y-%m-%d') if end_date else None,
+                    'instructions': instructions,
+                    'indication': indication,
+                    'doctor_name': doctor_name,
+                    'schedule': schedule_data
+                }
+                
+                if medication_reminder.add_medication(medication_data):
+                    st.success(f"Medication '{med_name}' added successfully for {med_patient}!")
+                    st.rerun()
+                else:
+                    st.error("Failed to add medication. Please try again.")
+    
+    with tab3:
+        st.subheader("Daily Medication Tracking")
+        
+        # Show today's medications
+        today = datetime.now()
+        tracking_patient = st.selectbox(
+            "Select Patient for Tracking", 
+            patient_names,
+            key="tracking_patient_selector"
+        )
+        
+        if tracking_patient:
+            due_medications = medication_reminder.get_due_medications(tracking_patient, today)
+            
+            st.write(f"**Medications due today ({today.strftime('%Y-%m-%d')}):**")
+            
+            if due_medications:
+                for med in due_medications:
+                    with st.container():
+                        col1, col2, col3, col4 = st.columns([3, 2, 1, 1])
+                        
+                        with col1:
+                            st.write(f"💊 **{med['medication_name']}** - {med['dosage']}")
+                        
+                        with col2:
+                            st.write(f"⏰ Due at: {med['time']}")
+                        
+                        with col3:
+                            if st.button("✅ Taken", key=f"taken_{med['medication_id']}_{med['time']}"):
+                                if medication_reminder.record_medication_taken(
+                                    med['medication_id'],
+                                    today.strftime('%Y-%m-%d'),
+                                    med['time']
+                                ):
+                                    st.success("Marked as taken!")
+                                    st.rerun()
+                        
+                        with col4:
+                            if st.button("❌ Missed", key=f"missed_{med['medication_id']}_{med['time']}"):
+                                if medication_reminder.record_medication_missed(
+                                    med['medication_id'],
+                                    today.strftime('%Y-%m-%d'),
+                                    med['time']
+                                ):
+                                    st.info("Marked as missed.")
+                                    st.rerun()
+                        
+                        st.markdown("---")
+            else:
+                st.info(f"No medications due today for {tracking_patient}.")
+    
+    with tab4:
+        st.subheader("Adherence Statistics")
+        
+        stats_patient = st.selectbox(
+            "Select Patient for Stats", 
+            patient_names,
+            key="stats_patient_selector"
+        )
+        
+        stats_days = st.selectbox("Time Period", [7, 14, 30, 60, 90], index=2, key="stats_days")
+        
+        if stats_patient:
+            adherence_stats = medication_reminder.get_adherence_stats(stats_patient, stats_days)
+            
+            if adherence_stats:
+                # Display key metrics
+                col1, col2, col3, col4 = st.columns(4)
+                
+                with col1:
+                    st.metric("Adherence Rate", f"{adherence_stats['adherence_rate']}%")
+                
+                with col2:
+                    st.metric("Total Scheduled", adherence_stats['total_scheduled'])
+                
+                with col3:
+                    st.metric("Taken on Time", adherence_stats['taken'])
+                
+                with col4:
+                    st.metric("Missed", adherence_stats['missed'])
+                
+                # Adherence visualization
+                if adherence_stats['total_scheduled'] > 0:
+                    fig = go.Figure(data=[go.Pie(
+                        labels=['Taken', 'Delayed', 'Missed', 'Skipped'],
+                        values=[
+                            adherence_stats['taken'],
+                            adherence_stats['delayed'],
+                            adherence_stats['missed'],
+                            adherence_stats['skipped']
+                        ],
+                        hole=.3,
+                        marker_colors=['#2E8B57', '#FFD700', '#DC143C', '#808080']
+                    )])
+                    
+                    fig.update_layout(
+                        title=f"Medication Adherence - Last {stats_days} Days",
+                        height=400
+                    )
+                    
+                    st.plotly_chart(fig, use_container_width=True, key=f"adherence_pie_{stats_patient}_{stats_days}")
+            else:
+                st.info(f"No adherence data available for {stats_patient} in the last {stats_days} days.")
+    
+    with tab5:
+        st.subheader("Medication Effectiveness Analysis")
+        
+        eff_patient = st.selectbox(
+            "Select Patient", 
+            patient_names,
+            key="eff_patient_selector"
+        )
+        
+        if eff_patient:
+            medications = medication_reminder.get_patient_medications(eff_patient)
+            
+            if medications:
+                med_names = [med['medication_name'] for med in medications]
+                selected_med = st.selectbox("Select Medication", med_names, key="eff_med_selector")
+                
+                if selected_med:
+                    effectiveness = medication_reminder.get_medication_effectiveness_analysis(eff_patient, selected_med)
+                    
+                    if effectiveness.get('status') == 'no_data':
+                        st.info("No test data available after medication start date for effectiveness analysis.")
+                    elif effectiveness.get('status') == 'error':
+                        st.error(f"Error analyzing effectiveness: {effectiveness['message']}")
+                    else:
+                        st.write(f"**Medication:** {effectiveness['medication']}")
+                        st.write(f"**Started:** {effectiveness['start_date']}")
+                        if effectiveness.get('indication'):
+                            st.write(f"**Indication:** {effectiveness['indication']}")
+                        
+                        if effectiveness['test_trends']:
+                            st.subheader("Test Result Trends Since Starting Medication")
+                            
+                            for test_type, trend_data in effectiveness['test_trends'].items():
+                                with st.expander(f"📈 {test_type}", expanded=True):
+                                    col1, col2, col3 = st.columns(3)
+                                    
+                                    with col1:
+                                        trend_color = "green" if trend_data['trend'] == 'improving' else "red" if trend_data['trend'] == 'worsening' else "blue"
+                                        st.markdown(f"**Trend:** :{trend_color}[{trend_data['trend'].title()}]")
+                                    
+                                    with col2:
+                                        st.write(f"**Change:** {trend_data['percent_change']:+.1f}%")
+                                    
+                                    with col3:
+                                        st.write(f"**Data Points:** {trend_data['data_points']}")
+                                    
+                                    st.write(f"First Value: {trend_data['first_value']} {trend_data['unit']}")
+                                    st.write(f"Latest Value: {trend_data['latest_value']} {trend_data['unit']}")
+                        else:
+                            st.info("No significant trends detected in test results since starting this medication.")
+            else:
+                st.info(f"No medications found for {eff_patient}.")
 
 if __name__ == "__main__":
     main()
