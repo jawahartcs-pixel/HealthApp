@@ -259,10 +259,17 @@ class ImageSnippetExtractor:
         highlighted_image.save(img_buffer, format='PNG')
         return img_buffer.getvalue()
     
-    def highlight_text_in_image(self, uploaded_file, test_names: list):
+    def highlight_text_in_image(self, uploaded_file, test_names: list, is_file_path: bool = False):
         """Highlight extracted test names in the uploaded document image."""
         try:
-            if uploaded_file.type.startswith('image'):
+            if is_file_path:
+                # Handle file path input (for temporary files)
+                with open(uploaded_file, 'rb') as f:
+                    image_bytes = f.read()
+                if self.process_image_for_snippets(image_bytes):
+                    return Image.open(io.BytesIO(self.get_document_with_highlights(test_names)))
+            
+            elif uploaded_file.type.startswith('image'):
                 # For image files, process directly
                 image_bytes = uploaded_file.getvalue()
                 if self.process_image_for_snippets(image_bytes):

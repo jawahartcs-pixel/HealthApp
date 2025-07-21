@@ -701,20 +701,35 @@ def upload_results_page(file_parser, data_processor, user_id):
                                         st.image(uploaded_file, caption=f"Full Document: {uploaded_file.name}", use_container_width=True)
                                 
                                 elif uploaded_file.type == 'application/pdf':
-                                    # For PDF files, use the snippet extractor directly
-                                    highlighted_image = snippet_extractor.highlight_text_in_image(
-                                        uploaded_file, extracted_test_names
-                                    )
-                                    
-                                    if highlighted_image:
-                                        st.image(highlighted_image, caption=f"Document: {uploaded_file.name} (Green boxes = extracted tests)", use_container_width=True)
-                                    else:
-                                        # Fallback to convert and display without highlighting
-                                        pdf_bytes = uploaded_file.getvalue()
-                                        images = convert_from_bytes(pdf_bytes, dpi=300, fmt='PNG')
-                                        if images:
-                                            for i, image in enumerate(images):
-                                                st.image(image, caption=f"Page {i+1} of {uploaded_file.name}", use_container_width=True)
+                                    # For PDF files, convert and display all pages
+                                    pdf_bytes = uploaded_file.getvalue()
+                                    images = convert_from_bytes(pdf_bytes, dpi=300, fmt='PNG')
+                                    if images:
+                                        st.caption(f"Document: {uploaded_file.name} - Showing all {len(images)} pages")
+                                        for i, image in enumerate(images):
+                                            # Try to highlight extracted test names on each page
+                                            try:
+                                                # Create a temporary file for each page to use with highlighting
+                                                import tempfile
+                                                with tempfile.NamedTemporaryFile(delete=False, suffix='.png') as tmp_file:
+                                                    image.save(tmp_file.name, 'PNG')
+                                                    highlighted_image = snippet_extractor.highlight_text_in_image(
+                                                        tmp_file.name, extracted_test_names, is_file_path=True
+                                                    )
+                                                    
+                                                    if highlighted_image:
+                                                        st.image(highlighted_image, caption=f"Page {i+1} of {len(images)} - {uploaded_file.name} (Green boxes = extracted tests)", use_container_width=True)
+                                                    else:
+                                                        st.image(image, caption=f"Page {i+1} of {len(images)} - {uploaded_file.name}", use_container_width=True)
+                                                    
+                                                    # Clean up temporary file
+                                                    try:
+                                                        os.unlink(tmp_file.name)
+                                                    except:
+                                                        pass
+                                            except:
+                                                # Fallback to showing page without highlighting
+                                                st.image(image, caption=f"Page {i+1} of {len(images)} - {uploaded_file.name}", use_container_width=True)
                                 
                                 else:
                                     # For other file types, show text content with highlighting
