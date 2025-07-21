@@ -320,6 +320,72 @@ def upload_results_page(file_parser, data_processor, user_id):
                                         included_count = len(edited_df[edited_df['Include'] == True])
                                         st.caption(f"Ready to save: {included_count} tests selected")
                                         
+                                        # Investigation Standards Browser for manual additions
+                                        st.markdown("---")
+                                        st.subheader("🔬 Investigation Standards Browser")
+                                        st.caption("Browse and copy standard names for manual additions to the table above")
+                                        
+                                        # Get all investigation standards
+                                        investigation_standards_obj = st.session_state.get('investigation_standards')
+                                        if investigation_standards_obj:
+                                            all_standards = investigation_standards_obj.get_all_standards()
+                                            if all_standards:
+                                                # Create a formatted list for the selectbox
+                                                standards_options = []
+                                                for standard in all_standards:
+                                                    # Format: "Standard Name (Category) - Unit"
+                                                    unit = standard.get('common_unit') or standard.get('male_unit', '')
+                                                    category = standard.get('category', 'Other')
+                                                    aliases = standard.get('aliases', '')
+                                                    
+                                                    display_text = f"{standard['standard_name']} ({category})"
+                                                    if unit:
+                                                        display_text += f" - {unit}"
+                                                    if aliases:
+                                                        display_text += f" | Aliases: {aliases[:50]}..."
+                                                    
+                                                    standards_options.append({
+                                                        'display': display_text,
+                                                        'name': standard['standard_name'],
+                                                        'category': category,
+                                                        'unit': unit,
+                                                        'male_range': f"{standard.get('male_range_min', '')}-{standard.get('male_range_max', '')}",
+                                                        'female_range': f"{standard.get('female_range_min', '')}-{standard.get('female_range_max', '')}",
+                                                        'aliases': aliases
+                                                    })
+                                                
+                                                # Sort by category then by name
+                                                standards_options.sort(key=lambda x: (x['category'], x['name']))
+                                                
+                                                # Create selectbox
+                                                selected_standard = st.selectbox(
+                                                    "Select Investigation Standard to Copy",
+                                                    options=standards_options,
+                                                    format_func=lambda x: x['display'],
+                                                    index=None,
+                                                    placeholder="Choose a standard to view details...",
+                                                    key=f"standards_browser_{uploaded_file.name}"
+                                                )
+                                                
+                                                # Show details when a standard is selected
+                                                if selected_standard:
+                                                    st.info(f"""
+                                                    **📋 Standard Details:**
+                                                    
+                                                    **Name:** {selected_standard['name']}  
+                                                    **Category:** {selected_standard['category']}  
+                                                    **Unit:** {selected_standard['unit']}  
+                                                    **Male Range:** {selected_standard['male_range']} {selected_standard['unit']}  
+                                                    **Female Range:** {selected_standard['female_range']} {selected_standard['unit']}  
+                                                    **Aliases:** {selected_standard['aliases'] or 'None'}
+                                                    
+                                                    💡 **Tip:** Copy the standard name above and paste it into the Investigation column in the table
+                                                    """)
+                                            else:
+                                                st.info("No investigation standards found. Add some standards first in the Investigation Standards page.")
+                                        
+                                        st.markdown("---")
+                                        
                                         # Save button for standards-based results (no original results case)
                                         if st.button("💾 Save Standards-Based Results", key=f"save_standards_no_orig_{uploaded_file.name}", type="primary"):
                                             if patient_name:
@@ -496,6 +562,72 @@ def upload_results_page(file_parser, data_processor, user_id):
                                         # Show summary and save button
                                         included_count = len(edited_df[edited_df['Include'] == True])
                                         st.caption(f"Ready to save: {included_count} tests selected")
+                                        
+                                        # Investigation Standards Browser for manual additions
+                                        st.markdown("---")
+                                        st.subheader("🔬 Investigation Standards Browser")
+                                        st.caption("Browse and copy standard names for manual additions to the table above")
+                                        
+                                        # Get all investigation standards
+                                        investigation_standards_obj = st.session_state.get('investigation_standards')
+                                        if investigation_standards_obj:
+                                            all_standards = investigation_standards_obj.get_all_standards()
+                                            if all_standards:
+                                                # Create a formatted list for the selectbox
+                                                standards_options = []
+                                                for standard in all_standards:
+                                                    # Format: "Standard Name (Category) - Unit"
+                                                    unit = standard.get('common_unit') or standard.get('male_unit', '')
+                                                    category = standard.get('category', 'Other')
+                                                    aliases = standard.get('aliases', '')
+                                                    
+                                                    display_text = f"{standard['standard_name']} ({category})"
+                                                    if unit:
+                                                        display_text += f" - {unit}"
+                                                    if aliases:
+                                                        display_text += f" | Aliases: {aliases[:50]}..."
+                                                    
+                                                    standards_options.append({
+                                                        'display': display_text,
+                                                        'name': standard['standard_name'],
+                                                        'category': category,
+                                                        'unit': unit,
+                                                        'male_range': f"{standard.get('male_range_min', '')}-{standard.get('male_range_max', '')}",
+                                                        'female_range': f"{standard.get('female_range_min', '')}-{standard.get('female_range_max', '')}",
+                                                        'aliases': aliases
+                                                    })
+                                                
+                                                # Sort by category then by name
+                                                standards_options.sort(key=lambda x: (x['category'], x['name']))
+                                                
+                                                # Create selectbox
+                                                selected_standard = st.selectbox(
+                                                    "Select Investigation Standard to Copy",
+                                                    options=standards_options,
+                                                    format_func=lambda x: x['display'],
+                                                    index=None,
+                                                    placeholder="Choose a standard to view details...",
+                                                    key=f"standards_browser_with_orig_{uploaded_file.name}"
+                                                )
+                                                
+                                                # Show details when a standard is selected
+                                                if selected_standard:
+                                                    st.info(f"""
+                                                    **📋 Standard Details:**
+                                                    
+                                                    **Name:** {selected_standard['name']}  
+                                                    **Category:** {selected_standard['category']}  
+                                                    **Unit:** {selected_standard['unit']}  
+                                                    **Male Range:** {selected_standard['male_range']} {selected_standard['unit']}  
+                                                    **Female Range:** {selected_standard['female_range']} {selected_standard['unit']}  
+                                                    **Aliases:** {selected_standard['aliases'] or 'None'}
+                                                    
+                                                    💡 **Tip:** Copy the standard name above and paste it into the Investigation column in the table
+                                                    """)
+                                            else:
+                                                st.info("No investigation standards found. Add some standards first in the Investigation Standards page.")
+                                        
+                                        st.markdown("---")
                                         
                                         # Don't show original extraction when standards-based works
                                         st.session_state[f'show_original_extraction_{uploaded_file.name}'] = False
