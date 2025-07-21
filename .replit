@@ -2,7 +2,7 @@ modules = ["python-3.11", "postgresql-16"]
 
 [nix]
 channel = "stable-24_05"
-packages = ["freetype", "glibcLocales", "lcms2", "libimagequant", "libjpeg", "libtiff", "libwebp", "libxcrypt", "openjpeg", "pkg-config", "poppler_utils", "tcl", "tesseract", "tk", "xcodebuild", "xsimd", "zlib"]
+packages = ["cairo", "ffmpeg-full", "freetype", "ghostscript", "glibcLocales", "gobject-introspection", "gtk3", "lcms2", "libimagequant", "libjpeg", "libtiff", "libwebp", "libxcrypt", "openjpeg", "pkg-config", "poppler_utils", "qhull", "tcl", "tesseract", "tk", "xcodebuild", "xsimd", "zlib"]
 
 [deployment]
 deploymentTarget = "autoscale"

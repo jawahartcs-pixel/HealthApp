@@ -2,6 +2,7 @@ import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
+import numpy as np
 from datetime import datetime, timedelta
 from typing import List, Dict, Any, Optional
 import streamlit as st
@@ -153,6 +154,167 @@ class Visualization:
             
         except Exception as e:
             st.error(f"Error creating trend chart: {str(e)}")
+            return go.Figure()
+    
+    def create_3d_trend_chart(self, test_data: pd.DataFrame, test_type: str, patient_name: str) -> go.Figure:
+        """Create a 3D trend chart for a specific test type and patient."""
+        try:
+            # Filter data for the specific test type
+            filtered_data = test_data[test_data['Test Type'] == test_type].copy()
+            
+            if filtered_data.empty:
+                return go.Figure().add_annotation(
+                    text=f"No data available for {test_type}",
+                    xref="paper", yref="paper",
+                    x=0.5, y=0.5, xanchor='center', yanchor='middle',
+                    showarrow=False, font=dict(size=16)
+                )
+            
+            # Sort by date
+            filtered_data = filtered_data.sort_values('Date')
+            
+            # Create 3D coordinates
+            dates = pd.to_datetime(filtered_data['Date'])
+            values = filtered_data['Value']
+            
+            # Create Z-axis based on index (time progression)
+            z_coords = np.arange(len(dates))
+            
+            # Add some 3D depth by creating multiple layers
+            x_coords = np.arange(len(dates))
+            y_coords = values
+            
+            # Get color for this test type
+            color = self.color_scheme.get(test_type, '#636EFA')
+            
+            # Create 3D scatter plot
+            fig = go.Figure()
+            
+            # Main 3D line
+            fig.add_trace(go.Scatter3d(
+                x=x_coords,
+                y=y_coords,
+                z=z_coords,
+                mode='lines+markers',
+                line=dict(color=color, width=6),
+                marker=dict(
+                    size=8,
+                    color=values,
+                    colorscale='Viridis',
+                    showscale=True,
+                    colorbar=dict(title="Test Value")
+                ),
+                name=test_type,
+                text=[f"Date: {date.strftime('%Y-%m-%d')}<br>Value: {val}" 
+                      for date, val in zip(dates, values)],
+                hovertemplate="<b>%{text}</b><extra></extra>"
+            ))
+            
+            # Add surface for better 3D effect
+            if len(filtered_data) > 2:
+                # Create a mesh surface
+                x_mesh = np.array([x_coords, x_coords])
+                y_mesh = np.array([y_coords, y_coords])
+                z_mesh = np.array([z_coords - 0.5, z_coords + 0.5])
+                
+                fig.add_trace(go.Surface(
+                    x=x_mesh,
+                    y=y_mesh, 
+                    z=z_mesh,
+                    opacity=0.3,
+                    colorscale='Blues',
+                    showscale=False,
+                    name="Trend Surface"
+                ))
+            
+            # Update layout for 3D
+            fig.update_layout(
+                title=f"3D Trend Analysis: {test_type} for {patient_name}",
+                scene=dict(
+                    xaxis_title="Time Index",
+                    yaxis_title=f"{test_type} Value",
+                    zaxis_title="Chronological Order",
+                    camera=dict(
+                        eye=dict(x=1.2, y=1.2, z=1.2)
+                    ),
+                    bgcolor="rgba(0,0,0,0)",
+                    xaxis=dict(backgroundcolor="rgba(0,0,0,0)", gridcolor="lightgray"),
+                    yaxis=dict(backgroundcolor="rgba(0,0,0,0)", gridcolor="lightgray"),
+                    zaxis=dict(backgroundcolor="rgba(0,0,0,0)", gridcolor="lightgray")
+                ),
+                height=500,
+                margin=dict(l=0, r=0, t=50, b=0),
+                paper_bgcolor="rgba(0,0,0,0)",
+                plot_bgcolor="rgba(0,0,0,0)"
+            )
+            
+            return fig
+            
+        except Exception as e:
+            st.error(f"Error creating 3D trend chart: {str(e)}")
+            return go.Figure()
+    
+    def create_3d_multi_test_chart(self, test_data: pd.DataFrame, patient_name: str, test_types: List[str]) -> go.Figure:
+        """Create a 3D chart showing multiple test types for comparison."""
+        try:
+            fig = go.Figure()
+            
+            colors = ['#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4', '#FFEAA7', '#DDA0DD']
+            
+            for i, test_type in enumerate(test_types[:6]):  # Limit to 6 test types
+                filtered_data = test_data[test_data['Test Type'] == test_type].copy()
+                
+                if filtered_data.empty:
+                    continue
+                
+                filtered_data = filtered_data.sort_values('Date')
+                dates = pd.to_datetime(filtered_data['Date'])
+                values = filtered_data['Value']
+                
+                # Normalize values for better 3D visualization
+                normalized_values = (values - values.min()) / (values.max() - values.min()) if values.max() != values.min() else values
+                
+                x_coords = np.arange(len(dates))
+                y_coords = normalized_values
+                z_coords = np.full(len(dates), i)  # Different z-level for each test type
+                
+                fig.add_trace(go.Scatter3d(
+                    x=x_coords,
+                    y=y_coords,
+                    z=z_coords,
+                    mode='lines+markers',
+                    line=dict(color=colors[i % len(colors)], width=4),
+                    marker=dict(size=6, color=colors[i % len(colors)]),
+                    name=test_type,
+                    text=[f"Date: {date.strftime('%Y-%m-%d')}<br>Value: {val}" 
+                          for date, val in zip(dates, values)],
+                    hovertemplate="<b>%{fullData.name}</b><br>%{text}<extra></extra>"
+                ))
+            
+            fig.update_layout(
+                title=f"3D Multi-Test Comparison for {patient_name}",
+                scene=dict(
+                    xaxis_title="Time Index",
+                    yaxis_title="Normalized Values",
+                    zaxis_title="Test Types",
+                    camera=dict(
+                        eye=dict(x=1.5, y=1.5, z=1.5)
+                    ),
+                    bgcolor="rgba(0,0,0,0)",
+                    xaxis=dict(backgroundcolor="rgba(0,0,0,0)", gridcolor="lightgray"),
+                    yaxis=dict(backgroundcolor="rgba(0,0,0,0)", gridcolor="lightgray"),
+                    zaxis=dict(backgroundcolor="rgba(0,0,0,0)", gridcolor="lightgray")
+                ),
+                height=600,
+                margin=dict(l=0, r=0, t=50, b=0),
+                paper_bgcolor="rgba(0,0,0,0)",
+                plot_bgcolor="rgba(0,0,0,0)"
+            )
+            
+            return fig
+            
+        except Exception as e:
+            st.error(f"Error creating 3D multi-test chart: {str(e)}")
             return go.Figure()
     
     def create_multi_patient_chart(self, test_data: pd.DataFrame, test_type: str) -> go.Figure:
