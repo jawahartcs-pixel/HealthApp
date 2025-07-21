@@ -275,6 +275,7 @@ class SimpleAnomalyDetector:
                 'patient_name': patient_name,
                 'total_anomalies': total_anomalies,
                 'severity_breakdown': severity_counts,
+                'severity_distribution': severity_counts,  # Add for backward compatibility
                 'anomaly_types': anomaly_types,
                 'detailed_results': results,
                 'status': 'success'
@@ -317,9 +318,11 @@ class SimpleAnomalyDetector:
             return {
                 'total_anomalies': total_anomalies,
                 'severity_breakdown': severity_counts,
+                'severity_distribution': severity_counts,  # Add for backward compatibility  
                 'patient_summaries': patient_summaries,
                 'detailed_results': results,
                 'total_patients': len(patient_summaries),
+                'data_summary': {'total_patients': len(patient_summaries)},
                 'status': 'success'
             }
             

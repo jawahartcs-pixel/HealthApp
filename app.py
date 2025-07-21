@@ -2762,20 +2762,23 @@ def display_all_patients_analysis(results):
     col1, col2, col3, col4 = st.columns(4)
     
     with col1:
-        st.metric("Total Anomalies", results['total_anomalies'])
+        st.metric("Total Anomalies", results.get('total_anomalies', 0))
     
     with col2:
-        st.metric("High Severity", results['severity_distribution']['high'])
+        severity_dist = results.get('severity_distribution', {'high': 0, 'medium': 0, 'low': 0, 'critical': 0})
+        st.metric("High Severity", severity_dist.get('high', 0))
     
     with col3:
-        st.metric("Medium Severity", results['severity_distribution']['medium'])
+        st.metric("Medium Severity", severity_dist.get('medium', 0))
     
     with col4:
-        st.metric("Patients Analyzed", results['data_summary']['total_patients'])
+        data_summary = results.get('data_summary', {'total_patients': 0})
+        st.metric("Patients Analyzed", data_summary.get('total_patients', 0))
     
     # Severity distribution chart
-    if results['total_anomalies'] > 0:
-        severity_data = results['severity_distribution']
+    total_anomalies = results.get('total_anomalies', 0)
+    if total_anomalies > 0:
+        severity_data = results.get('severity_distribution', {'high': 0, 'medium': 0, 'low': 0})
         fig = px.pie(
             values=list(severity_data.values()),
             names=list(severity_data.keys()),
@@ -2842,13 +2845,14 @@ def display_patient_analysis(results, patient_name):
     col1, col2, col3 = st.columns(3)
     
     with col1:
-        st.metric("Total Anomalies", results['total_anomalies'])
+        st.metric("Total Anomalies", results.get('total_anomalies', 0))
     
     with col2:
-        st.metric("High Severity", results['severity_distribution']['high'])
+        severity_dist = results.get('severity_distribution', {'high': 0, 'medium': 0, 'low': 0, 'critical': 0})
+        st.metric("High Severity", severity_dist.get('high', 0))
     
     with col3:
-        st.metric("Medium Severity", results['severity_distribution']['medium'])
+        st.metric("Medium Severity", severity_dist.get('medium', 0))
     
     # Patient-specific anomalies
     if results['anomalies']:

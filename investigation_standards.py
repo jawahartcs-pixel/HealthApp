@@ -11,7 +11,11 @@ import re
 
 class InvestigationStandards:
     def __init__(self, db_path: str = "blood_test_results.db"):
-        self.db_path = db_path
+        if hasattr(db_path, 'db_path'):
+            # If passed a Database object, extract the path
+            self.db_path = db_path.db_path
+        else:
+            self.db_path = db_path
         self.init_standards_table()
         self.populate_default_standards()
     
