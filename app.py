@@ -320,69 +320,161 @@ def upload_results_page(file_parser, data_processor, user_id):
                                         included_count = len(edited_df[edited_df['Include'] == True])
                                         st.caption(f"Ready to save: {included_count} tests selected")
                                         
-                                        # Investigation Standards Browser for manual additions
+                                        # Investigation Standards Excel Editor for managing standards
                                         st.markdown("---")
-                                        st.subheader("🔬 Investigation Standards Browser")
-                                        st.caption("Browse and copy standard names for manual additions to the table above")
+                                        st.subheader("🔬 Investigation Standards Editor")
+                                        st.caption("Add new standards or edit existing ones. Changes will trigger automatic reprocessing of the document.")
                                         
                                         # Get all investigation standards
                                         investigation_standards_obj = st.session_state.get('investigation_standards')
                                         if investigation_standards_obj:
-                                            all_standards = investigation_standards_obj.get_all_standards()
-                                            if all_standards:
-                                                # Create a formatted list for the selectbox
-                                                standards_options = []
-                                                for standard in all_standards:
-                                                    # Format: "Standard Name (Category) - Unit"
-                                                    unit = standard.get('common_unit') or standard.get('male_unit', '')
-                                                    category = standard.get('category', 'Other')
-                                                    aliases = standard.get('aliases', '')
-                                                    
-                                                    display_text = f"{standard['standard_name']} ({category})"
-                                                    if unit:
-                                                        display_text += f" - {unit}"
-                                                    if aliases:
-                                                        display_text += f" | Aliases: {aliases[:50]}..."
-                                                    
-                                                    standards_options.append({
-                                                        'display': display_text,
-                                                        'name': standard['standard_name'],
-                                                        'category': category,
-                                                        'unit': unit,
-                                                        'male_range': f"{standard.get('male_range_min', '')}-{standard.get('male_range_max', '')}",
-                                                        'female_range': f"{standard.get('female_range_min', '')}-{standard.get('female_range_max', '')}",
-                                                        'aliases': aliases
-                                                    })
+                                            standards = investigation_standards_obj.get_all_standards()
+                                            
+                                            if standards:
+                                                # Convert to DataFrame for editing
+                                                standards_df = pd.DataFrame(standards)
                                                 
-                                                # Sort by category then by name
-                                                standards_options.sort(key=lambda x: (x['category'], x['name']))
-                                                
-                                                # Create selectbox
-                                                selected_standard = st.selectbox(
-                                                    "Select Investigation Standard to Copy",
-                                                    options=standards_options,
-                                                    format_func=lambda x: x['display'],
-                                                    index=None,
-                                                    placeholder="Choose a standard to view details...",
-                                                    key=f"standards_browser_{uploaded_file.name}"
+                                                # Add computed unit column for display
+                                                standards_df['computed_unit'] = standards_df.apply(
+                                                    lambda row: row.get('common_unit') or row.get('male_unit') or row.get('female_unit') or '', 
+                                                    axis=1
                                                 )
                                                 
-                                                # Show details when a standard is selected
-                                                if selected_standard:
-                                                    st.info(f"""
-                                                    **📋 Standard Details:**
+                                                # Define column configuration for editing
+                                                edit_column_config = {
+                                                    'id': st.column_config.NumberColumn('ID', width='small', disabled=True),
+                                                    'standard_name': st.column_config.TextColumn('Standard Name', width='medium', required=True),
+                                                    'category': st.column_config.SelectboxColumn(
+                                                        'Category', 
+                                                        width='small',
+                                                        options=investigation_standards_obj.get_predefined_categories(),
+                                                        required=True
+                                                    ),
+                                                    'computed_unit': st.column_config.TextColumn('Unit', width='small'),
+                                                    'male_range_min': st.column_config.NumberColumn('Male Min', width='small', format="%.2f"),
+                                                    'male_range_max': st.column_config.NumberColumn('Male Max', width='small', format="%.2f"),
+                                                    'female_range_min': st.column_config.NumberColumn('Female Min', width='small', format="%.2f"),
+                                                    'female_range_max': st.column_config.NumberColumn('Female Max', width='small', format="%.2f"),
+                                                    'aliases': st.column_config.TextColumn('Aliases', width='large', help="Comma-separated list"),
+                                                    'description': st.column_config.TextColumn('Description', width='large')
+                                                }
+                                                
+                                                # Select columns for editing
+                                                edit_columns = [
+                                                    'id', 'standard_name', 'category', 'computed_unit',
+                                                    'male_range_min', 'male_range_max', 'female_range_min', 'female_range_max',
+                                                    'aliases', 'description'
+                                                ]
+                                                
+                                                st.info("ℹ️ Standard names must be unique. Changes will trigger document reprocessing.")
+                                                
+                                                # Excel-like editable table with unique key for upload page
+                                                edited_standards_df = st.data_editor(
+                                                    standards_df[edit_columns],
+                                                    column_config=edit_column_config,
+                                                    use_container_width=True,
+                                                    num_rows="dynamic",
+                                                    hide_index=True,
+                                                    key=f"standards_editor_{uploaded_file.name}"
+                                                )
+                                                
+                                                # Process changes and additions - outside the form to avoid conflicts
+                                                if not edited_standards_df.equals(standards_df[edit_columns]):
+                                                    st.markdown("**💾 Standards Changes Detected**")
                                                     
-                                                    **Name:** {selected_standard['name']}  
-                                                    **Category:** {selected_standard['category']}  
-                                                    **Unit:** {selected_standard['unit']}  
-                                                    **Male Range:** {selected_standard['male_range']} {selected_standard['unit']}  
-                                                    **Female Range:** {selected_standard['female_range']} {selected_standard['unit']}  
-                                                    **Aliases:** {selected_standard['aliases'] or 'None'}
+                                                    # Check for new rows
+                                                    new_rows = []
+                                                    for idx, row in edited_standards_df.iterrows():
+                                                        if (pd.isna(row['id']) or row['id'] == 0) and pd.notna(row['standard_name']) and str(row['standard_name']).strip():
+                                                            new_rows.append(row)
                                                     
-                                                    💡 **Tip:** Copy the standard name above and paste it into the Investigation column in the table
-                                                    """)
+                                                    # Check for modifications
+                                                    existing_changes = []
+                                                    for idx, edited_row in edited_standards_df.iterrows():
+                                                        if pd.notna(edited_row['id']) and edited_row['id'] != 0:
+                                                            record_id = int(edited_row['id'])
+                                                            original_rows = standards_df[standards_df['id'] == record_id]
+                                                            if len(original_rows) > 0:
+                                                                original_row = original_rows.iloc[0]
+                                                                edit_cols_without_id = [col for col in edit_columns if col != 'id']
+                                                                if not original_row[edit_cols_without_id].equals(edited_row[edit_cols_without_id]):
+                                                                    existing_changes.append((record_id, edited_row, original_row))
+                                                    
+                                                    # Create columns for separate buttons - outside the main form
+                                                    col_std1, col_std2 = st.columns(2)
+                                                    standards_changed = False
+                                                    
+                                                    with col_std1:
+                                                        if new_rows and st.button("✅ Add New Standards", type="secondary", key=f"add_standards_{uploaded_file.name}"):
+                                                            success_count = 0
+                                                            for row in new_rows:
+                                                                standard_data = {
+                                                                    'standard_name': str(row['standard_name']).strip(),
+                                                                    'aliases': row['aliases'] if pd.notna(row['aliases']) else '',
+                                                                    'male_range_min': row['male_range_min'] if pd.notna(row['male_range_min']) else 0.0,
+                                                                    'male_range_max': row['male_range_max'] if pd.notna(row['male_range_max']) else 0.0,
+                                                                    'female_range_min': row['female_range_min'] if pd.notna(row['female_range_min']) else 0.0,
+                                                                    'female_range_max': row['female_range_max'] if pd.notna(row['female_range_max']) else 0.0,
+                                                                    'male_unit': row['computed_unit'] if pd.notna(row['computed_unit']) else '',
+                                                                    'female_unit': row['computed_unit'] if pd.notna(row['computed_unit']) else '',
+                                                                    'common_unit': row['computed_unit'] if pd.notna(row['computed_unit']) else '',
+                                                                    'description': row['description'] if pd.notna(row['description']) else '',
+                                                                    'category': row['category'] if pd.notna(row['category']) else 'Other'
+                                                                }
+                                                                
+                                                                if investigation_standards_obj.add_standard(standard_data):
+                                                                    success_count += 1
+                                                            
+                                                            if success_count > 0:
+                                                                st.success(f"Added {success_count} new standards!")
+                                                                standards_changed = True
+                                                    
+                                                    with col_std2:
+                                                        if existing_changes and st.button("💾 Update Standards", type="secondary", key=f"update_standards_{uploaded_file.name}"):
+                                                            success_count = 0
+                                                            for record_id, edited_row, original_row in existing_changes:
+                                                                update_data = {
+                                                                    'standard_name': edited_row['standard_name'],
+                                                                    'aliases': edited_row['aliases'] if pd.notna(edited_row['aliases']) else '',
+                                                                    'male_range_min': edited_row['male_range_min'] if pd.notna(edited_row['male_range_min']) else 0.0,
+                                                                    'male_range_max': edited_row['male_range_max'] if pd.notna(edited_row['male_range_max']) else 0.0,
+                                                                    'female_range_min': edited_row['female_range_min'] if pd.notna(edited_row['female_range_min']) else 0.0,
+                                                                    'female_range_max': edited_row['female_range_max'] if pd.notna(edited_row['female_range_max']) else 0.0,
+                                                                    'male_unit': edited_row['computed_unit'] if pd.notna(edited_row['computed_unit']) else '',
+                                                                    'female_unit': edited_row['computed_unit'] if pd.notna(edited_row['computed_unit']) else '',
+                                                                    'common_unit': edited_row['computed_unit'] if pd.notna(edited_row['computed_unit']) else '',
+                                                                    'description': edited_row['description'] if pd.notna(edited_row['description']) else '',
+                                                                    'category': edited_row['category'] if pd.notna(edited_row['category']) else 'Other'
+                                                                }
+                                                                
+                                                                if investigation_standards_obj.update_standard(record_id, update_data):
+                                                                    success_count += 1
+                                                            
+                                                            if success_count > 0:
+                                                                st.success(f"Updated {success_count} standards!")
+                                                                standards_changed = True
+                                                    
+                                                    # Clear cache and trigger reprocessing when standards change
+                                                    if standards_changed:
+                                                        # Clear the cache
+                                                        if f'extraction_cache_{uploaded_file.name}' in st.session_state:
+                                                            del st.session_state[f'extraction_cache_{uploaded_file.name}']
+                                                        
+                                                        # Force reprocessing by rerunning the page
+                                                        st.success("🔄 Standards updated! Document will be reprocessed with new standards...")
+                                                        st.rerun()
+                                                    
+                                                    # Show preview of changes if no action taken
+                                                    if new_rows:
+                                                        with st.expander(f"Preview: {len(new_rows)} new standards to add"):
+                                                            st.dataframe(pd.DataFrame(new_rows), use_container_width=True)
+                                                    
+                                                    if existing_changes:
+                                                        with st.expander(f"Preview: {len(existing_changes)} standards to update"):
+                                                            changes_df = pd.DataFrame([change[1] for change in existing_changes])
+                                                            st.dataframe(changes_df, use_container_width=True)
                                             else:
-                                                st.info("No investigation standards found. Add some standards first in the Investigation Standards page.")
+                                                st.info("No investigation standards found. You can add new standards using the table above.")
                                         
                                         st.markdown("---")
                                         
@@ -563,69 +655,161 @@ def upload_results_page(file_parser, data_processor, user_id):
                                         included_count = len(edited_df[edited_df['Include'] == True])
                                         st.caption(f"Ready to save: {included_count} tests selected")
                                         
-                                        # Investigation Standards Browser for manual additions
+                                        # Investigation Standards Excel Editor for managing standards
                                         st.markdown("---")
-                                        st.subheader("🔬 Investigation Standards Browser")
-                                        st.caption("Browse and copy standard names for manual additions to the table above")
+                                        st.subheader("🔬 Investigation Standards Editor")
+                                        st.caption("Add new standards or edit existing ones. Changes will trigger automatic reprocessing of the document.")
                                         
                                         # Get all investigation standards
                                         investigation_standards_obj = st.session_state.get('investigation_standards')
                                         if investigation_standards_obj:
-                                            all_standards = investigation_standards_obj.get_all_standards()
-                                            if all_standards:
-                                                # Create a formatted list for the selectbox
-                                                standards_options = []
-                                                for standard in all_standards:
-                                                    # Format: "Standard Name (Category) - Unit"
-                                                    unit = standard.get('common_unit') or standard.get('male_unit', '')
-                                                    category = standard.get('category', 'Other')
-                                                    aliases = standard.get('aliases', '')
-                                                    
-                                                    display_text = f"{standard['standard_name']} ({category})"
-                                                    if unit:
-                                                        display_text += f" - {unit}"
-                                                    if aliases:
-                                                        display_text += f" | Aliases: {aliases[:50]}..."
-                                                    
-                                                    standards_options.append({
-                                                        'display': display_text,
-                                                        'name': standard['standard_name'],
-                                                        'category': category,
-                                                        'unit': unit,
-                                                        'male_range': f"{standard.get('male_range_min', '')}-{standard.get('male_range_max', '')}",
-                                                        'female_range': f"{standard.get('female_range_min', '')}-{standard.get('female_range_max', '')}",
-                                                        'aliases': aliases
-                                                    })
+                                            standards = investigation_standards_obj.get_all_standards()
+                                            
+                                            if standards:
+                                                # Convert to DataFrame for editing
+                                                standards_df = pd.DataFrame(standards)
                                                 
-                                                # Sort by category then by name
-                                                standards_options.sort(key=lambda x: (x['category'], x['name']))
-                                                
-                                                # Create selectbox
-                                                selected_standard = st.selectbox(
-                                                    "Select Investigation Standard to Copy",
-                                                    options=standards_options,
-                                                    format_func=lambda x: x['display'],
-                                                    index=None,
-                                                    placeholder="Choose a standard to view details...",
-                                                    key=f"standards_browser_with_orig_{uploaded_file.name}"
+                                                # Add computed unit column for display
+                                                standards_df['computed_unit'] = standards_df.apply(
+                                                    lambda row: row.get('common_unit') or row.get('male_unit') or row.get('female_unit') or '', 
+                                                    axis=1
                                                 )
                                                 
-                                                # Show details when a standard is selected
-                                                if selected_standard:
-                                                    st.info(f"""
-                                                    **📋 Standard Details:**
+                                                # Define column configuration for editing
+                                                edit_column_config = {
+                                                    'id': st.column_config.NumberColumn('ID', width='small', disabled=True),
+                                                    'standard_name': st.column_config.TextColumn('Standard Name', width='medium', required=True),
+                                                    'category': st.column_config.SelectboxColumn(
+                                                        'Category', 
+                                                        width='small',
+                                                        options=investigation_standards_obj.get_predefined_categories(),
+                                                        required=True
+                                                    ),
+                                                    'computed_unit': st.column_config.TextColumn('Unit', width='small'),
+                                                    'male_range_min': st.column_config.NumberColumn('Male Min', width='small', format="%.2f"),
+                                                    'male_range_max': st.column_config.NumberColumn('Male Max', width='small', format="%.2f"),
+                                                    'female_range_min': st.column_config.NumberColumn('Female Min', width='small', format="%.2f"),
+                                                    'female_range_max': st.column_config.NumberColumn('Female Max', width='small', format="%.2f"),
+                                                    'aliases': st.column_config.TextColumn('Aliases', width='large', help="Comma-separated list"),
+                                                    'description': st.column_config.TextColumn('Description', width='large')
+                                                }
+                                                
+                                                # Select columns for editing
+                                                edit_columns = [
+                                                    'id', 'standard_name', 'category', 'computed_unit',
+                                                    'male_range_min', 'male_range_max', 'female_range_min', 'female_range_max',
+                                                    'aliases', 'description'
+                                                ]
+                                                
+                                                st.info("ℹ️ Standard names must be unique. Changes will trigger document reprocessing.")
+                                                
+                                                # Excel-like editable table with unique key for upload page
+                                                edited_standards_df = st.data_editor(
+                                                    standards_df[edit_columns],
+                                                    column_config=edit_column_config,
+                                                    use_container_width=True,
+                                                    num_rows="dynamic",
+                                                    hide_index=True,
+                                                    key=f"standards_editor_orig_{uploaded_file.name}"
+                                                )
+                                                
+                                                # Process changes and additions - outside the form to avoid conflicts
+                                                if not edited_standards_df.equals(standards_df[edit_columns]):
+                                                    st.markdown("**💾 Standards Changes Detected**")
                                                     
-                                                    **Name:** {selected_standard['name']}  
-                                                    **Category:** {selected_standard['category']}  
-                                                    **Unit:** {selected_standard['unit']}  
-                                                    **Male Range:** {selected_standard['male_range']} {selected_standard['unit']}  
-                                                    **Female Range:** {selected_standard['female_range']} {selected_standard['unit']}  
-                                                    **Aliases:** {selected_standard['aliases'] or 'None'}
+                                                    # Check for new rows
+                                                    new_rows = []
+                                                    for idx, row in edited_standards_df.iterrows():
+                                                        if (pd.isna(row['id']) or row['id'] == 0) and pd.notna(row['standard_name']) and str(row['standard_name']).strip():
+                                                            new_rows.append(row)
                                                     
-                                                    💡 **Tip:** Copy the standard name above and paste it into the Investigation column in the table
-                                                    """)
+                                                    # Check for modifications
+                                                    existing_changes = []
+                                                    for idx, edited_row in edited_standards_df.iterrows():
+                                                        if pd.notna(edited_row['id']) and edited_row['id'] != 0:
+                                                            record_id = int(edited_row['id'])
+                                                            original_rows = standards_df[standards_df['id'] == record_id]
+                                                            if len(original_rows) > 0:
+                                                                original_row = original_rows.iloc[0]
+                                                                edit_cols_without_id = [col for col in edit_columns if col != 'id']
+                                                                if not original_row[edit_cols_without_id].equals(edited_row[edit_cols_without_id]):
+                                                                    existing_changes.append((record_id, edited_row, original_row))
+                                                    
+                                                    # Create columns for separate buttons - outside the main form
+                                                    col_std1, col_std2 = st.columns(2)
+                                                    standards_changed = False
+                                                    
+                                                    with col_std1:
+                                                        if new_rows and st.button("✅ Add New Standards", type="secondary", key=f"add_standards_orig_{uploaded_file.name}"):
+                                                            success_count = 0
+                                                            for row in new_rows:
+                                                                standard_data = {
+                                                                    'standard_name': str(row['standard_name']).strip(),
+                                                                    'aliases': row['aliases'] if pd.notna(row['aliases']) else '',
+                                                                    'male_range_min': row['male_range_min'] if pd.notna(row['male_range_min']) else 0.0,
+                                                                    'male_range_max': row['male_range_max'] if pd.notna(row['male_range_max']) else 0.0,
+                                                                    'female_range_min': row['female_range_min'] if pd.notna(row['female_range_min']) else 0.0,
+                                                                    'female_range_max': row['female_range_max'] if pd.notna(row['female_range_max']) else 0.0,
+                                                                    'male_unit': row['computed_unit'] if pd.notna(row['computed_unit']) else '',
+                                                                    'female_unit': row['computed_unit'] if pd.notna(row['computed_unit']) else '',
+                                                                    'common_unit': row['computed_unit'] if pd.notna(row['computed_unit']) else '',
+                                                                    'description': row['description'] if pd.notna(row['description']) else '',
+                                                                    'category': row['category'] if pd.notna(row['category']) else 'Other'
+                                                                }
+                                                                
+                                                                if investigation_standards_obj.add_standard(standard_data):
+                                                                    success_count += 1
+                                                            
+                                                            if success_count > 0:
+                                                                st.success(f"Added {success_count} new standards!")
+                                                                standards_changed = True
+                                                    
+                                                    with col_std2:
+                                                        if existing_changes and st.button("💾 Update Standards", type="secondary", key=f"update_standards_orig_{uploaded_file.name}"):
+                                                            success_count = 0
+                                                            for record_id, edited_row, original_row in existing_changes:
+                                                                update_data = {
+                                                                    'standard_name': edited_row['standard_name'],
+                                                                    'aliases': edited_row['aliases'] if pd.notna(edited_row['aliases']) else '',
+                                                                    'male_range_min': edited_row['male_range_min'] if pd.notna(edited_row['male_range_min']) else 0.0,
+                                                                    'male_range_max': edited_row['male_range_max'] if pd.notna(edited_row['male_range_max']) else 0.0,
+                                                                    'female_range_min': edited_row['female_range_min'] if pd.notna(edited_row['female_range_min']) else 0.0,
+                                                                    'female_range_max': edited_row['female_range_max'] if pd.notna(edited_row['female_range_max']) else 0.0,
+                                                                    'male_unit': edited_row['computed_unit'] if pd.notna(edited_row['computed_unit']) else '',
+                                                                    'female_unit': edited_row['computed_unit'] if pd.notna(edited_row['computed_unit']) else '',
+                                                                    'common_unit': edited_row['computed_unit'] if pd.notna(edited_row['computed_unit']) else '',
+                                                                    'description': edited_row['description'] if pd.notna(edited_row['description']) else '',
+                                                                    'category': edited_row['category'] if pd.notna(edited_row['category']) else 'Other'
+                                                                }
+                                                                
+                                                                if investigation_standards_obj.update_standard(record_id, update_data):
+                                                                    success_count += 1
+                                                            
+                                                            if success_count > 0:
+                                                                st.success(f"Updated {success_count} standards!")
+                                                                standards_changed = True
+                                                    
+                                                    # Clear cache and trigger reprocessing when standards change
+                                                    if standards_changed:
+                                                        # Clear the cache
+                                                        if f'extraction_cache_{uploaded_file.name}' in st.session_state:
+                                                            del st.session_state[f'extraction_cache_{uploaded_file.name}']
+                                                        
+                                                        # Force reprocessing by rerunning the page
+                                                        st.success("🔄 Standards updated! Document will be reprocessed with new standards...")
+                                                        st.rerun()
+                                                    
+                                                    # Show preview of changes if no action taken
+                                                    if new_rows:
+                                                        with st.expander(f"Preview: {len(new_rows)} new standards to add"):
+                                                            st.dataframe(pd.DataFrame(new_rows), use_container_width=True)
+                                                    
+                                                    if existing_changes:
+                                                        with st.expander(f"Preview: {len(existing_changes)} standards to update"):
+                                                            changes_df = pd.DataFrame([change[1] for change in existing_changes])
+                                                            st.dataframe(changes_df, use_container_width=True)
                                             else:
-                                                st.info("No investigation standards found. Add some standards first in the Investigation Standards page.")
+                                                st.info("No investigation standards found. You can add new standards using the table above.")
                                         
                                         st.markdown("---")
                                         
