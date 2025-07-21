@@ -271,6 +271,13 @@ class SimpleAnomalyDetector:
                                 anomaly_types[method_name] = []
                             anomaly_types[method_name].append(anomaly)
             
+            # Collect all anomalies for this patient
+            patient_anomalies = []
+            for method, data in results.items():
+                if method in ['statistical_outliers', 'temporal_anomalies', 'isolation_forest']:
+                    if isinstance(data, dict) and 'anomalies' in data:
+                        patient_anomalies.extend(data['anomalies'])
+            
             return {
                 'patient_name': patient_name,
                 'total_anomalies': total_anomalies,
@@ -279,6 +286,7 @@ class SimpleAnomalyDetector:
                 'anomaly_types': anomaly_types,
                 'detailed_results': results,
                 'recommendations': [],  # Add empty recommendations list for compatibility
+                'anomalies': patient_anomalies,  # Add complete anomalies list for this patient
                 'status': 'success'
             }
             
@@ -316,6 +324,13 @@ class SimpleAnomalyDetector:
                             patient_summaries[patient]['count'] += 1
                             patient_summaries[patient][severity] += 1
             
+            # Collect all anomalies for the anomalies field
+            all_anomalies = []
+            for method, data in results.items():
+                if method in ['statistical_outliers', 'temporal_anomalies', 'isolation_forest']:
+                    if isinstance(data, dict) and 'anomalies' in data:
+                        all_anomalies.extend(data['anomalies'])
+            
             return {
                 'total_anomalies': total_anomalies,
                 'severity_breakdown': severity_counts,
@@ -325,6 +340,7 @@ class SimpleAnomalyDetector:
                 'total_patients': len(patient_summaries),
                 'data_summary': {'total_patients': len(patient_summaries)},
                 'recommendations': [],  # Add empty recommendations list for compatibility
+                'anomalies': all_anomalies,  # Add complete anomalies list
                 'status': 'success'
             }
             
