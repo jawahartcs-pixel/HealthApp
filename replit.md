@@ -188,7 +188,7 @@ Preferred communication style: Simple, everyday language.
   - Enhanced interface with clear section headers and intuitive row count controls
   - Improved workflow for users adding large batches of test results
 
-### July 21, 2025 - Enhanced Visualizations & PDF Reports: 3D Charts and Shareable Patient Reports
+### July 21, 2025 - Enhanced Visualizations & PDF Reports: 3D Charts and Shareable Patient Reports  
 - **3D Chart Visualization**: Added appealing 3D graph capabilities for enhanced data visualization
   - Created 3D trend charts showing test values over time with depth and interactive surfaces
   - Implemented 3D multi-test comparison charts for normalized comparison across different test types
@@ -210,6 +210,27 @@ Preferred communication style: Simple, everyday language.
   - Updated severity thresholds: 2.0+ deviation = CRITICAL, 1.0+ = HIGH, 0.5+ = MEDIUM, <0.5 = LOW
   - Corrected severity determination logic to properly escalate high deviations
   - Enhanced clinical relevance of alert classifications
+
+### July 21, 2025 - User Preference Updates: Beautiful 2D Charts & Investigation Standards Categories
+- **User Preference Documentation**: User prefers beautiful 2D graph designs over 3D for better performance
+  - 3D graphs are cumbersome to look at and take long time to render
+  - User wants proper category grouping using investigation standards table
+  - Bilirubin should be in liver category, not other category
+- **Chart System Overhaul**: Replaced 3D visualization with enhanced 2D chart options
+  - Changed chart type selection from "3D Enhanced/3D Multi-Test" to "2D Beautiful/2D Grouped"
+  - Created beautiful 2D charts with enhanced styling, filled areas, and smooth curves
+  - Added grouped comparison charts for multiple tests within same medical category
+  - Implemented proper investigation standards-based categorization instead of hardcoded categories
+- **Investigation Standards Integration**: Fixed category grouping to use database standards
+  - Categories now pulled from investigation_standards table instead of hardcoded test_categories
+  - Proper matching of test types to their medical categories from standards database
+  - Aliases and alternative names properly matched to correct categories
+  - Enhanced fallback handling for tests not found in standards database
+- **System Reliability Improvements**: Fixed core data structure issues
+  - Corrected PDF report column mismatch errors by fixing DataFrame creation to match database query results
+  - Added missing get_anomaly_trends method to SimpleAnomalyDetector
+  - Enhanced error handling for severity_distribution access with proper fallbacks
+  - Fixed visualization method calls with proper 2D chart implementations
 
 ### July 20, 2025 - Enhanced Investigation Standards Management: Fixed Excel Editing & Expanded Categories
 - **Fixed Excel Editing Constraint Violations**: Added validation to prevent duplicate standard names during updates
