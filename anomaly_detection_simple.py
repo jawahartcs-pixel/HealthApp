@@ -285,7 +285,7 @@ class SimpleAnomalyDetector:
                 'severity_distribution': severity_counts,  # Add for backward compatibility
                 'anomaly_types': anomaly_types,
                 'detailed_results': results,
-                'recommendations': [],  # Add empty recommendations list for compatibility
+                'recommendations': self._generate_patient_recommendations(patient_name, results, total_anomalies),
                 'anomalies': patient_anomalies,  # Add complete anomalies list for this patient
                 'status': 'success'
             }
@@ -339,7 +339,7 @@ class SimpleAnomalyDetector:
                 'detailed_results': results,
                 'total_patients': len(patient_summaries),
                 'data_summary': {'total_patients': len(patient_summaries)},
-                'recommendations': [],  # Add empty recommendations list for compatibility
+                'recommendations': self._generate_recommendations(results, patient_summaries),
                 'anomalies': all_anomalies,  # Add complete anomalies list
                 'status': 'success'
             }
@@ -396,3 +396,86 @@ class SimpleAnomalyDetector:
                 'status': 'error',
                 'trends': []
             }
+    
+    def _generate_recommendations(self, results: Dict, patient_summaries: Dict) -> List[Dict]:
+        """Generate actionable recommendations based on anomaly detection results."""
+        recommendations = []
+        
+        # General recommendations based on total anomalies
+        total_anomalies = sum(len(data.get('anomalies', [])) for data in results.values() if isinstance(data, dict))
+        
+        if total_anomalies > 10:
+            recommendations.append({
+                'title': 'High Anomaly Alert',
+                'description': f'Detected {total_anomalies} anomalies across all patients. Consider reviewing testing protocols and patient care plans.',
+                'priority': 'high',
+                'action_items': [
+                    'Review testing procedures for accuracy',
+                    'Identify patterns in abnormal results',
+                    'Consider additional diagnostic testing',
+                    'Schedule follow-up appointments for affected patients'
+                ]
+            })
+        
+        # Patient-specific recommendations
+        high_risk_patients = [name for name, summary in patient_summaries.items() if summary.get('high', 0) > 0]
+        
+        if high_risk_patients:
+            recommendations.append({
+                'title': 'High-Risk Patient Monitoring',
+                'description': f'Found {len(high_risk_patients)} patients with high-severity anomalies requiring immediate attention.',
+                'priority': 'high',
+                'action_items': [
+                    'Contact high-risk patients immediately',
+                    'Schedule urgent medical consultations',
+                    'Review medication adjustments',
+                    'Implement enhanced monitoring protocols'
+                ]
+            })
+        
+        # Test-specific recommendations
+        if 'statistical_outliers' in results and results['statistical_outliers'].get('anomalies'):
+            recommendations.append({
+                'title': 'Statistical Outlier Review',
+                'description': 'Multiple test results show statistical deviations from normal ranges.',
+                'priority': 'medium',
+                'action_items': [
+                    'Verify laboratory calibration',
+                    'Check for systematic testing errors',
+                    'Review patient preparation protocols',
+                    'Consider retesting abnormal values'
+                ]
+            })
+        
+        return recommendations
+    
+    def _generate_patient_recommendations(self, patient_name: str, results: Dict, total_anomalies: int) -> List[Dict]:
+        """Generate recommendations for a specific patient."""
+        recommendations = []
+        
+        if total_anomalies > 3:
+            recommendations.append({
+                'title': 'Multiple Abnormal Results',
+                'description': f'Patient {patient_name} has {total_anomalies} anomalous test results requiring medical review.',
+                'priority': 'high',
+                'action_items': [
+                    'Schedule immediate medical consultation',
+                    'Review current medications and dosages',
+                    'Consider comprehensive health assessment',
+                    'Implement more frequent monitoring'
+                ]
+            })
+        elif total_anomalies > 0:
+            recommendations.append({
+                'title': 'Monitoring Required',
+                'description': f'Patient {patient_name} shows some irregular test patterns.',
+                'priority': 'medium',
+                'action_items': [
+                    'Schedule follow-up appointment',
+                    'Retest abnormal values within 2 weeks',
+                    'Review lifestyle factors',
+                    'Monitor trends closely'
+                ]
+            })
+        
+        return recommendations

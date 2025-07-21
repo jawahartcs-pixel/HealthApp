@@ -240,6 +240,9 @@ Preferred communication style: Simple, everyday language.
   - Enhanced PDF charts with data point value labels showing precise test values for each measurement
   - Organized PDF chart layout by medical categories using investigation standards instead of alphabetical ordering
   - Added category headers in PDF reports for better medical data organization and readability
+  - Added get_test_category method to investigation standards for proper medical categorization
+  - Enhanced AI anomaly detection with comprehensive recommendation generation for both all-patients and individual patient analysis
+  - Generated actionable medical recommendations with priority levels and specific action items
 
 ### July 20, 2025 - Enhanced Investigation Standards Management: Fixed Excel Editing & Expanded Categories
 - **Fixed Excel Editing Constraint Violations**: Added validation to prevent duplicate standard names during updates

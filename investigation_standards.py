@@ -256,6 +256,17 @@ class InvestigationStandards:
                     })
             return standards
     
+    def get_test_category(self, test_name: str) -> str:
+        """Get the medical category for a test name."""
+        # First try to find exact match or standardize the name
+        standardized_name, match_info = self.standardize_test_name(test_name)
+        
+        if match_info and 'category' in match_info:
+            return match_info['category']
+        
+        # If no match found, return a default category
+        return 'Other'
+    
     def add_standard(self, standard_data: Dict) -> bool:
         """Add a new investigation standard."""
         try:
