@@ -1533,19 +1533,31 @@ def patient_dashboard_page(db, visualization, alert_system, user_id):
             standards_categories = {}
             all_standards = investigation_standards.get_all_standards()
             for standard in all_standards:
-                category = standard[4]  # category column
-                test_name = standard[1]  # name column
-                if category not in standards_categories:
-                    standards_categories[category] = []
-                standards_categories[category].append(test_name)
+                # Handle both dict and tuple/list formats
+                if isinstance(standard, dict):
+                    category = standard.get('category', 'Other')
+                    test_name = standard.get('standard_name', '')
+                    aliases = standard.get('aliases', '')
+                else:
+                    # Handle tuple/list format - check length to avoid KeyError
+                    if len(standard) > 4:
+                        category = standard[4] if standard[4] else 'Other'  # category column
+                        test_name = standard[1] if len(standard) > 1 else ''  # name column
+                        aliases = standard[5] if len(standard) > 5 and standard[5] else ""
+                    else:
+                        continue  # Skip malformed entries
                 
-                # Also check aliases
-                aliases = standard[5] if len(standard) > 5 and standard[5] else ""
-                if aliases:
-                    for alias in aliases.split(','):
-                        alias = alias.strip()
-                        if alias and alias not in standards_categories[category]:
-                            standards_categories[category].append(alias)
+                if category and test_name:
+                    if category not in standards_categories:
+                        standards_categories[category] = []
+                    standards_categories[category].append(test_name)
+                    
+                    # Also check aliases
+                    if aliases:
+                        for alias in aliases.split(','):
+                            alias = alias.strip()
+                            if alias and alias not in standards_categories[category]:
+                                standards_categories[category].append(alias)
             
             # Match test types to investigation standards categories
             proper_categorized_tests = {}
@@ -2788,15 +2800,16 @@ def display_all_patients_analysis(results):
         st.plotly_chart(fig, use_container_width=True)
     
     # Recommendations
-    if results['recommendations']:
+    recommendations = results.get('recommendations', [])
+    if recommendations:
         st.subheader("🎯 AI Recommendations")
         
-        for rec in results['recommendations']:
+        for rec in recommendations:
             severity_color = {
                 'high': '#ff4444',
                 'medium': '#ffaa00',
                 'low': '#44ff44'
-            }.get(rec['priority'], '#888888')
+            }.get(rec.get('priority', 'medium'), '#888888')
             
             st.markdown(f"""
             <div style="border-left: 4px solid {severity_color}; padding-left: 20px; margin: 10px 0;">
@@ -2872,11 +2885,12 @@ def display_patient_analysis(results, patient_name):
                 if 'tests_involved' in anomaly:
                     st.markdown(f"**Tests Involved:** {', '.join(anomaly['tests_involved'])}")
     
-    # Recommendations
-    if results['recommendations']:
+    # Recommendations  
+    patient_recommendations = results.get('recommendations', [])
+    if patient_recommendations:
         st.subheader("🎯 Personalized Recommendations")
         
-        for rec in results['recommendations']:
+        for rec in patient_recommendations:
             st.markdown(f"""
             <div style="border-left: 4px solid #4CAF50; padding-left: 20px; margin: 10px 0;">
                 <h4>{rec['title']}</h4>

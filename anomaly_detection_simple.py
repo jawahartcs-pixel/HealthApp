@@ -278,6 +278,7 @@ class SimpleAnomalyDetector:
                 'severity_distribution': severity_counts,  # Add for backward compatibility
                 'anomaly_types': anomaly_types,
                 'detailed_results': results,
+                'recommendations': [],  # Add empty recommendations list for compatibility
                 'status': 'success'
             }
             
@@ -323,6 +324,7 @@ class SimpleAnomalyDetector:
                 'detailed_results': results,
                 'total_patients': len(patient_summaries),
                 'data_summary': {'total_patients': len(patient_summaries)},
+                'recommendations': [],  # Add empty recommendations list for compatibility
                 'status': 'success'
             }
             
