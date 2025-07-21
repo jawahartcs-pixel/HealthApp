@@ -109,8 +109,10 @@ class AlertSystem:
                 
                 # Determine severity based on deviation
                 if deviation >= 2.0:  # More than 2x range width outside
-                    return 'HIGH'
+                    return 'CRITICAL'
                 elif deviation >= 1.0:  # More than 1x range width outside
+                    return 'HIGH'
+                elif deviation >= 0.5:  # More than 0.5x range width outside
                     return 'MEDIUM'
                 else:
                     return 'LOW'

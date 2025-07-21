@@ -188,6 +188,18 @@ Preferred communication style: Simple, everyday language.
   - Enhanced interface with clear section headers and intuitive row count controls
   - Improved workflow for users adding large batches of test results
 
+### July 20, 2025 - Fixed Anomaly Detection & Alert System Issues
+- **Anomaly Detection Column Mismatch Fix**: Resolved "6 columns passed, passed data had 5 columns" error
+  - Enhanced data preparation with robust error handling for column mismatches
+  - Added fallback to simplified data structure when pivoting fails
+  - Improved numeric column detection and validation
+  - Better handling of insufficient data scenarios with graceful degradation
+- **Alert Severity Level Correction**: Fixed incorrect "Low" alert display for high values
+  - Corrected severity determination logic to properly escalate high deviations
+  - Updated severity thresholds: 2.0+ deviation = CRITICAL, 1.0+ = HIGH, 0.5+ = MEDIUM, <0.5 = LOW
+  - Enhanced alert level accuracy for values outside normal ranges
+  - Improved clinical relevance of alert classifications
+
 ### July 20, 2025 - Enhanced Investigation Standards Management: Fixed Excel Editing & Expanded Categories
 - **Fixed Excel Editing Constraint Violations**: Added validation to prevent duplicate standard names during updates
   - Added duplicate name checking in update_standard method before database operations
