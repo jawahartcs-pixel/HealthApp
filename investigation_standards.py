@@ -669,7 +669,8 @@ class InvestigationStandards:
             return None
     
     def sync_all_standards_to_test_results(self) -> Dict[str, int]:
-        """Manually synchronize all investigation standards to test results. 
+        """Manually synchronize all investigation standards to test results.
+        Overwrites existing values to ensure data consistency.
         Returns count of updated records."""
         try:
             updated_counts = {'units': 0, 'reference_ranges': 0}
@@ -707,7 +708,7 @@ class InvestigationStandards:
                             cursor.execute('''
                                 UPDATE test_results 
                                 SET unit = ? 
-                                WHERE LOWER(test_type) = LOWER(?) AND (unit IS NULL OR unit = '')
+                                WHERE LOWER(test_type) = LOWER(?)
                             ''', (unit, test_name))
                             updated_counts['units'] += cursor.rowcount
                         
@@ -715,7 +716,7 @@ class InvestigationStandards:
                             cursor.execute('''
                                 UPDATE test_results 
                                 SET reference_range = ? 
-                                WHERE LOWER(test_type) = LOWER(?) AND (reference_range IS NULL OR reference_range = '')
+                                WHERE LOWER(test_type) = LOWER(?)
                             ''', (reference_range, test_name))
                             updated_counts['reference_ranges'] += cursor.rowcount
                 

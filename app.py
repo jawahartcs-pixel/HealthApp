@@ -3010,9 +3010,9 @@ def investigation_standards_page(investigation_standards):
                         with st.spinner("Syncing standards to test results..."):
                             sync_counts = investigation_standards.sync_all_standards_to_test_results()
                             if sync_counts['units'] > 0 or sync_counts['reference_ranges'] > 0:
-                                st.success(f"✅ Synced successfully!\nUnits updated: {sync_counts['units']}\nReference ranges updated: {sync_counts['reference_ranges']}")
+                                st.success(f"✅ Synced successfully!\nUnits updated: {sync_counts['units']} test results\nReference ranges updated: {sync_counts['reference_ranges']} test results")
                             else:
-                                st.info("No test results needed updating - all are already current with standards.")
+                                st.info("No matching test results found to sync with current standards.")
             
             # Apply filters
             filtered_df = standards_df.copy()
