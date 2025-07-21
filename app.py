@@ -1760,8 +1760,21 @@ def manage_data_page(db, user_id):
             else:
                 df_data = []
             
-            # Add some empty rows for new entries
-            for i in range(5):
+            # Add configurable number of empty rows for new entries
+            col1, col2 = st.columns([3, 1])
+            with col1:
+                st.markdown("**Excel-Style Data Editor**")
+            with col2:
+                num_empty_rows = st.number_input(
+                    "Empty rows to add",
+                    min_value=1,
+                    max_value=50,
+                    value=10,
+                    step=1,
+                    help="Number of empty rows for adding new test results"
+                )
+            
+            for i in range(num_empty_rows):
                 df_data.append({
                     'ID': 0,  # 0 indicates new entry
                     'Date': pd.Timestamp.now().strftime('%Y-%m-%d'),

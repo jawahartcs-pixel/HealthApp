@@ -180,6 +180,14 @@ Preferred communication style: Simple, everyday language.
   - Maintained all data points visibility with clear markers and connecting lines
   - Improved grid styling with lighter colors for better chart readability
 
+### July 20, 2025 - Enhanced Excel-Style Data Editor Capacity
+- **Configurable Row Addition**: Increased Excel-Style Data Editor flexibility beyond fixed 5-row limit
+  - Added user-configurable number input for empty rows (1-50 range)
+  - Default increased to 10 empty rows for better bulk data entry experience
+  - Maintained existing functionality for both new patient creation and existing patient data editing
+  - Enhanced interface with clear section headers and intuitive row count controls
+  - Improved workflow for users adding large batches of test results
+
 ### July 20, 2025 - Enhanced Investigation Standards Management: Fixed Excel Editing & Expanded Categories
 - **Fixed Excel Editing Constraint Violations**: Added validation to prevent duplicate standard names during updates
   - Added duplicate name checking in update_standard method before database operations
