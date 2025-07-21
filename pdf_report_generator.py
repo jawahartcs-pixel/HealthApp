@@ -260,6 +260,12 @@ class PDFReportGenerator:
     def _create_trend_chart(self, df: pd.DataFrame, test_type: str) -> Optional[Image]:
         """Create trend chart for a specific test type."""
         try:
+            # Ensure matplotlib uses non-interactive backend
+            import matplotlib
+            if matplotlib.get_backend() != 'Agg':
+                matplotlib.use('Agg')
+            import matplotlib.pyplot as plt
+            
             # Create matplotlib figure
             plt.figure(figsize=(8, 4))
             plt.plot(df['test_date'], df['test_value'], marker='o', linewidth=2, markersize=6)
@@ -270,16 +276,22 @@ class PDFReportGenerator:
             plt.xticks(rotation=45)
             plt.tight_layout()
             
-            # Save to temporary file
-            temp_file = tempfile.NamedTemporaryFile(delete=False, suffix='.png')
-            plt.savefig(temp_file.name, dpi=150, bbox_inches='tight')
+            # Save to bytes buffer instead of temp file
+            import io
+            buffer = io.BytesIO()
+            plt.savefig(buffer, format='png', dpi=150, bbox_inches='tight')
             plt.close()
             
-            # Create ReportLab Image
-            image = Image(temp_file.name, width=6*inch, height=3*inch)
+            # Reset buffer position
+            buffer.seek(0)
             
-            # Clean up temp file
-            os.unlink(temp_file.name)
+            # Create ReportLab Image from buffer
+            from reportlab.lib.utils import ImageReader
+            img_reader = ImageReader(buffer)
+            image = Image(img_reader, width=6*inch, height=3*inch)
+            
+            # Close buffer
+            buffer.close()
             
             return image
             
