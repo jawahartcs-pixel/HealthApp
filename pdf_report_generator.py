@@ -265,18 +265,58 @@ class PDFReportGenerator:
         df['test_date'] = pd.to_datetime(df['test_date'])
         df['test_value'] = pd.to_numeric(df['test_value'], errors='coerce')
         
-        # Create charts for each test type
-        test_types = df['test_type'].unique()  # Show all available charts
-        
-        for test_type in test_types:
-            test_df = df[df['test_type'] == test_type].sort_values('test_date')
+        # Group test types by medical category using investigation standards
+        try:
+            from investigation_standards import InvestigationStandards
+            standards = InvestigationStandards(self.database)
             
-            if len(test_df) >= 1:  # Show charts even for single data points
-                chart_image = self._create_trend_chart(test_df, test_type)
-                if chart_image:
-                    elements.append(Paragraph(f"{test_type} Trend", self.subheading_style))
-                    elements.append(chart_image)
+            # Get all test types and group by category
+            test_types = df['test_type'].unique()
+            categorized_tests = {}
+            
+            for test_type in test_types:
+                category = standards.get_test_category(test_type)
+                if category not in categorized_tests:
+                    categorized_tests[category] = []
+                categorized_tests[category].append(test_type)
+            
+            # Sort categories and create charts in order
+            for category in sorted(categorized_tests.keys()):
+                # Add category header
+                if len(categorized_tests) > 1:  # Only show category headers if multiple categories
+                    elements.append(Paragraph(f"{category} Tests", self.subheading_style))
+                    elements.append(Spacer(1, 0.1*inch))
+                
+                # Create charts for tests in this category
+                for test_type in sorted(categorized_tests[category]):
+                    test_df = df[df['test_type'] == test_type].sort_values('test_date')
+                    
+                    if len(test_df) >= 1:  # Show charts even for single data points
+                        chart_image = self._create_trend_chart(test_df, test_type)
+                        if chart_image:
+                            elements.append(Paragraph(f"{test_type} Trend", 
+                                ParagraphStyle('TestTitle', parent=self.styles['Normal'], 
+                                             fontSize=12, spaceBefore=6, spaceAfter=6)))
+                            elements.append(chart_image)
+                            elements.append(Spacer(1, 0.15*inch))
+                
+                # Add space between categories
+                if len(categorized_tests) > 1:
                     elements.append(Spacer(1, 0.2*inch))
+                    
+        except Exception as e:
+            # Fallback to alphabetical order if categorization fails
+            test_types = sorted(df['test_type'].unique())
+            
+            for test_type in test_types:
+                test_df = df[df['test_type'] == test_type].sort_values('test_date')
+                
+                if len(test_df) >= 1:
+                    chart_image = self._create_trend_chart(test_df, test_type)
+                    if chart_image:
+                        elements.append(Paragraph(f"{test_type} Trend", self.subheading_style))
+                        elements.append(chart_image)
+                        elements.append(Spacer(1, 0.2*inch))
         
         return elements
     
