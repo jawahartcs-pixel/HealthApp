@@ -266,12 +266,12 @@ class PDFReportGenerator:
         df['test_value'] = pd.to_numeric(df['test_value'], errors='coerce')
         
         # Create charts for each test type
-        test_types = df['test_type'].unique()[:6]  # Limit to 6 charts per page
+        test_types = df['test_type'].unique()  # Show all available charts
         
         for test_type in test_types:
             test_df = df[df['test_type'] == test_type].sort_values('test_date')
             
-            if len(test_df) > 1:
+            if len(test_df) >= 1:  # Show charts even for single data points
                 chart_image = self._create_trend_chart(test_df, test_type)
                 if chart_image:
                     elements.append(Paragraph(f"{test_type} Trend", self.subheading_style))
@@ -338,23 +338,23 @@ class PDFReportGenerator:
             from alert_system import AlertSystem
             alert_system = AlertSystem(self.database)
             
-            # Get patient alerts
-            alerts = alert_system.get_patient_alerts(patient_name, user_id)
+            # Get patient alerts (check method signature)
+            alerts = alert_system.get_patient_alerts(patient_name)
             
             if not alerts:
                 elements.append(Paragraph("No active alerts for this patient.", self.styles['Normal']))
                 return elements
             
             # Create alerts table
-            alert_data = [['Date', 'Test Type', 'Value', 'Level', 'Status']]
+            alert_data = [['Date', 'Test Type', 'Value', 'Level', 'Message']]
             
             for alert in alerts[:10]:  # Limit to 10 most recent alerts
                 alert_data.append([
-                    alert.get('test_date', 'N/A'),
-                    alert.get('test_type', 'N/A'),
-                    str(alert.get('test_value', 'N/A')),
-                    alert.get('alert_level', 'N/A'),
-                    alert.get('status', 'N/A')
+                    str(alert.get('test_date', 'N/A')),
+                    str(alert.get('test_type', 'N/A')),
+                    str(alert.get('value', 'N/A')),
+                    str(alert.get('level', 'N/A')),
+                    str(alert.get('message', 'N/A'))
                 ])
             
             alerts_table = Table(alert_data, colWidths=[1.2*inch, 1.8*inch, 1*inch, 1*inch, 1.3*inch])
