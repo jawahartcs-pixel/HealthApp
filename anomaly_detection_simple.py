@@ -54,7 +54,9 @@ class SimpleAnomalyDetector:
         if not tests:
             return pd.DataFrame()
         
-        df = pd.DataFrame(tests, columns=['patient_name', 'test_date', 'test_type', 'test_value', 'unit', 'reference_range'])
+        # get_patient_tests returns 5 columns: test_date, test_type, test_value, unit, reference_range
+        df = pd.DataFrame(tests, columns=['test_date', 'test_type', 'test_value', 'unit', 'reference_range'])
+        df['patient_name'] = patient_name  # Add patient name manually
         df['test_date'] = pd.to_datetime(df['test_date'])
         df['test_value'] = pd.to_numeric(df['test_value'], errors='coerce')
         return df.dropna(subset=['test_value'])
@@ -65,14 +67,25 @@ class SimpleAnomalyDetector:
         if not tests:
             return pd.DataFrame()
         
-        # Filter by user_id if provided
+        # get_all_test_results returns 6 columns: patient_name, test_date, test_type, test_value, unit, reference_range
+        df = pd.DataFrame(tests, columns=['patient_name', 'test_date', 'test_type', 'test_value', 'unit', 'reference_range'])
+        
+        # Filter by user_id if provided (need to query database differently for user filtering)
         if user_id:
-            tests = [test for test in tests if len(test) > 6 and test[6] == user_id]
+            # Get user-specific data using a different method
+            user_tests = []
+            patients = self.database.get_all_patients(user_id)
+            for patient in patients:
+                patient_name = patient[1]
+                patient_tests = self.database.get_patient_tests(patient_name, user_id)
+                for test in patient_tests:
+                    user_tests.append([patient_name] + list(test))
+            
+            if not user_tests:
+                return pd.DataFrame()
+            
+            df = pd.DataFrame(user_tests, columns=['patient_name', 'test_date', 'test_type', 'test_value', 'unit', 'reference_range'])
         
-        if not tests:
-            return pd.DataFrame()
-        
-        df = pd.DataFrame(tests, columns=['patient_name', 'test_date', 'test_type', 'test_value', 'unit', 'reference_range', 'user_id'])
         df['test_date'] = pd.to_datetime(df['test_date'])
         df['test_value'] = pd.to_numeric(df['test_value'], errors='coerce')
         return df.dropna(subset=['test_value'])
