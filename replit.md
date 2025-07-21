@@ -238,6 +238,8 @@ Preferred communication style: Simple, everyday language.
   - Fixed PDF chart generation by replacing BytesIO with proper temporary file handling and cleanup mechanism
   - Added value annotations to all data points in both 2D Beautiful and 2D Grouped chart visualizations
   - Enhanced PDF charts with data point value labels showing precise test values for each measurement
+  - Organized PDF chart layout by medical categories using investigation standards instead of alphabetical ordering
+  - Added category headers in PDF reports for better medical data organization and readability
 
 ### July 20, 2025 - Enhanced Investigation Standards Management: Fixed Excel Editing & Expanded Categories
 - **Fixed Excel Editing Constraint Violations**: Added validation to prevent duplicate standard names during updates
