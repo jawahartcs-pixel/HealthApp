@@ -235,6 +235,7 @@ Preferred communication style: Simple, everyday language.
   - Enhanced error handling for all result dictionary access with proper fallbacks
   - Fixed visualization method calls with proper 2D chart implementations
   - Implemented investigation standards table categorization (bilirubin correctly placed in liver category)
+  - Fixed PDF chart generation by using BytesIO buffer instead of temporary files to prevent file access errors
 
 ### July 20, 2025 - Enhanced Investigation Standards Management: Fixed Excel Editing & Expanded Categories
 - **Fixed Excel Editing Constraint Violations**: Added validation to prevent duplicate standard names during updates
