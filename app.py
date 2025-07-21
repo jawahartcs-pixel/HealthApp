@@ -17,6 +17,7 @@ from utils import validate_date, format_test_value
 from image_snippet_extractor import ImageSnippetExtractor
 from investigation_standards import InvestigationStandards
 from pdf_report_generator import PDFReportGenerator
+from test_categories import categorize_test_types, get_category_colors
 from pdf2image import convert_from_bytes
 from PIL import Image
 import tempfile
@@ -1514,50 +1515,74 @@ def patient_dashboard_page(db, visualization, alert_system, user_id):
             
             st.divider()
         
-        # Create individual graphs for each investigation type
-        st.subheader("📈 Investigation Trends")
+        # Visualizations by Test Categories
+        st.subheader("📈 Test Trends by Medical Category")
         
         # Get unique test types from database
         test_types = df['Test Type'].unique().tolist()
         
         if test_types:
-            # Create a compact grid layout for charts
-            num_cols = min(2, len(test_types))  # Maximum 2 columns for better readability
+            # Categorize test types
+            categorized_tests = categorize_test_types(test_types)
+            category_colors = get_category_colors()
             
-            # Group test types into rows
-            for i in range(0, len(test_types), num_cols):
-                cols = st.columns(num_cols)
-                
-                for j in range(num_cols):
-                    if i + j < len(test_types):
-                        test_type = test_types[i + j]
-                        test_data = df[df['Test Type'] == test_type].copy()
+            # Display charts based on selected type
+            if chart_type == "3D Multi-Test":
+                # Show 3D multi-test comparison for each category
+                for category, tests_in_category in categorized_tests.items():
+                    if len(tests_in_category) >= 2:
+                        st.subheader(f"🔬 {category}")
+                        category_data = df[df['Test Type'].isin(tests_in_category)]
+                        if not category_data.empty:
+                            fig_3d_multi = visualization.create_3d_multi_test_chart(
+                                category_data, selected_patient, tests_in_category
+                            )
+                            st.plotly_chart(fig_3d_multi, use_container_width=True)
+            else:
+                # Show charts grouped by category
+                for category, tests_in_category in categorized_tests.items():
+                    with st.expander(f"🔬 {category} ({len(tests_in_category)} tests)", expanded=True):
+                        # Create charts in a grid layout for this category
+                        num_cols = min(2, len(tests_in_category))
                         
-                        if not test_data.empty:
-                            # Sort by date for proper trend visualization
-                            test_data = test_data.sort_values('Date')
+                        # Group test types into rows
+                        for i in range(0, len(tests_in_category), num_cols):
+                            cols = st.columns(num_cols)
                             
-                            with cols[j]:
-                                # Create trend chart for this investigation type
-                                fig = visualization.create_trend_chart(test_data, test_type, selected_patient)
-                                st.plotly_chart(fig, use_container_width=True)
-                                
-                                # Add a compact summary below each chart
-                                latest_value = test_data.iloc[-1]['Value']
-                                latest_date = test_data.iloc[-1]['Date'].strftime('%Y-%m-%d')
-                                unit = test_data.iloc[-1]['Unit'] or ''
-                                
-                                # Calculate trend (if more than one data point)
-                                if len(test_data) > 1:
-                                    trend_change = test_data.iloc[-1]['Value'] - test_data.iloc[-2]['Value']
-                                    trend_icon = "📈" if trend_change > 0 else "📉" if trend_change < 0 else "➡️"
+                            for j in range(num_cols):
+                                if i + j < len(tests_in_category):
+                                    test_type = tests_in_category[i + j]
+                                    test_data = df[df['Test Type'] == test_type].copy()
                                     
-                                    st.caption(f"Latest: **{latest_value} {unit}** ({latest_date}) {trend_icon}")
-                                else:
-                                    st.caption(f"Latest: **{latest_value} {unit}** ({latest_date})")
-                                
-                                # Show data point count
-                                st.caption(f"📊 {len(test_data)} data points")
+                                    if not test_data.empty:
+                                        # Sort by date for proper trend visualization
+                                        test_data = test_data.sort_values('Date')
+                                        
+                                        with cols[j]:
+                                            # Create chart based on selected type
+                                            if chart_type == "3D Enhanced":
+                                                fig = visualization.create_3d_trend_chart(test_data, test_type, selected_patient)
+                                            else:
+                                                fig = visualization.create_trend_chart(test_data, test_type, selected_patient)
+                                            
+                                            st.plotly_chart(fig, use_container_width=True)
+                                            
+                                            # Add a compact summary below each chart
+                                            latest_value = test_data.iloc[-1]['Value']
+                                            latest_date = test_data.iloc[-1]['Date'].strftime('%Y-%m-%d')
+                                            unit = test_data.iloc[-1]['Unit'] or ''
+                                            
+                                            # Calculate trend (if more than one data point)
+                                            if len(test_data) > 1:
+                                                trend_change = test_data.iloc[-1]['Value'] - test_data.iloc[-2]['Value']
+                                                trend_icon = "📈" if trend_change > 0 else "📉" if trend_change < 0 else "➡️"
+                                                
+                                                st.caption(f"Latest: **{latest_value} {unit}** ({latest_date}) {trend_icon}")
+                                            else:
+                                                st.caption(f"Latest: **{latest_value} {unit}** ({latest_date})")
+                                            
+                                            # Show data point count
+                                            st.caption(f"📊 {len(test_data)} data points")
         else:
             st.info("No test results available for visualization.")
         

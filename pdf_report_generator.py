@@ -138,7 +138,8 @@ class PDFReportGenerator:
             elements.append(Paragraph("No test data available for this patient.", self.styles['Normal']))
             return elements
         
-        df = pd.DataFrame(test_data, columns=['patient_name', 'test_date', 'test_type', 'test_value', 'unit', 'reference_range'])
+        # get_patient_tests returns 5 columns: test_date, test_type, test_value, unit, reference_range
+        df = pd.DataFrame(test_data, columns=['test_date', 'test_type', 'test_value', 'unit', 'reference_range'])
         df['test_date'] = pd.to_datetime(df['test_date'])
         
         # Summary statistics
@@ -184,7 +185,8 @@ class PDFReportGenerator:
             elements.append(Paragraph("No test data available.", self.styles['Normal']))
             return elements
         
-        df = pd.DataFrame(test_data, columns=['patient_name', 'test_date', 'test_type', 'test_value', 'unit', 'reference_range'])
+        # get_patient_tests returns 5 columns: test_date, test_type, test_value, unit, reference_range
+        df = pd.DataFrame(test_data, columns=['test_date', 'test_type', 'test_value', 'unit', 'reference_range'])
         df['test_date'] = pd.to_datetime(df['test_date'])
         
         # Sort by date (most recent first) and limit to last 20 results
@@ -235,7 +237,8 @@ class PDFReportGenerator:
             elements.append(Paragraph("No data available for visualization.", self.styles['Normal']))
             return elements
         
-        df = pd.DataFrame(test_data, columns=['patient_name', 'test_date', 'test_type', 'test_value', 'unit', 'reference_range'])
+        # get_patient_tests returns 5 columns: test_date, test_type, test_value, unit, reference_range
+        df = pd.DataFrame(test_data, columns=['test_date', 'test_type', 'test_value', 'unit', 'reference_range'])
         df['test_date'] = pd.to_datetime(df['test_date'])
         df['test_value'] = pd.to_numeric(df['test_value'], errors='coerce')
         
