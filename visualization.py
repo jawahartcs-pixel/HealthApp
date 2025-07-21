@@ -52,7 +52,7 @@ class Visualization:
                     x=0.5, y=0.5, xanchor='center', yanchor='middle',
                     showarrow=False, font_size=16
                 )
-                fig.update_layout(title=f"{test_type} Trend for {patient_name}")
+                fig.update_layout(title=f"{test_type} Trend for {patient_name or 'Unknown'}")
                 return fig
             
             # Sort by date
@@ -79,7 +79,7 @@ class Visualization:
                 hovertemplate='<b>%{fullData.name}</b><br>' +
                               'Date: %{x|%Y-%m-%d}<br>' +
                               'Value: %{y}<br>' +
-                              'Unit: ' + (filtered_data['Unit'].iloc[0] if not filtered_data['Unit'].isna().all() else '') + '<br>' +
+                              'Unit: ' + (str(filtered_data['Unit'].iloc[0]) if not filtered_data['Unit'].isna().all() and filtered_data['Unit'].iloc[0] is not None else '') + '<br>' +
                               '<extra></extra>'
             ))
             
@@ -97,7 +97,7 @@ class Visualization:
             
             fig.update_layout(
                 title=dict(
-                    text=f"<b>{test_type}</b> - {patient_name}",
+                    text=f"<b>{test_type}</b> - {patient_name or 'Unknown'}",
                     font=dict(size=14),
                     x=0.5,
                     xanchor='center'
@@ -666,13 +666,13 @@ class Visualization:
                     line=dict(width=3, color=color),
                     symbol='circle'
                 ),
-                hovertemplate='<b>%{y}</b><br>%{x|%Y-%m-%d}<br>Patient: ' + patient_name + '<extra></extra>'
+                hovertemplate='<b>%{y}</b><br>%{x|%Y-%m-%d}<br>Patient: ' + (patient_name or 'Unknown') + '<extra></extra>'
             ))
             
             # Enhanced styling
             fig.update_layout(
                 title=dict(
-                    text=f"<b>{test_type}</b><br><sub>Patient: {patient_name}</sub>",
+                    text=f"<b>{test_type}</b><br><sub>Patient: {patient_name or 'Unknown'}</sub>",
                     font=dict(size=16, color='#2c3e50'),
                     x=0.5
                 ),
@@ -769,7 +769,7 @@ class Visualization:
             # Enhanced styling for grouped chart
             fig.update_layout(
                 title=dict(
-                    text=f"<b>{category} Tests Comparison</b><br><sub>Patient: {patient_name}</sub>",
+                    text=f"<b>{category} Tests Comparison</b><br><sub>Patient: {patient_name or 'Unknown'}</sub>",
                     font=dict(size=18, color='#2c3e50'),
                     x=0.5
                 ),

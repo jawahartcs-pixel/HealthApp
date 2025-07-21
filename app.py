@@ -1589,7 +1589,7 @@ def patient_dashboard_page(db, visualization, alert_system, user_id):
                             fig_grouped = visualization.create_grouped_chart(
                                 category_data, selected_patient, tests_in_category, category
                             )
-                            st.plotly_chart(fig_grouped, use_container_width=True)
+                            st.plotly_chart(fig_grouped, use_container_width=True, key=f"grouped_chart_{category.replace(' ', '_')}")
             else:
                 # Show charts grouped by proper investigation standards categories
                 for category, tests_in_category in proper_categorized_tests.items():
@@ -1617,12 +1617,13 @@ def patient_dashboard_page(db, visualization, alert_system, user_id):
                                             else:
                                                 fig = visualization.create_trend_chart(test_data, test_type, selected_patient)
                                             
-                                            st.plotly_chart(fig, use_container_width=True)
+                                            st.plotly_chart(fig, use_container_width=True, key=f"chart_{category.replace(' ', '_')}_{test_type.replace(' ', '_')}_{i}_{j}")
                                             
                                             # Add a compact summary below each chart
                                             latest_value = test_data.iloc[-1]['Value']
                                             latest_date = test_data.iloc[-1]['Date'].strftime('%Y-%m-%d')
                                             unit = test_data.iloc[-1]['Unit'] or ''
+                                            unit = unit if unit is not None else ''
                                             
                                             # Calculate trend (if more than one data point)
                                             if len(test_data) > 1:
