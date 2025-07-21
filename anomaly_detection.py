@@ -114,32 +114,61 @@ class AnomalyDetector:
     
     def _prepare_data(self, df: pd.DataFrame) -> pd.DataFrame:
         """Prepare data for anomaly detection algorithms."""
-        # Normalize test names
-        df['test_type'] = df['test_type'].str.lower().str.strip()
-        
-        # Create pivot table for multi-dimensional analysis
-        pivot_data = df.pivot_table(
-            index=['patient_name', 'test_date'], 
-            columns='test_type', 
-            values='test_value', 
-            aggfunc='mean'
-        ).reset_index()
-        
-        # Fill missing values with median
-        numeric_columns = pivot_data.select_dtypes(include=[np.number]).columns
-        pivot_data[numeric_columns] = pivot_data[numeric_columns].fillna(pivot_data[numeric_columns].median())
-        
-        return pivot_data
+        try:
+            # Normalize test names
+            df['test_type'] = df['test_type'].str.lower().str.strip()
+            
+            # Create pivot table for multi-dimensional analysis
+            pivot_data = df.pivot_table(
+                index=['patient_name', 'test_date'], 
+                columns='test_type', 
+                values='test_value', 
+                aggfunc='mean'
+            ).reset_index()
+            
+            # Get only numeric columns for analysis
+            numeric_columns = pivot_data.select_dtypes(include=[np.number]).columns
+            
+            # Ensure we have enough numeric data for analysis
+            if len(numeric_columns) < 2:
+                # Return simplified data structure if not enough test types
+                simple_data = df[['patient_name', 'test_date', 'test_value']].copy()
+                simple_data = simple_data.groupby(['patient_name', 'test_date'])['test_value'].mean().reset_index()
+                return simple_data
+            
+            # Fill missing values with median for numeric columns only
+            for col in numeric_columns:
+                if pivot_data[col].isna().any():
+                    median_value = pivot_data[col].median()
+                    if pd.isna(median_value):
+                        pivot_data[col] = pivot_data[col].fillna(0)
+                    else:
+                        pivot_data[col] = pivot_data[col].fillna(median_value)
+            
+            return pivot_data
+            
+        except Exception as e:
+            # Fallback to simple data structure if pivoting fails
+            simple_data = df[['patient_name', 'test_date', 'test_value']].copy()
+            simple_data = simple_data.groupby(['patient_name', 'test_date'])['test_value'].mean().reset_index()
+            return simple_data
     
     def _isolation_forest_detection(self, df: pd.DataFrame) -> Dict[str, Any]:
         """Detect anomalies using Isolation Forest algorithm."""
         try:
             numeric_columns = df.select_dtypes(include=[np.number]).columns
-            if len(numeric_columns) < 2:
+            if len(numeric_columns) < 1:
                 return {'anomalies': [], 'method': 'isolation_forest', 'status': 'insufficient_data'}
             
-            # Prepare data
+            # Prepare data - handle both multi-column and single-column cases
             X = df[numeric_columns].values
+            
+            # Ensure X is 2D for sklearn
+            if X.ndim == 1:
+                X = X.reshape(-1, 1)
+            elif X.shape[1] == 0:
+                return {'anomalies': [], 'method': 'isolation_forest', 'status': 'no_numeric_data'}
+                
             X_scaled = self.scaler.fit_transform(X)
             
             # Apply Isolation Forest
