@@ -626,3 +626,170 @@ class Visualization:
                 )
         except:
             pass
+    
+    def create_beautiful_2d_chart(self, test_data: pd.DataFrame, test_type: str, patient_name: str) -> go.Figure:
+        """Create a beautiful 2D chart with enhanced styling."""
+        try:
+            # Filter data for the specific test type
+            filtered_data = test_data[test_data['Test Type'] == test_type].copy()
+            
+            if filtered_data.empty:
+                return go.Figure().add_annotation(
+                    text=f"No data available for {test_type}",
+                    xref="paper", yref="paper",
+                    x=0.5, y=0.5, xanchor='center', yanchor='middle',
+                    showarrow=False, font=dict(size=16)
+                )
+            
+            # Sort by date
+            filtered_data = filtered_data.sort_values('Date')
+            
+            # Get color for this test type
+            color = self.color_scheme.get(test_type, '#636EFA')
+            
+            # Create beautiful 2D plot
+            fig = go.Figure()
+            
+            # Add filled area under the curve
+            fig.add_trace(go.Scatter(
+                x=filtered_data['Date'],
+                y=filtered_data['Value'],
+                fill='tonexty',
+                fillcolor='rgba(99, 110, 250, 0.1)',
+                line=dict(color=color, width=0),
+                showlegend=False,
+                hoverinfo='skip'
+            ))
+            
+            # Add main line with enhanced markers
+            fig.add_trace(go.Scatter(
+                x=filtered_data['Date'],
+                y=filtered_data['Value'],
+                mode='lines+markers',
+                name=test_type,
+                line=dict(color=color, width=4),
+                marker=dict(
+                    size=12,
+                    color='white',
+                    line=dict(width=3, color=color),
+                    symbol='circle'
+                ),
+                hovertemplate='<b>%{y}</b><br>%{x|%Y-%m-%d}<br>Patient: ' + patient_name + '<extra></extra>'
+            ))
+            
+            # Enhanced styling
+            fig.update_layout(
+                title=dict(
+                    text=f"<b>{test_type}</b><br><sub>Patient: {patient_name}</sub>",
+                    font=dict(size=16, color='#2c3e50'),
+                    x=0.5
+                ),
+                height=300,
+                margin=dict(l=50, r=50, t=80, b=50),
+                plot_bgcolor='rgba(248, 249, 250, 0.8)',
+                paper_bgcolor='white',
+                showlegend=False,
+                xaxis=dict(
+                    showgrid=True,
+                    gridwidth=1,
+                    gridcolor='rgba(128, 128, 128, 0.2)',
+                    title=dict(text="Date", font=dict(size=12, color='#34495e')),
+                    tickfont=dict(size=10, color='#7f8c8d'),
+                    linecolor='#bdc3c7',
+                    linewidth=2,
+                    showline=True
+                ),
+                yaxis=dict(
+                    showgrid=True,
+                    gridwidth=1,
+                    gridcolor='rgba(128, 128, 128, 0.2)',
+                    title=dict(text="Value", font=dict(size=12, color='#34495e')),
+                    tickfont=dict(size=10, color='#7f8c8d'),
+                    linecolor='#bdc3c7',
+                    linewidth=2,
+                    showline=True
+                )
+            )
+            
+            return fig
+            
+        except Exception as e:
+            print(f"Error creating beautiful 2D chart for {test_type}: {e}")
+            return go.Figure()
+    
+    def create_grouped_chart(self, category_data: pd.DataFrame, patient_name: str, test_types: list, category: str) -> go.Figure:
+        """Create a grouped comparison chart for multiple tests in a category."""
+        try:
+            fig = go.Figure()
+            
+            # Use a color palette for different tests
+            colors = ['#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4', '#FFEAA7', '#DDA0DD', '#98D8C8', '#F7DC6F']
+            
+            for i, test_type in enumerate(test_types):
+                test_data = category_data[category_data['Test Type'] == test_type].copy()
+                if not test_data.empty:
+                    test_data = test_data.sort_values('Date')
+                    color = colors[i % len(colors)]
+                    
+                    # Add line with markers for each test
+                    fig.add_trace(go.Scatter(
+                        x=test_data['Date'],
+                        y=test_data['Value'],
+                        mode='lines+markers',
+                        name=test_type,
+                        line=dict(color=color, width=3),
+                        marker=dict(
+                            size=8,
+                            color=color,
+                            line=dict(width=2, color='white')
+                        ),
+                        hovertemplate=f'<b>{test_type}</b><br>Value: %{{y}}<br>Date: %{{x|%Y-%m-%d}}<extra></extra>'
+                    ))
+            
+            # Enhanced styling for grouped chart
+            fig.update_layout(
+                title=dict(
+                    text=f"<b>{category} Tests Comparison</b><br><sub>Patient: {patient_name}</sub>",
+                    font=dict(size=18, color='#2c3e50'),
+                    x=0.5
+                ),
+                height=400,
+                margin=dict(l=60, r=60, t=100, b=60),
+                plot_bgcolor='rgba(248, 249, 250, 0.9)',
+                paper_bgcolor='white',
+                showlegend=True,
+                legend=dict(
+                    orientation="h",
+                    yanchor="bottom",
+                    y=1.02,
+                    xanchor="right",
+                    x=1,
+                    font=dict(size=11)
+                ),
+                xaxis=dict(
+                    showgrid=True,
+                    gridwidth=1,
+                    gridcolor='rgba(128, 128, 128, 0.2)',
+                    title=dict(text="Date", font=dict(size=14, color='#34495e')),
+                    tickfont=dict(size=12, color='#7f8c8d'),
+                    linecolor='#bdc3c7',
+                    linewidth=2,
+                    showline=True
+                ),
+                yaxis=dict(
+                    showgrid=True,
+                    gridwidth=1,
+                    gridcolor='rgba(128, 128, 128, 0.2)',
+                    title=dict(text="Values", font=dict(size=14, color='#34495e')),
+                    tickfont=dict(size=12, color='#7f8c8d'),
+                    linecolor='#bdc3c7',
+                    linewidth=2,
+                    showline=True
+                )
+            )
+            
+            return fig
+            
+        except Exception as e:
+            print(f"Error creating grouped chart for {category}: {e}")
+            return go.Figure()

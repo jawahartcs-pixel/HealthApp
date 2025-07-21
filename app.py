@@ -1406,7 +1406,7 @@ def patient_dashboard_page(db, visualization, alert_system, user_id):
         )
     
     with col2:
-        chart_type = st.selectbox("Chart Type", ["2D Standard", "3D Enhanced", "3D Multi-Test"])
+        chart_type = st.selectbox("Chart Type", ["2D Standard", "2D Beautiful", "2D Grouped"])
     
     with col3:
         # PDF Report download
@@ -1526,21 +1526,61 @@ def patient_dashboard_page(db, visualization, alert_system, user_id):
             categorized_tests = categorize_test_types(test_types)
             category_colors = get_category_colors()
             
+            # Get investigation standards for proper categorization
+            investigation_standards = InvestigationStandards(db)
+            
+            # Use investigation standards categories instead of hardcoded ones
+            standards_categories = {}
+            all_standards = investigation_standards.get_all_standards()
+            for standard in all_standards:
+                category = standard[4]  # category column
+                test_name = standard[1]  # name column
+                if category not in standards_categories:
+                    standards_categories[category] = []
+                standards_categories[category].append(test_name)
+                
+                # Also check aliases
+                aliases = standard[5] if len(standard) > 5 and standard[5] else ""
+                if aliases:
+                    for alias in aliases.split(','):
+                        alias = alias.strip()
+                        if alias and alias not in standards_categories[category]:
+                            standards_categories[category].append(alias)
+            
+            # Match test types to investigation standards categories
+            proper_categorized_tests = {}
+            for test_type in test_types:
+                found_category = None
+                for category, standards_tests in standards_categories.items():
+                    if test_type in standards_tests:
+                        found_category = category
+                        break
+                
+                if found_category:
+                    if found_category not in proper_categorized_tests:
+                        proper_categorized_tests[found_category] = []
+                    proper_categorized_tests[found_category].append(test_type)
+                else:
+                    # Fallback to other category
+                    if 'Other' not in proper_categorized_tests:
+                        proper_categorized_tests['Other'] = []
+                    proper_categorized_tests['Other'].append(test_type)
+            
             # Display charts based on selected type
-            if chart_type == "3D Multi-Test":
-                # Show 3D multi-test comparison for each category
-                for category, tests_in_category in categorized_tests.items():
-                    if len(tests_in_category) >= 2:
+            if chart_type == "2D Grouped":
+                # Show grouped comparison for each category
+                for category, tests_in_category in proper_categorized_tests.items():
+                    if len(tests_in_category) >= 1:
                         st.subheader(f"🔬 {category}")
                         category_data = df[df['Test Type'].isin(tests_in_category)]
                         if not category_data.empty:
-                            fig_3d_multi = visualization.create_3d_multi_test_chart(
-                                category_data, selected_patient, tests_in_category
+                            fig_grouped = visualization.create_grouped_chart(
+                                category_data, selected_patient, tests_in_category, category
                             )
-                            st.plotly_chart(fig_3d_multi, use_container_width=True)
+                            st.plotly_chart(fig_grouped, use_container_width=True)
             else:
-                # Show charts grouped by category
-                for category, tests_in_category in categorized_tests.items():
+                # Show charts grouped by proper investigation standards categories
+                for category, tests_in_category in proper_categorized_tests.items():
                     with st.expander(f"🔬 {category} ({len(tests_in_category)} tests)", expanded=True):
                         # Create charts in a grid layout for this category
                         num_cols = min(2, len(tests_in_category))
@@ -1560,8 +1600,8 @@ def patient_dashboard_page(db, visualization, alert_system, user_id):
                                         
                                         with cols[j]:
                                             # Create chart based on selected type
-                                            if chart_type == "3D Enhanced":
-                                                fig = visualization.create_3d_trend_chart(test_data, test_type, selected_patient)
+                                            if chart_type == "2D Beautiful":
+                                                fig = visualization.create_beautiful_2d_chart(test_data, test_type, selected_patient)
                                             else:
                                                 fig = visualization.create_trend_chart(test_data, test_type, selected_patient)
                                             

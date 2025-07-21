@@ -325,3 +325,53 @@ class SimpleAnomalyDetector:
             
         except Exception as e:
             return {'error': f'All patients summary failed: {str(e)}', 'status': 'error'}
+    
+    def get_anomaly_trends(self, user_id: int = None) -> Dict[str, Any]:
+        """Get anomaly trends over time."""
+        try:
+            df = self._get_all_data(user_id)
+            if df.empty:
+                return {
+                    'error': 'No data available for trend analysis', 
+                    'status': 'no_data',
+                    'trends': []
+                }
+            
+            # Group by month and calculate anomaly counts
+            df['month'] = df['test_date'].dt.to_period('M')
+            monthly_trends = []
+            
+            for month in df['month'].unique():
+                month_data = df[df['month'] == month]
+                month_anomalies = 0
+                
+                for patient_name in month_data['patient_name'].unique():
+                    patient_data = month_data[month_data['patient_name'] == patient_name]
+                    for test_type in patient_data['test_type'].unique():
+                        test_data = patient_data[patient_data['test_type'] == test_type]['test_value']
+                        if len(test_data) >= 2:
+                            Q1 = test_data.quantile(0.25)
+                            Q3 = test_data.quantile(0.75)
+                            IQR = Q3 - Q1
+                            lower_bound = Q1 - 1.5 * IQR
+                            upper_bound = Q3 + 1.5 * IQR
+                            outliers = test_data[(test_data < lower_bound) | (test_data > upper_bound)]
+                            month_anomalies += len(outliers)
+                
+                monthly_trends.append({
+                    'month': str(month),
+                    'anomaly_count': month_anomalies,
+                    'total_tests': len(month_data)
+                })
+            
+            return {
+                'trends': monthly_trends,
+                'status': 'success'
+            }
+            
+        except Exception as e:
+            return {
+                'error': f'Trend analysis failed: {str(e)}', 
+                'status': 'error',
+                'trends': []
+            }
