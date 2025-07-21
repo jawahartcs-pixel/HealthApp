@@ -12,7 +12,7 @@ from visualization import Visualization
 from alert_system import AlertSystem
 from auth_system import AuthSystem
 from auth_ui import AuthUI
-from anomaly_detection import AnomalyDetector
+from anomaly_detection_simple import SimpleAnomalyDetector
 from utils import validate_date, format_test_value
 from image_snippet_extractor import ImageSnippetExtractor
 from investigation_standards import InvestigationStandards
@@ -35,7 +35,7 @@ def init_components():
     alert_system = AlertSystem(db)
     auth_system = AuthSystem()
     auth_ui = AuthUI(auth_system)
-    anomaly_detector = AnomalyDetector(db)
+    anomaly_detector = SimpleAnomalyDetector(db)
     investigation_standards = InvestigationStandards()
     return db, file_parser, data_processor, visualization, alert_system, auth_system, auth_ui, anomaly_detector, investigation_standards
 

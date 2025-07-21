@@ -249,10 +249,16 @@ class AnomalyDetector:
         """Detect anomalies using DBSCAN clustering."""
         try:
             numeric_columns = df.select_dtypes(include=[np.number]).columns
-            if len(numeric_columns) < 2:
+            if len(numeric_columns) < 1:
                 return {'anomalies': [], 'method': 'clustering', 'status': 'insufficient_data'}
             
             X = df[numeric_columns].values
+            
+            # Ensure X is 2D for sklearn
+            if X.ndim == 1:
+                X = X.reshape(-1, 1)
+            elif X.shape[1] == 0:
+                return {'anomalies': [], 'method': 'clustering', 'status': 'no_numeric_data'}
             X_scaled = self.scaler.fit_transform(X)
             
             # Apply DBSCAN
