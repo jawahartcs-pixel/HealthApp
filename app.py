@@ -2993,15 +2993,26 @@ def investigation_standards_page(investigation_standards):
                 search_term = st.text_input("Search Standards", placeholder="Search by name, aliases, or category...")
             
             with col3:
-                # Export button
-                if st.button("📥 Export CSV"):
-                    csv_data = standards_df.to_csv(index=False)
-                    st.download_button(
-                        label="Download CSV",
-                        data=csv_data,
-                        file_name=f"investigation_standards_{pd.Timestamp.now().strftime('%Y%m%d_%H%M')}.csv",
-                        mime="text/csv"
-                    )
+                # Export and sync buttons
+                col3a, col3b = st.columns(2)
+                with col3a:
+                    if st.button("📥 Export CSV"):
+                        csv_data = standards_df.to_csv(index=False)
+                        st.download_button(
+                            label="Download CSV",
+                            data=csv_data,
+                            file_name=f"investigation_standards_{pd.Timestamp.now().strftime('%Y%m%d_%H%M')}.csv",
+                            mime="text/csv"
+                        )
+                
+                with col3b:
+                    if st.button("🔄 Sync to Tests", help="Update test results with current standards"):
+                        with st.spinner("Syncing standards to test results..."):
+                            sync_counts = investigation_standards.sync_all_standards_to_test_results()
+                            if sync_counts['units'] > 0 or sync_counts['reference_ranges'] > 0:
+                                st.success(f"✅ Synced successfully!\nUnits updated: {sync_counts['units']}\nReference ranges updated: {sync_counts['reference_ranges']}")
+                            else:
+                                st.info("No test results needed updating - all are already current with standards.")
             
             # Apply filters
             filtered_df = standards_df.copy()
@@ -3404,6 +3415,12 @@ def investigation_standards_page(investigation_standards):
                     
                     if investigation_standards.add_standard(new_standard):
                         st.success(f"✅ Successfully added '{new_name}' to investigation standards!")
+                        # Automatically sync to test results
+                        with st.spinner("Syncing new standard to existing test results..."):
+                            sync_counts = investigation_standards.sync_all_standards_to_test_results()
+                            if sync_counts['units'] > 0 or sync_counts['reference_ranges'] > 0:
+                                st.info(f"🔄 Auto-sync completed: {sync_counts['units']} units and {sync_counts['reference_ranges']} reference ranges updated in test results.")
+                        
                         # Clear form by deleting session state keys
                         form_keys = ["new_name", "new_category", "new_description", "new_aliases", "new_common_unit", "new_m_min", "new_m_max", "new_f_min", "new_f_max"]
                         for key in form_keys:

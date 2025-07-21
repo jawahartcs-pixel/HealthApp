@@ -310,10 +310,16 @@ class InvestigationStandards:
             return False
     
     def update_standard(self, standard_id: int, standard_data: Dict) -> bool:
-        """Update an existing investigation standard."""
+        """Update an existing investigation standard and sync changes to test results."""
         try:
             with sqlite3.connect(self.db_path) as conn:
                 cursor = conn.cursor()
+                
+                # Get the current standard data before update for comparison
+                current_standard = self.get_standard_by_id(standard_id)
+                if not current_standard:
+                    print(f"Error updating standard: Standard with ID {standard_id} not found")
+                    return False
                 
                 # Check if the new standard name already exists for a different record
                 cursor.execute('''
@@ -358,6 +364,9 @@ class InvestigationStandards:
                         standard_data['female_range_min'], standard_data['female_range_max'], standard_data['female_unit'],
                         standard_data['description'], standard_data['category'], standard_id
                     ))
+                
+                # Now sync changes to test results if reference ranges or units were updated
+                self._sync_standard_changes_to_test_results(cursor, current_standard, standard_data)
                 
                 conn.commit()
                 return True
@@ -506,6 +515,217 @@ class InvestigationStandards:
         # Sequence matcher
         return SequenceMatcher(None, text1, text2).ratio()
     
+    def _sync_standard_changes_to_test_results(self, cursor, current_standard: Dict, updated_data: Dict):
+        """Synchronize changes from investigation standards to matching test results."""
+        try:
+            # Check if reference ranges or units changed
+            unit_changed = False
+            reference_changed = False
+            
+            # Get the unit to use (common_unit or male_unit as fallback)
+            old_unit = current_standard.get('common_unit') or current_standard.get('male_unit', '')
+            new_unit = updated_data.get('common_unit') or updated_data.get('male_unit', '')
+            
+            if old_unit != new_unit:
+                unit_changed = True
+            
+            # Check if reference ranges changed
+            old_male_min = current_standard.get('male_range_min')
+            old_male_max = current_standard.get('male_range_max')
+            old_female_min = current_standard.get('female_range_min')
+            old_female_max = current_standard.get('female_range_max')
+            
+            new_male_min = updated_data.get('male_range_min')
+            new_male_max = updated_data.get('male_range_max')
+            new_female_min = updated_data.get('female_range_min')
+            new_female_max = updated_data.get('female_range_max')
+            
+            if (old_male_min != new_male_min or old_male_max != new_male_max or 
+                old_female_min != new_female_min or old_female_max != new_female_max):
+                reference_changed = True
+            
+            # If either unit or reference range changed, update test results
+            if unit_changed or reference_changed:
+                # Get all test names that match this standard (including aliases)
+                test_names_to_update = [current_standard['standard_name']]
+                
+                # Add aliases
+                if current_standard.get('aliases'):
+                    aliases = [alias.strip() for alias in current_standard['aliases'].split(',')]
+                    test_names_to_update.extend(aliases)
+                
+                # Update test results for each matching test name
+                for test_name in test_names_to_update:
+                    if unit_changed:
+                        # Update unit
+                        cursor.execute('''
+                            UPDATE test_results 
+                            SET unit = ? 
+                            WHERE LOWER(test_type) = LOWER(?)
+                        ''', (new_unit, test_name))
+                        
+                        print(f"Updated unit for '{test_name}' from '{old_unit}' to '{new_unit}'")
+                    
+                    if reference_changed:
+                        # Format new reference range
+                        new_reference_range = self._format_reference_range(
+                            new_male_min, new_male_max, new_female_min, new_female_max, new_unit
+                        )
+                        
+                        # Update reference range
+                        cursor.execute('''
+                            UPDATE test_results 
+                            SET reference_range = ? 
+                            WHERE LOWER(test_type) = LOWER(?)
+                        ''', (new_reference_range, test_name))
+                        
+                        print(f"Updated reference range for '{test_name}' to '{new_reference_range}'")
+                        
+        except Exception as e:
+            print(f"Error syncing standard changes to test results: {e}")
+    
+    def _format_reference_range(self, male_min, male_max, female_min, female_max, unit):
+        """Format reference range string from individual components."""
+        try:
+            # If male and female ranges are the same, show single range
+            if (male_min == female_min and male_max == female_max):
+                if male_min is not None and male_max is not None:
+                    return f"{male_min}-{male_max} {unit}".strip()
+            
+            # Show separate ranges for male and female
+            range_parts = []
+            if male_min is not None and male_max is not None:
+                range_parts.append(f"M: {male_min}-{male_max}")
+            if female_min is not None and female_max is not None:
+                range_parts.append(f"F: {female_min}-{female_max}")
+            
+            if range_parts:
+                return f"{', '.join(range_parts)} {unit}".strip()
+            
+            return ""
+        except:
+            return ""
+
+    def get_standard_by_id(self, standard_id: int) -> Optional[Dict]:
+        """Get a single investigation standard by ID."""
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+                # Check if common_unit column exists
+                cursor.execute("PRAGMA table_info(investigation_standards)")
+                columns = [column[1] for column in cursor.fetchall()]
+                
+                if 'common_unit' in columns:
+                    cursor.execute('''
+                        SELECT id, standard_name, aliases, male_range_min, male_range_max, male_unit,
+                               female_range_min, female_range_max, female_unit, description, category, common_unit
+                        FROM investigation_standards
+                        WHERE id = ?
+                    ''', (standard_id,))
+                    
+                    row = cursor.fetchone()
+                    if row:
+                        return {
+                            'id': row[0],
+                            'standard_name': row[1],
+                            'aliases': row[2],
+                            'male_range_min': row[3],
+                            'male_range_max': row[4],
+                            'male_unit': row[5],
+                            'female_range_min': row[6],
+                            'female_range_max': row[7],
+                            'female_unit': row[8],
+                            'description': row[9],
+                            'category': row[10],
+                            'common_unit': row[11]
+                        }
+                else:
+                    cursor.execute('''
+                        SELECT id, standard_name, aliases, male_range_min, male_range_max, male_unit,
+                               female_range_min, female_range_max, female_unit, description, category
+                        FROM investigation_standards
+                        WHERE id = ?
+                    ''', (standard_id,))
+                    
+                    row = cursor.fetchone()
+                    if row:
+                        return {
+                            'id': row[0],
+                            'standard_name': row[1],
+                            'aliases': row[2],
+                            'male_range_min': row[3],
+                            'male_range_max': row[4],
+                            'male_unit': row[5],
+                            'female_range_min': row[6],
+                            'female_range_max': row[7],
+                            'female_unit': row[8],
+                            'description': row[9],
+                            'category': row[10],
+                            'common_unit': None
+                        }
+                return None
+        except Exception as e:
+            print(f"Error getting standard by ID: {e}")
+            return None
+    
+    def sync_all_standards_to_test_results(self) -> Dict[str, int]:
+        """Manually synchronize all investigation standards to test results. 
+        Returns count of updated records."""
+        try:
+            updated_counts = {'units': 0, 'reference_ranges': 0}
+            
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+                
+                # Get all standards
+                standards = self.get_all_standards()
+                
+                for standard in standards:
+                    # Get all test names that match this standard
+                    test_names_to_update = [standard['standard_name']]
+                    
+                    # Add aliases
+                    if standard.get('aliases'):
+                        aliases = [alias.strip() for alias in standard['aliases'].split(',')]
+                        test_names_to_update.extend(aliases)
+                    
+                    # Get the unit to use
+                    unit = standard.get('common_unit') or standard.get('male_unit', '')
+                    
+                    # Format reference range
+                    reference_range = self._format_reference_range(
+                        standard.get('male_range_min'),
+                        standard.get('male_range_max'),
+                        standard.get('female_range_min'),
+                        standard.get('female_range_max'),
+                        unit
+                    )
+                    
+                    # Update test results for each matching test name
+                    for test_name in test_names_to_update:
+                        if unit:
+                            cursor.execute('''
+                                UPDATE test_results 
+                                SET unit = ? 
+                                WHERE LOWER(test_type) = LOWER(?) AND (unit IS NULL OR unit = '')
+                            ''', (unit, test_name))
+                            updated_counts['units'] += cursor.rowcount
+                        
+                        if reference_range:
+                            cursor.execute('''
+                                UPDATE test_results 
+                                SET reference_range = ? 
+                                WHERE LOWER(test_type) = LOWER(?) AND (reference_range IS NULL OR reference_range = '')
+                            ''', (reference_range, test_name))
+                            updated_counts['reference_ranges'] += cursor.rowcount
+                
+                conn.commit()
+                return updated_counts
+                
+        except Exception as e:
+            print(f"Error syncing all standards to test results: {e}")
+            return {'units': 0, 'reference_ranges': 0}
+
     def _calculate_unit_compatibility(self, extracted_unit: str, standard: Dict) -> float:
         """Calculate how compatible the extracted unit is with the standard's unit."""
         if not extracted_unit:
