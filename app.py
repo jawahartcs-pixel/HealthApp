@@ -2245,15 +2245,120 @@ def manage_data_page(db, user_id):
             }
             
             st.markdown("---")
+            
+            # Add sorting and filtering controls
+            st.subheader("🔍 Filter & Sort Controls")
+            filter_col1, filter_col2, filter_col3, filter_col4 = st.columns(4)
+            
+            with filter_col1:
+                # Sort options
+                sort_by = st.selectbox(
+                    "Sort by",
+                    options=["Date", "Test Type", "Value", "Patient Name", "ID"],
+                    index=0,
+                    help="Choose field to sort by"
+                )
+                sort_order = st.radio("Order", ["Ascending", "Descending"], horizontal=True)
+            
+            with filter_col2:
+                # Test Type filter
+                unique_test_types = edit_df['Test Type'].unique()
+                test_type_filter = st.multiselect(
+                    "Filter by Test Type",
+                    options=[t for t in unique_test_types if t],  # Remove empty strings
+                    placeholder="Select test types...",
+                    help="Select specific test types to show"
+                )
+            
+            with filter_col3:
+                # Date range filter
+                if len(edit_df[edit_df['Date'].notna()]) > 0:
+                    min_date = edit_df[edit_df['Date'].notna()]['Date'].min().date()
+                    max_date = edit_df[edit_df['Date'].notna()]['Date'].max().date()
+                else:
+                    min_date = pd.Timestamp.now().date()
+                    max_date = pd.Timestamp.now().date()
+                
+                date_range = st.date_input(
+                    "Date Range",
+                    value=(min_date, max_date),
+                    help="Filter by date range"
+                )
+            
+            with filter_col4:
+                # Value range filter and search
+                if len(edit_df[edit_df['Value'] > 0]) > 0:
+                    min_val = float(edit_df[edit_df['Value'] > 0]['Value'].min())
+                    max_val = float(edit_df[edit_df['Value'] > 0]['Value'].max())
+                    value_range = st.slider(
+                        "Value Range",
+                        min_value=min_val,
+                        max_value=max_val,
+                        value=(min_val, max_val),
+                        help="Filter by value range"
+                    )
+                else:
+                    value_range = (0.0, 1000.0)
+                
+                # Search box
+                search_term = st.text_input(
+                    "Search",
+                    placeholder="Search in any field...",
+                    help="Search across all text fields"
+                )
+            
+            # Reset filters button
+            if st.button("🔄 Reset All Filters"):
+                st.rerun()
+            
+            # Apply filters and sorting to the DataFrame
+            filtered_df = edit_df.copy()
+            
+            # Apply test type filter
+            if test_type_filter:
+                filtered_df = filtered_df[filtered_df['Test Type'].isin(test_type_filter)]
+            
+            # Apply date range filter
+            if isinstance(date_range, tuple) and len(date_range) == 2:
+                start_date, end_date = date_range
+                filtered_df = filtered_df[
+                    (filtered_df['Date'].dt.date >= start_date) & 
+                    (filtered_df['Date'].dt.date <= end_date)
+                ]
+            
+            # Apply value range filter
+            filtered_df = filtered_df[
+                (filtered_df['Value'] >= value_range[0]) & 
+                (filtered_df['Value'] <= value_range[1])
+            ]
+            
+            # Apply search filter
+            if search_term:
+                search_mask = (
+                    filtered_df['Test Type'].str.contains(search_term, case=False, na=False) |
+                    filtered_df['Unit'].str.contains(search_term, case=False, na=False) |
+                    filtered_df['Reference Range'].str.contains(search_term, case=False, na=False) |
+                    filtered_df['Patient Name'].str.contains(search_term, case=False, na=False)
+                )
+                filtered_df = filtered_df[search_mask]
+            
+            # Apply sorting
+            ascending = (sort_order == "Ascending")
+            filtered_df = filtered_df.sort_values(by=sort_by, ascending=ascending)
+            
+            # Show filtering results
+            st.info(f"📊 Showing {len(filtered_df)} of {len(edit_df)} total records")
+            
+            st.markdown("---")
             st.markdown("**Instructions:**")
             st.markdown("- **New entries**: ID = 0, fill in all required fields")
             st.markdown("- **Existing entries**: ID > 0, edit any field to update")
             st.markdown("- **Patient Name**: Required for all entries (especially new patients)")
             st.markdown("- **Required fields**: Date, Test Type, Value, Patient Name")
             
-            # Excel-style editor
+            # Excel-style editor with filtered data
             edited_df = st.data_editor(
-                edit_df,
+                filtered_df,
                 column_config=column_config,
                 use_container_width=True,
                 num_rows="dynamic",
