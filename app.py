@@ -1846,8 +1846,25 @@ def view_patients_page(db, alert_system, user_id):
                     col1, col2 = st.columns(2)
                     
                     with col1:
-                        edit_age = st.number_input("Age", min_value=0, max_value=150, 
-                                                 value=profile['age'] if profile['age'] else None)
+                        from datetime import datetime
+                        dob_value = None
+                        if profile.get('date_of_birth'):
+                            try:
+                                dob_value = datetime.strptime(profile['date_of_birth'], '%Y-%m-%d').date()
+                            except:
+                                pass
+                        edit_dob = st.date_input("Date of Birth", value=dob_value)
+                        
+                        # Calculate and display age
+                        if edit_dob:
+                            today = datetime.now().date()
+                            calculated_age = today.year - edit_dob.year - ((today.month, today.day) < (edit_dob.month, edit_dob.day))
+                            st.info(f"Calculated Age: {calculated_age} years")
+                            edit_age = calculated_age
+                        else:
+                            edit_age = st.number_input("Age", min_value=0, max_value=150, 
+                                                     value=profile['age'] if profile['age'] else None)
+                        
                         edit_gender = st.selectbox("Gender", ["Male", "Female", "Other", "Not Specified"], 
                                                  index=["Male", "Female", "Other", "Not Specified"].index(profile['gender']) 
                                                  if profile['gender'] in ["Male", "Female", "Other", "Not Specified"] else 3)
@@ -1875,6 +1892,7 @@ def view_patients_page(db, alert_system, user_id):
                     if st.form_submit_button("Update Profile", type="primary"):
                         if db.update_patient_profile(
                             patient_id=profile['patient_id'],
+                            date_of_birth=edit_dob.strftime('%Y-%m-%d') if edit_dob else None,
                             age=edit_age,
                             gender=edit_gender,
                             phone=edit_phone,
@@ -3334,7 +3352,7 @@ def alert_dashboard_page(alert_system, user_id):
     with col1:
         selected_levels = st.multiselect(
             "Alert Levels",
-            options=['CRITICAL', 'HIGH', 'MEDIUM', 'LOW'],
+            options=['CRITICAL', 'HIGH', 'MEDIUM', 'MINOR'],
             default=['CRITICAL', 'HIGH']
         )
     
@@ -3363,7 +3381,7 @@ def alert_dashboard_page(alert_system, user_id):
     critical_alerts = [a for a in filtered_alerts if a['level'] == 'CRITICAL']
     high_alerts = [a for a in filtered_alerts if a['level'] == 'HIGH']
     medium_alerts = [a for a in filtered_alerts if a['level'] == 'MEDIUM']
-    low_alerts = [a for a in filtered_alerts if a['level'] == 'LOW']
+    minor_alerts = [a for a in filtered_alerts if a['level'] == 'MINOR']
     
     # Display Critical Alerts
     if critical_alerts:
@@ -3397,14 +3415,17 @@ def alert_dashboard_page(alert_system, user_id):
                     for rec in alert['recommendations']:
                         st.markdown(f"• {rec}")
     
-    # Display Medium and Low Priority Alerts
-    if medium_alerts or low_alerts:
+    # Display Medium and Minor Priority Alerts
+    if medium_alerts or minor_alerts:
         st.subheader("⚡ Other Alerts")
-        other_alerts = medium_alerts + low_alerts
+        other_alerts = medium_alerts + minor_alerts
         
         for alert in other_alerts:
-            with st.expander(f"{alert['icon']} {alert['level']} - {alert['patient_name']} - {alert['test_type']} ({alert['test_date']})"):
-                st.markdown(f"**Message:** {alert['message']}")
+            # Use enhanced header if available, otherwise fallback to message
+            display_header = alert.get('header', alert['message'])
+            alert_label = alert.get('label', alert['level'])
+            with st.expander(f"{alert['icon']} {alert_label} - {alert['patient_name']} - {alert['test_type']} ({alert['test_date']})"):
+                st.markdown(f"**Message:** {display_header}")
                 st.markdown(f"**Value:** {alert['value']} {alert['unit']}")
                 st.markdown(f"**Reference Range:** {alert['reference_range']}")
                 

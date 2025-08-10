@@ -28,13 +28,14 @@ class AlertSystem:
         
         # Define alert severity levels
         self.alert_levels = {
-            'CRITICAL': {'color': '#dc3545', 'icon': '🚨', 'priority': 1},
-            'HIGH': {'color': '#fd7e14', 'icon': '⚠️', 'priority': 2},
-            'MEDIUM': {'color': '#ffc107', 'icon': '⚡', 'priority': 3},
-            'LOW': {'color': '#17a2b8', 'icon': 'ℹ️', 'priority': 4}
+            'CRITICAL': {'color': '#dc3545', 'icon': '🚨', 'priority': 1, 'label': 'Critical Alert'},
+            'HIGH': {'color': '#fd7e14', 'icon': '⚠️', 'priority': 2, 'label': 'High Alert'},
+            'MEDIUM': {'color': '#ffc107', 'icon': '⚡', 'priority': 3, 'label': 'Medium Alert'},
+            'MINOR': {'color': '#17a2b8', 'icon': 'ℹ️', 'priority': 4, 'label': 'Minor Alert'}
         }
     
-    def check_test_result(self, test_type: str, value: float, reference_range: str = None) -> Dict[str, Any]:
+    def check_test_result(self, test_type: str, value: float, reference_range: str = None, 
+                         test_date: str = None) -> Dict[str, Any]:
         """Check a single test result and return alert information."""
         alert = {
             'has_alert': False,
@@ -66,12 +67,16 @@ class AlertSystem:
             is_normal, status = is_value_normal(value, reference_range)
             if not is_normal:
                 severity = self._determine_severity(test_type, value, reference_range, status)
+                # Enhanced header with status, value and date
+                date_str = f"({test_date})" if test_date else ""
                 alert.update({
                     'has_alert': True,
                     'level': severity,
-                    'message': f'{test_type} is {status.lower()}: {value}',
+                    'message': f'{test_type} is {status.lower()}: {value}{date_str}',
+                    'header': f'{test_type} is {status.lower()}: {value}{date_str}',
                     'color': self.alert_levels[severity]['color'],
                     'icon': self.alert_levels[severity]['icon'],
+                    'label': self.alert_levels[severity]['label'],
                     'recommendations': self._get_recommendations(test_type, status, value)
                 })
         
@@ -115,7 +120,7 @@ class AlertSystem:
                 elif deviation >= 0.5:  # More than 0.5x range width outside
                     return 'MEDIUM'
                 else:
-                    return 'LOW'
+                    return 'MINOR'
             
             return 'MEDIUM'
         except:

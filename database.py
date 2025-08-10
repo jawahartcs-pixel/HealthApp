@@ -117,6 +117,11 @@ class Database:
             except sqlite3.OperationalError:
                 pass  # Column already exists
             
+            try:
+                cursor.execute('ALTER TABLE patients ADD COLUMN date_of_birth DATE')
+            except sqlite3.OperationalError:
+                pass  # Column already exists
+            
             # Create patient_documents table for uploaded reports
             cursor.execute('''
                 CREATE TABLE IF NOT EXISTS patient_documents (
@@ -150,8 +155,8 @@ class Database:
             
             conn.commit()
     
-    def add_patient(self, patient_name: str, user_id: int = None, age: int = None, 
-                   gender: str = None, phone: str = None, email: str = None, 
+    def add_patient(self, patient_name: str, user_id: int = None, date_of_birth: str = None,
+                   age: int = None, gender: str = None, phone: str = None, email: str = None, 
                    address: str = None, medical_history: str = None, 
                    medications: str = None, allergies: str = None, 
                    emergency_contact: str = None, notes: str = None) -> int:
@@ -172,17 +177,17 @@ class Database:
             
             # Add new patient with profile data
             cursor.execute('''
-                INSERT INTO patients (patient_name, user_id, age, gender, phone, email, 
+                INSERT INTO patients (patient_name, user_id, date_of_birth, age, gender, phone, email, 
                                     address, medical_history, medications, allergies, 
                                     emergency_contact, notes) 
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            ''', (patient_name, user_id, age, gender, phone, email, address, 
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ''', (patient_name, user_id, date_of_birth, age, gender, phone, email, address, 
                   medical_history, medications, allergies, emergency_contact, notes))
             conn.commit()
             return cursor.lastrowid
     
-    def update_patient_profile(self, patient_id: int, age: int = None, gender: str = None, 
-                              phone: str = None, email: str = None, address: str = None, 
+    def update_patient_profile(self, patient_id: int, date_of_birth: str = None, age: int = None, 
+                              gender: str = None, phone: str = None, email: str = None, address: str = None, 
                               medical_history: str = None, medications: str = None, 
                               allergies: str = None, emergency_contact: str = None, 
                               notes: str = None) -> bool:
@@ -192,11 +197,11 @@ class Database:
                 cursor = conn.cursor()
                 cursor.execute('''
                     UPDATE patients SET 
-                        age = ?, gender = ?, phone = ?, email = ?, address = ?,
+                        date_of_birth = ?, age = ?, gender = ?, phone = ?, email = ?, address = ?,
                         medical_history = ?, medications = ?, allergies = ?, 
                         emergency_contact = ?, notes = ?
                     WHERE patient_id = ?
-                ''', (age, gender, phone, email, address, medical_history, 
+                ''', (date_of_birth, age, gender, phone, email, address, medical_history, 
                       medications, allergies, emergency_contact, notes, patient_id))
                 conn.commit()
                 return True
@@ -211,7 +216,7 @@ class Database:
                 cursor = conn.cursor()
                 if user_id:
                     cursor.execute('''
-                        SELECT patient_id, patient_name, age, gender, phone, email, address,
+                        SELECT patient_id, patient_name, date_of_birth, age, gender, phone, email, address,
                                medical_history, medications, allergies, emergency_contact, 
                                notes, created_at
                         FROM patients 
@@ -219,7 +224,7 @@ class Database:
                     ''', (patient_name, user_id))
                 else:
                     cursor.execute('''
-                        SELECT patient_id, patient_name, age, gender, phone, email, address,
+                        SELECT patient_id, patient_name, date_of_birth, age, gender, phone, email, address,
                                medical_history, medications, allergies, emergency_contact, 
                                notes, created_at
                         FROM patients 
@@ -231,17 +236,18 @@ class Database:
                     return {
                         'patient_id': result[0],
                         'patient_name': result[1],
-                        'age': result[2],
-                        'gender': result[3],
-                        'phone': result[4],
-                        'email': result[5],
-                        'address': result[6],
-                        'medical_history': result[7],
-                        'medications': result[8],
-                        'allergies': result[9],
-                        'emergency_contact': result[10],
-                        'notes': result[11],
-                        'created_at': result[12]
+                        'date_of_birth': result[2],
+                        'age': result[3],
+                        'gender': result[4],
+                        'phone': result[5],
+                        'email': result[6],
+                        'address': result[7],
+                        'medical_history': result[8],
+                        'medications': result[9],
+                        'allergies': result[10],
+                        'emergency_contact': result[11],
+                        'notes': result[12],
+                        'created_at': result[13]
                     }
                 return None
         except Exception as e:

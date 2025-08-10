@@ -4,6 +4,23 @@
 
 A Streamlit-based web application designed for healthcare professionals to manage, visualize, and analyze patient blood test results. This system facilitates uploading various file formats, storing data in a structured database, and generating meaningful visualizations to track health trends over time. The project aims to provide an intuitive tool for patient health monitoring, offering comprehensive data analysis and reporting capabilities.
 
+## Recent Changes (August 2025)
+
+### Enhanced Patient Profile Management
+- Added date of birth field to patient profiles with automatic age calculation
+- Database schema updated with date_of_birth column
+- Profile forms now derive age from birth date for better accuracy
+
+### Improved Alert System Terminology
+- Updated alert levels from "Low/Medium/High/Critical" to "Minor Alert/Medium Alert/High Alert/Critical Alert"
+- Enhanced alert headers now display complete status with values and dates: "CHOL/HDL is high: 5.74(2025-07-17)"
+- Alert display uses descriptive labels for better user understanding
+
+### Enhanced OCR Accuracy
+- Improved patient name extraction with "patient" tag priority for intelligent identification
+- Enhanced date extraction patterns to correctly identify recent years (2022-2025) over older dates
+- Updated regex patterns for better medical document parsing
+
 ## User Preferences
 
 Preferred communication style: Simple, everyday language.
@@ -41,7 +58,7 @@ User wants proper category grouping for visualizations using the investigation s
 - **Visualization**: Utilizes Plotly for interactive 2D charts (trend, comparison, grouped) with consistent color schemes, compact layouts, and annotations. Supports category grouping based on investigation standards and gender-specific reference ranges with visual indicators.
 - **Investigation Standards Management**: Manages predefined and user-defined test standards, including reference ranges, units, and aliases. Features auto-synchronization of test results with standard changes and Excel-style editing.
 - **AI-Powered Anomaly Detection**: Integrates multiple machine learning algorithms (Isolation Forest, Statistical Outlier, DBSCAN, Temporal, Correlation-based) for comprehensive anomaly detection across patients, providing medical insights and actionable recommendations.
-- **Alert System**: Implements a four-level severity system (Critical, High, Medium, Low) for abnormal values based on deviation from normal ranges, with a dedicated alert dashboard and integrated display.
+- **Alert System**: Implements a four-level severity system (Critical Alert, High Alert, Medium Alert, Minor Alert) for abnormal values based on deviation from normal ranges, with enhanced headers showing complete status and values, and a dedicated alert dashboard with integrated display.
 - **Medication Management**: Tracks medications, schedules, adherence, and effectiveness, integrated with test results for analysis. Includes a multi-tab UI for comprehensive management.
 - **Document Preview & Comparison**: Provides side-by-side document preview with extracted results, highlighting, search functionality, and tools for verification.
 - **Data Filtering & Sorting**: Advanced filtering and sorting capabilities for database records, including multi-column sorting, date/value range filtering, and text search.
