@@ -2314,37 +2314,50 @@ def manage_data_page(db, user_id):
             # Apply filters and sorting to the DataFrame
             filtered_df = edit_df.copy()
             
-            # Apply test type filter
-            if test_type_filter:
-                filtered_df = filtered_df[filtered_df['Test Type'].isin(test_type_filter)]
+            # Separate empty rows (new entries) from existing data for filtering
+            empty_rows = filtered_df[filtered_df['Action'] == 'new'].copy()
+            existing_rows = filtered_df[filtered_df['Action'] == 'existing'].copy()
             
-            # Apply date range filter
-            if isinstance(date_range, tuple) and len(date_range) == 2:
-                start_date, end_date = date_range
-                filtered_df = filtered_df[
-                    (filtered_df['Date'].dt.date >= start_date) & 
-                    (filtered_df['Date'].dt.date <= end_date)
+            # Apply filters only to existing rows, not empty rows
+            if not existing_rows.empty:
+                # Apply test type filter
+                if test_type_filter:
+                    existing_rows = existing_rows[existing_rows['Test Type'].isin(test_type_filter)]
+                
+                # Apply date range filter
+                if isinstance(date_range, tuple) and len(date_range) == 2:
+                    start_date, end_date = date_range
+                    existing_rows = existing_rows[
+                        (existing_rows['Date'].dt.date >= start_date) & 
+                        (existing_rows['Date'].dt.date <= end_date)
+                    ]
+                
+                # Apply value range filter (only to rows with non-zero values)
+                existing_rows = existing_rows[
+                    (existing_rows['Value'] >= value_range[0]) & 
+                    (existing_rows['Value'] <= value_range[1])
                 ]
+                
+                # Apply search filter
+                if search_term:
+                    search_mask = (
+                        existing_rows['Test Type'].str.contains(search_term, case=False, na=False) |
+                        existing_rows['Unit'].str.contains(search_term, case=False, na=False) |
+                        existing_rows['Reference Range'].str.contains(search_term, case=False, na=False) |
+                        existing_rows['Patient Name'].str.contains(search_term, case=False, na=False)
+                    )
+                    existing_rows = existing_rows[search_mask]
             
-            # Apply value range filter
-            filtered_df = filtered_df[
-                (filtered_df['Value'] >= value_range[0]) & 
-                (filtered_df['Value'] <= value_range[1])
-            ]
+            # Combine filtered existing rows with all empty rows
+            filtered_df = pd.concat([existing_rows, empty_rows], ignore_index=True)
             
-            # Apply search filter
-            if search_term:
-                search_mask = (
-                    filtered_df['Test Type'].str.contains(search_term, case=False, na=False) |
-                    filtered_df['Unit'].str.contains(search_term, case=False, na=False) |
-                    filtered_df['Reference Range'].str.contains(search_term, case=False, na=False) |
-                    filtered_df['Patient Name'].str.contains(search_term, case=False, na=False)
-                )
-                filtered_df = filtered_df[search_mask]
+            # Combine filtered existing rows with all empty rows
+            filtered_df = pd.concat([existing_rows, empty_rows], ignore_index=True)
             
-            # Apply sorting
-            ascending = (sort_order == "Ascending")
-            filtered_df = filtered_df.sort_values(by=sort_by, ascending=ascending)
+            # Apply sorting to the combined data
+            if not filtered_df.empty:
+                ascending = (sort_order == "Ascending")
+                filtered_df = filtered_df.sort_values(by=sort_by, ascending=ascending)
             
             # Show filtering results
             st.info(f"📊 Showing {len(filtered_df)} of {len(edit_df)} total records")
