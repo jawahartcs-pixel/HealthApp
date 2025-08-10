@@ -156,22 +156,22 @@ class FileParser:
             r'(\d{2,4}[\-\/]\d{1,2}[\-\/]\d{1,2})'
         ]
         
-        # Enhanced patient name patterns - use "patient" tag for intelligent identification
+        # Enhanced patient name patterns - use specific "Patient" + "Name" + ":" pattern
         self.patient_patterns = [
-            # Highest priority - explicit "patient" patterns (avoid doctor names)
-            r'(?:patient|patient\s+name)\s*[:\-]?\s*(?:mr|mrs|ms|dr)\.?\s+([A-Za-z][A-Za-z\s]{2,40})(?:\n|$|,|\s)',
-            r'Patient\s*[:\-]?\s*(?:mr|mrs|ms|dr)\.?\s+([A-Za-z][A-Za-z\s]{2,40})',
-            r'Patient\s*[:\-]?\s*([A-Z][a-z]+(?:\s+[A-Z][a-z]+){1,3})',  # Patient: FirstName LastName
-            r'patient\s*[:\-]?\s*([A-Z][a-z]+(?:\s+[A-Z][a-z]+){1,3})',  # patient: FirstName LastName
-            r'PATIENT\s*[:\-]?\s*([A-Z][a-z]+(?:\s+[A-Z][a-z]+){1,3})',  # PATIENT: FirstName LastName
-            # Look for "patient" in same line with a proper name (but avoid "consultant" or "doctor")
-            r'patient(?!.*(?:consultant|doctor|dr\.|physician))[^\n]*?([A-Z][a-z]+(?:\s+[A-Z][a-z]+){1,3})',
-            # Name patterns but avoid consultant/doctor context
-            r'(?<!(?:consultant|doctor|dr\.)\s)Name\s*[:\-]?\s*(?:mr|mrs|ms|dr)\.?\s+([A-Za-z][A-Za-z\s]{2,40})',
-            r'(?<!(?:consultant|doctor|dr\.)\s)Name\s*[:\-]?\s*([A-Z][a-z]+(?:\s+[A-Z][a-z]+){1,3})',
-            r'(?<!(?:consultant|doctor|dr\.)\s)name\s*[:\-]?\s*([A-Z][a-z]+(?:\s+[A-Z][a-z]+){1,3})',
-            # Traditional patterns as last resort (but avoid consultant context)
-            r'(?<!(?:consultant|doctor|dr\.)\s)(?:mr|mrs|ms)\.?\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+){1,2})',
+            # Highest priority - specific "Patient Name:" pattern to avoid mobile numbers
+            r'Patient\s+Name\s*[:\-]\s*(?:mr|mrs|ms|dr)\.?\s+([A-Za-z][A-Za-z\s]{2,40})(?:\n|$|,)',
+            r'patient\s+name\s*[:\-]\s*(?:mr|mrs|ms|dr)\.?\s+([A-Za-z][A-Za-z\s]{2,40})(?:\n|$|,)',
+            r'PATIENT\s+NAME\s*[:\-]\s*(?:mr|mrs|ms|dr)\.?\s+([A-Za-z][A-Za-z\s]{2,40})(?:\n|$|,)',
+            r'Patient\s+Name\s*[:\-]\s*([A-Z][a-z]+(?:\s+[A-Z][a-z]+){1,3})(?:\n|$|,)',
+            r'patient\s+name\s*[:\-]\s*([A-Z][a-z]+(?:\s+[A-Z][a-z]+){1,3})(?:\n|$|,)',
+            r'PATIENT\s+NAME\s*[:\-]\s*([A-Z][a-z]+(?:\s+[A-Z][a-z]+){1,3})(?:\n|$|,)',
+            # Secondary patterns - single "Patient:" but with strict name validation (no numbers)
+            r'Patient\s*[:\-]\s*(?:mr|mrs|ms|dr)\.?\s+([A-Za-z]+(?:\s+[A-Za-z]+){1,3})(?=\s|$|\n)',
+            r'patient\s*[:\-]\s*(?:mr|mrs|ms|dr)\.?\s+([A-Za-z]+(?:\s+[A-Za-z]+){1,3})(?=\s|$|\n)',
+            r'PATIENT\s*[:\-]\s*(?:mr|mrs|ms|dr)\.?\s+([A-Za-z]+(?:\s+[A-Za-z]+){1,3})(?=\s|$|\n)',
+            # Fallback patterns - avoid numbers completely
+            r'(?<!(?:consultant|doctor|dr\.)\s)Name\s*[:\-]\s*([A-Za-z]+(?:\s+[A-Za-z]+){1,3})(?=\s|$|\n)',
+            r'(?<!(?:consultant|doctor|dr\.)\s)name\s*[:\-]\s*([A-Za-z]+(?:\s+[A-Za-z]+){1,3})(?=\s|$|\n)',
         ]
         
         # Medical terminology validation set
@@ -721,9 +721,15 @@ class FileParser:
                 name = re.sub(r'\s+', ' ', name)
                 # Remove common prefixes that might be captured
                 name = re.sub(r'^(mr|mrs|ms|dr)\.?\s+', '', name, flags=re.IGNORECASE)
-                # Only return if it looks like a real name (2+ words, reasonable length)
-                if len(name.split()) >= 2 and len(name) <= 50:
+                # Enhanced validation - check for numbers and ensure it's a valid name
+                if (len(name.split()) >= 2 and len(name) <= 50 and 
+                    not re.search(r'\d', name) and  # No numbers
+                    not re.search(r'[+\-()#]', name) and  # No phone number characters
+                    all(word.isalpha() for word in name.split())):  # Only alphabetic words
+                    print(f"✅ Found patient name in top section: {name}")
                     return name.title()  # Convert to title case
+                else:
+                    print(f"❌ Invalid patient name candidate: {name} (contains numbers or invalid chars)")
         
         # If not found in top, check full text
         for pattern in self.patient_patterns:
@@ -732,9 +738,16 @@ class FileParser:
                 name = match.group(1).strip()
                 name = re.sub(r'\s+', ' ', name)
                 name = re.sub(r'^(mr|mrs|ms|dr)\.?\s+', '', name, flags=re.IGNORECASE)
-                if len(name.split()) >= 2 and len(name) <= 50:
+                if (len(name.split()) >= 2 and len(name) <= 50 and 
+                    not re.search(r'\d', name) and  # No numbers
+                    not re.search(r'[+\-()#]', name) and  # No phone number characters
+                    all(word.isalpha() for word in name.split())):  # Only alphabetic words
+                    print(f"✅ Found patient name in full text: {name}")
                     return name.title()  # Convert to title case
+                else:
+                    print(f"❌ Invalid patient name candidate: {name} (contains numbers or invalid chars)")
         
+        print("❌ No valid patient name found")
         return ""
     
     def _extract_test_date(self, text: str) -> Optional[date]:
