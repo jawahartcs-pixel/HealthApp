@@ -28,6 +28,12 @@ A Streamlit-based web application designed for healthcare professionals to manag
 - Age calculation hidden until date of birth is provided, then auto-calculated and displayed
 - Profile forms provide better user experience with informative messages
 
+### PDF Report Generation Improvements
+- Removed "Recent results" section and now shows all individual test results
+- Enhanced alert headers with complete status information including values and dates
+- Added shaded reference ranges to graphs in PDF reports for better visualization
+- Updated alert terminology consistently throughout PDF reports
+
 ## User Preferences
 
 Preferred communication style: Simple, everyday language.

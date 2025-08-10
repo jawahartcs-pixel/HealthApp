@@ -285,7 +285,7 @@ class PDFReportGenerator:
         elements = []
         
         # Section header
-        elements.append(Paragraph("Recent Test Results", self.heading_style))
+        elements.append(Paragraph("All Test Results", self.heading_style))
         
         # Get patient data
         test_data = self.database.get_patient_tests(patient_name, user_id)
@@ -298,8 +298,8 @@ class PDFReportGenerator:
         df = pd.DataFrame(test_data, columns=['test_date', 'test_type', 'test_value', 'unit', 'reference_range'])
         df['test_date'] = pd.to_datetime(df['test_date'])
         
-        # Sort by date (most recent first) and limit to last 20 results
-        df_sorted = df.sort_values('test_date', ascending=False).head(20)
+        # Sort by date (most recent first) - show all results, not just 20
+        df_sorted = df.sort_values('test_date', ascending=False)
         
         # Prepare table data
         table_data = [['Date', 'Test Type', 'Value', 'Unit', 'Reference Range']]
@@ -417,6 +417,22 @@ class PDFReportGenerator:
             
             # Create matplotlib figure
             plt.figure(figsize=(8, 4))
+            
+            # Get reference range for shading
+            reference_range = df['reference_range'].iloc[0] if not df['reference_range'].empty else None
+            if reference_range and reference_range != '' and str(reference_range) != 'nan':
+                try:
+                    # Parse reference range (e.g., "3.5-5.0" or "< 200")
+                    from utils import parse_reference_range
+                    range_low, range_high = parse_reference_range(reference_range)
+                    
+                    if range_low is not None and range_high is not None:
+                        # Add shaded reference range
+                        plt.axhspan(range_low, range_high, alpha=0.2, color='green', label='Normal Range')
+                        plt.legend(loc='upper right')
+                except Exception as e:
+                    print(f"Could not parse reference range '{reference_range}': {e}")
+            
             plt.plot(df['test_date'], df['test_value'], marker='o', linewidth=2, markersize=6)
             
             # Add value labels on each data point
@@ -471,19 +487,21 @@ class PDFReportGenerator:
                 elements.append(Paragraph("No active alerts for this patient.", self.styles['Normal']))
                 return elements
             
-            # Create alerts table
-            alert_data = [['Date', 'Test Type', 'Value', 'Level', 'Message']]
+            # Create enhanced alerts table with enhanced headers
+            alert_data = [['Date', 'Alert Level', 'Enhanced Alert Information']]
             
             for alert in alerts[:10]:  # Limit to 10 most recent alerts
+                # Use enhanced header if available
+                alert_header = alert.get('header', f"{alert.get('test_type', 'N/A')} - {alert.get('message', 'N/A')}")
+                alert_label = alert.get('label', alert.get('level', 'N/A'))
+                
                 alert_data.append([
                     str(alert.get('test_date', 'N/A')),
-                    str(alert.get('test_type', 'N/A')),
-                    str(alert.get('value', 'N/A')),
-                    str(alert.get('level', 'N/A')),
-                    str(alert.get('message', 'N/A'))
+                    alert_label,
+                    alert_header
                 ])
             
-            alerts_table = Table(alert_data, colWidths=[1.2*inch, 1.8*inch, 1*inch, 1*inch, 1.3*inch])
+            alerts_table = Table(alert_data, colWidths=[1.2*inch, 1.5*inch, 3.5*inch])
             alerts_table.setStyle(TableStyle([
                 ('BACKGROUND', (0, 0), (-1, 0), colors.red),
                 ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
