@@ -158,25 +158,20 @@ class FileParser:
         
         # Enhanced patient name patterns - use "patient" tag for intelligent identification
         self.patient_patterns = [
-            # Priority patterns - use "patient" tag for intelligent identification
-            r'(?:patient|patient\s+name)[:\-]?\s*(?:mr|mrs|ms|dr)\.?\s+([A-Za-z\s]{2,50}?)(?:\n|$|,)',
-            r'Patient\s*[:\-]?\s*(?:mr|mrs|ms|dr)\.?\s+([A-Za-z\s]{2,50})',
-            r'Patient\s*[:\-]?\s*([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)',  # Patient: Name
-            r'patient\s*[:\-]?\s*([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)',  # patient: Name
-            r'PATIENT\s*[:\-]?\s*([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)',  # PATIENT: Name
-            # Look for lines containing "patient" followed by a proper name
-            r'patient[^\n]*?([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)',
-            # Traditional patterns as fallback
-            r'(?:mr|mrs|ms|dr)\.?\s+([A-Za-z]+(?:\s+[A-Za-z]+)*)',  # Mr/Mrs prefix
-            r'Name\s*[:\-]?\s*(?:mr|mrs|ms|dr)\.?\s+([A-Za-z\s]{2,50})',  # Name: Mr/Mrs
-            r'Name\s*[:\-]?\s*([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)',  # Name: Capitalized words
-            r'name\s*[:\-]?\s*(?:mr|mrs|ms|dr)\.?\s+([A-Za-z\s]{2,50})',
-            r'NAME\s*[:\-]?\s*(?:mr|mrs|ms|dr)\.?\s+([A-Za-z\s]{2,50})',
-            r'Name\s*[:\-]?\s*([A-Za-z\s]{2,50})',
-            r'name\s*[:\-]?\s*([A-Za-z\s]{2,50})',
-            r'NAME\s*[:\-]?\s*([A-Za-z\s]{2,50})',
-            r'^([A-Z][a-z]+\s+[A-Z][a-z]+)',
-            r'([A-Z][a-z]+\s+[A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)\s*(?:\n|$)',
+            # Highest priority - explicit "patient" patterns (avoid doctor names)
+            r'(?:patient|patient\s+name)\s*[:\-]?\s*(?:mr|mrs|ms|dr)\.?\s+([A-Za-z][A-Za-z\s]{2,40})(?:\n|$|,|\s)',
+            r'Patient\s*[:\-]?\s*(?:mr|mrs|ms|dr)\.?\s+([A-Za-z][A-Za-z\s]{2,40})',
+            r'Patient\s*[:\-]?\s*([A-Z][a-z]+(?:\s+[A-Z][a-z]+){1,3})',  # Patient: FirstName LastName
+            r'patient\s*[:\-]?\s*([A-Z][a-z]+(?:\s+[A-Z][a-z]+){1,3})',  # patient: FirstName LastName
+            r'PATIENT\s*[:\-]?\s*([A-Z][a-z]+(?:\s+[A-Z][a-z]+){1,3})',  # PATIENT: FirstName LastName
+            # Look for "patient" in same line with a proper name (but avoid "consultant" or "doctor")
+            r'patient(?!.*(?:consultant|doctor|dr\.|physician))[^\n]*?([A-Z][a-z]+(?:\s+[A-Z][a-z]+){1,3})',
+            # Name patterns but avoid consultant/doctor context
+            r'(?<!(?:consultant|doctor|dr\.)\s)Name\s*[:\-]?\s*(?:mr|mrs|ms|dr)\.?\s+([A-Za-z][A-Za-z\s]{2,40})',
+            r'(?<!(?:consultant|doctor|dr\.)\s)Name\s*[:\-]?\s*([A-Z][a-z]+(?:\s+[A-Z][a-z]+){1,3})',
+            r'(?<!(?:consultant|doctor|dr\.)\s)name\s*[:\-]?\s*([A-Z][a-z]+(?:\s+[A-Z][a-z]+){1,3})',
+            # Traditional patterns as last resort (but avoid consultant context)
+            r'(?<!(?:consultant|doctor|dr\.)\s)(?:mr|mrs|ms)\.?\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+){1,2})',
         ]
         
         # Medical terminology validation set

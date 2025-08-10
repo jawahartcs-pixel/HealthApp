@@ -29,7 +29,7 @@ class AlertSystem:
         # Define alert severity levels
         self.alert_levels = {
             'CRITICAL': {'color': '#dc3545', 'icon': '🚨', 'priority': 1, 'label': 'Critical Alert'},
-            'HIGH': {'color': '#fd7e14', 'icon': '⚠️', 'priority': 2, 'label': 'High Alert'},
+            'HIGH': {'color': '#fd7e14', 'icon': '⚠️', 'priority': 2, 'label': 'Major Alert'},
             'MEDIUM': {'color': '#ffc107', 'icon': '⚡', 'priority': 3, 'label': 'Medium Alert'},
             'MINOR': {'color': '#17a2b8', 'icon': 'ℹ️', 'priority': 4, 'label': 'Minor Alert'}
         }
@@ -67,13 +67,14 @@ class AlertSystem:
             is_normal, status = is_value_normal(value, reference_range)
             if not is_normal:
                 severity = self._determine_severity(test_type, value, reference_range, status)
-                # Enhanced header with status, value and date
+                # Enhanced header with status, value and date - move from message to header
                 date_str = f"({test_date})" if test_date else ""
+                header_text = f'{test_type} is {status.lower()}: {value}{date_str}'
                 alert.update({
                     'has_alert': True,
                     'level': severity,
-                    'message': f'{test_type} is {status.lower()}: {value}{date_str}',
-                    'header': f'{test_type} is {status.lower()}: {value}{date_str}',
+                    'message': f'Value outside normal range',  # Simple message since detail is in header
+                    'header': header_text,
                     'color': self.alert_levels[severity]['color'],
                     'icon': self.alert_levels[severity]['icon'],
                     'label': self.alert_levels[severity]['label'],
