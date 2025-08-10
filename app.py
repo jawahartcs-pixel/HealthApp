@@ -1751,11 +1751,13 @@ def view_patients_page(db, alert_system, user_id):
                     with col3:
                         st.metric("Total Alerts", len(patient_alerts))
                     
-                    # Show top alerts
+                    # Show top alerts with enhanced headers
                     for alert in patient_alerts[:3]:
+                        alert_header = alert.get('header', f"{alert['test_type']} - {alert['message']}")
+                        alert_label = alert.get('label', alert['level'])
                         st.markdown(f"""
                         <div style="padding: 10px; margin: 5px 0; border-left: 4px solid {alert['color']}; background-color: {alert['color']}15; border-radius: 5px;">
-                            <strong>{alert['icon']} {alert['level']}</strong>: {alert['message']} 
+                            <strong>{alert['icon']} {alert_label}</strong>: {alert_header} 
                             <br><small>Date: {alert['test_date']} | {alert['test_type']}</small>
                         </div>
                         """, unsafe_allow_html=True)
@@ -1846,24 +1848,31 @@ def view_patients_page(db, alert_system, user_id):
                     col1, col2 = st.columns(2)
                     
                     with col1:
-                        from datetime import datetime
+                        from datetime import datetime, date
                         dob_value = None
                         if profile.get('date_of_birth'):
                             try:
                                 dob_value = datetime.strptime(profile['date_of_birth'], '%Y-%m-%d').date()
                             except:
                                 pass
-                        edit_dob = st.date_input("Date of Birth", value=dob_value)
                         
-                        # Calculate and display age
+                        edit_dob = st.date_input(
+                            "Date of Birth", 
+                            value=dob_value,
+                            min_value=date(1900, 1, 1),
+                            max_value=date.today(),
+                            help="Select the patient's date of birth"
+                        )
+                        
+                        # Calculate and display age only if DOB is provided
                         if edit_dob:
                             today = datetime.now().date()
                             calculated_age = today.year - edit_dob.year - ((today.month, today.day) < (edit_dob.month, edit_dob.day))
                             st.info(f"Calculated Age: {calculated_age} years")
                             edit_age = calculated_age
                         else:
-                            edit_age = st.number_input("Age", min_value=0, max_value=150, 
-                                                     value=profile['age'] if profile['age'] else None)
+                            st.info("Please select date of birth to calculate age")
+                            edit_age = None
                         
                         edit_gender = st.selectbox("Gender", ["Male", "Female", "Other", "Not Specified"], 
                                                  index=["Male", "Female", "Other", "Not Specified"].index(profile['gender']) 
@@ -2143,14 +2152,16 @@ def patient_dashboard_page(db, visualization, alert_system, user_id):
             with col1:
                 st.metric("Critical Alerts", len(critical_alerts))
             with col2:
-                st.metric("High Priority", len(high_alerts))
+                st.metric("Major Alerts", len(high_alerts))
             with col3:
                 st.metric("Total Alerts", len(patient_alerts))
             
-            # Show alerts with expandable details
+            # Show alerts with expandable details using enhanced headers
             for alert in patient_alerts:
-                with st.expander(f"{alert['icon']} {alert['level']} - {alert['test_type']} ({alert['test_date']})", expanded=alert['level'] == 'CRITICAL'):
-                    st.markdown(f"**Message:** {alert['message']}")
+                # Use enhanced header if available, otherwise fallback to message with test type
+                alert_header = alert.get('header', f"{alert['test_type']} - {alert['message']}")
+                alert_label = alert.get('label', alert['level'])
+                with st.expander(f"{alert['icon']} {alert_label} - {alert_header}", expanded=alert['level'] == 'CRITICAL'):
                     st.markdown(f"**Value:** {alert['value']} {alert['unit']}")
                     st.markdown(f"**Reference Range:** {alert['reference_range']}")
                     
@@ -3337,7 +3348,7 @@ def alert_dashboard_page(alert_system, user_id):
     with col2:
         st.metric("Critical Alerts", alert_summary['critical_alerts'])
     with col3:
-        st.metric("High Priority", alert_summary['high_alerts'])
+        st.metric("Major Alerts", alert_summary['high_alerts'])
     with col4:
         st.metric("Patients Affected", alert_summary['patients_with_alerts'])
     
@@ -3387,11 +3398,13 @@ def alert_dashboard_page(alert_system, user_id):
     if critical_alerts:
         st.subheader("🚨 Critical Alerts")
         for alert in critical_alerts:
+            # Use enhanced header for critical alerts
+            alert_header = alert.get('header', f"{alert['test_type']} - {alert['message']}")
+            alert_label = alert.get('label', alert['level'])
             st.markdown(f"""
             <div style="padding: 15px; margin: 10px 0; border-left: 5px solid {alert['color']}; background-color: {alert['color']}20; border-radius: 5px;">
-                <h4>{alert['icon']} {alert['patient_name']} - {alert['test_type']}</h4>
-                <p><strong>Message:</strong> {alert['message']}</p>
-                <p><strong>Date:</strong> {alert['test_date']} | <strong>Value:</strong> {alert['value']} {alert['unit']}</p>
+                <h4>{alert['icon']} {alert_label} - {alert['patient_name']}</h4>
+                <p><strong>Alert:</strong> {alert_header}</p>
                 <p><strong>Reference Range:</strong> {alert['reference_range']}</p>
             </div>
             """, unsafe_allow_html=True)
@@ -3401,12 +3414,14 @@ def alert_dashboard_page(alert_system, user_id):
                     for rec in alert['recommendations']:
                         st.markdown(f"• {rec}")
     
-    # Display High Priority Alerts
+    # Display Major Alerts
     if high_alerts:
-        st.subheader("⚠️ High Priority Alerts")
+        st.subheader("⚠️ Major Alerts")
         for alert in high_alerts:
-            with st.expander(f"{alert['icon']} {alert['patient_name']} - {alert['test_type']} ({alert['test_date']})"):
-                st.markdown(f"**Message:** {alert['message']}")
+            # Use enhanced header for major alerts
+            alert_header = alert.get('header', f"{alert['test_type']} - {alert['message']}")
+            alert_label = alert.get('label', alert['level'])
+            with st.expander(f"{alert['icon']} {alert_label} - {alert['patient_name']} - {alert_header}"):
                 st.markdown(f"**Value:** {alert['value']} {alert['unit']}")
                 st.markdown(f"**Reference Range:** {alert['reference_range']}")
                 

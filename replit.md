@@ -12,14 +12,21 @@ A Streamlit-based web application designed for healthcare professionals to manag
 - Profile forms now derive age from birth date for better accuracy
 
 ### Improved Alert System Terminology
-- Updated alert levels from "Low/Medium/High/Critical" to "Minor Alert/Medium Alert/High Alert/Critical Alert"
+- Updated alert levels to "Minor Alert/Medium Alert/Major Alert/Critical Alert" with descriptive labels
 - Enhanced alert headers now display complete status with values and dates: "CHOL/HDL is high: 5.74(2025-07-17)"
-- Alert display uses descriptive labels for better user understanding
+- Moved detailed information from expandable message to header for immediate visibility
+- Alert display uses consistent descriptive labels throughout all dashboard sections
 
-### Enhanced OCR Accuracy
+### Enhanced OCR Accuracy and Patient Name Extraction
 - Improved patient name extraction with "patient" tag priority for intelligent identification
+- Added negative lookahead patterns to avoid confusing consultant/doctor names with patient names
 - Enhanced date extraction patterns to correctly identify recent years (2022-2025) over older dates
-- Updated regex patterns for better medical document parsing
+- Updated regex patterns for better medical document parsing and accuracy
+
+### Enhanced Patient Profile Management
+- Date of birth field now supports full range from 1900 to present day
+- Age calculation hidden until date of birth is provided, then auto-calculated and displayed
+- Profile forms provide better user experience with informative messages
 
 ## User Preferences
 
@@ -58,7 +65,7 @@ User wants proper category grouping for visualizations using the investigation s
 - **Visualization**: Utilizes Plotly for interactive 2D charts (trend, comparison, grouped) with consistent color schemes, compact layouts, and annotations. Supports category grouping based on investigation standards and gender-specific reference ranges with visual indicators.
 - **Investigation Standards Management**: Manages predefined and user-defined test standards, including reference ranges, units, and aliases. Features auto-synchronization of test results with standard changes and Excel-style editing.
 - **AI-Powered Anomaly Detection**: Integrates multiple machine learning algorithms (Isolation Forest, Statistical Outlier, DBSCAN, Temporal, Correlation-based) for comprehensive anomaly detection across patients, providing medical insights and actionable recommendations.
-- **Alert System**: Implements a four-level severity system (Critical Alert, High Alert, Medium Alert, Minor Alert) for abnormal values based on deviation from normal ranges, with enhanced headers showing complete status and values, and a dedicated alert dashboard with integrated display.
+- **Alert System**: Implements a four-level severity system (Critical Alert, Major Alert, Medium Alert, Minor Alert) for abnormal values based on deviation from normal ranges, with enhanced headers showing complete status and values in expandable titles, and a dedicated alert dashboard with integrated display.
 - **Medication Management**: Tracks medications, schedules, adherence, and effectiveness, integrated with test results for analysis. Includes a multi-tab UI for comprehensive management.
 - **Document Preview & Comparison**: Provides side-by-side document preview with extracted results, highlighting, search functionality, and tools for verification.
 - **Data Filtering & Sorting**: Advanced filtering and sorting capabilities for database records, including multi-column sorting, date/value range filtering, and text search.
