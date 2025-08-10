@@ -71,7 +71,7 @@ class PDFReportGenerator:
             story = []
             
             # Title page
-            story.extend(self._create_title_page(patient_name))
+            story.extend(self._create_title_page(patient_name, user_id))
             story.append(PageBreak())
             
             # Patient summary
@@ -117,14 +117,100 @@ class PDFReportGenerator:
                         pass
             raise Exception(f"Failed to generate PDF report: {str(e)}")
     
-    def _create_title_page(self, patient_name: str) -> List:
-        """Create title page for the report."""
+    def _create_title_page(self, patient_name: str, user_id: int = None) -> List:
+        """Create title page for the report with patient profile."""
         elements = []
         
         # Main title
         title = Paragraph("Blood Test Results Report", self.title_style)
         elements.append(title)
-        elements.append(Spacer(1, 0.5*inch))
+        elements.append(Spacer(1, 20))
+        
+        # Patient name
+        patient_heading = Paragraph(f"Patient: {patient_name}", self.heading_style)
+        elements.append(patient_heading)
+        elements.append(Spacer(1, 20))
+        
+        # Get patient profile for comprehensive information
+        profile = self.database.get_patient_profile(patient_name, user_id)
+        
+        if profile:
+            # Patient profile table
+            profile_data = [
+                ['Patient Information', ''],
+                ['Name:', profile['patient_name']],
+                ['Age:', f"{profile['age']} years" if profile['age'] else 'Not specified'],
+                ['Gender:', profile['gender'] if profile['gender'] else 'Not specified'],
+                ['Phone:', profile['phone'] if profile['phone'] else 'Not provided'],
+                ['Email:', profile['email'] if profile['email'] else 'Not provided'],
+                ['Patient Since:', profile['created_at'][:10] if profile['created_at'] else 'Unknown']
+            ]
+            
+            if profile['address']:
+                profile_data.append(['Address:', profile['address']])
+            
+            if profile['emergency_contact']:
+                profile_data.append(['Emergency Contact:', profile['emergency_contact']])
+            
+            # Create profile table
+            profile_table = Table(profile_data, colWidths=[2*inch, 4*inch])
+            profile_table.setStyle(TableStyle([
+                ('BACKGROUND', (0, 0), (1, 0), colors.lightblue),
+                ('TEXTCOLOR', (0, 0), (1, 0), colors.whitesmoke),
+                ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+                ('FONTNAME', (0, 0), (1, 0), 'Helvetica-Bold'),
+                ('FONTSIZE', (0, 0), (-1, -1), 10),
+                ('BOTTOMPADDING', (0, 0), (-1, -1), 12),
+                ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
+                ('GRID', (0, 0), (-1, -1), 1, colors.black)
+            ]))
+            
+            elements.append(profile_table)
+            elements.append(Spacer(1, 20))
+            
+            # Medical Information Section (if available)
+            medical_sections = []
+            
+            if profile['medical_history']:
+                medical_sections.append(['Medical History:', profile['medical_history']])
+            
+            if profile['medications']:
+                medical_sections.append(['Current Medications:', profile['medications']])
+            
+            if profile['allergies']:
+                medical_sections.append(['Allergies:', profile['allergies']])
+            
+            if profile['notes']:
+                medical_sections.append(['Additional Notes:', profile['notes']])
+            
+            if medical_sections:
+                # Add medical information heading
+                medical_heading = Paragraph("Medical Information", self.subheading_style)
+                elements.append(medical_heading)
+                elements.append(Spacer(1, 10))
+                
+                # Create medical info table
+                medical_table = Table(medical_sections, colWidths=[2*inch, 4*inch])
+                medical_table.setStyle(TableStyle([
+                    ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+                    ('FONTNAME', (0, 0), (0, -1), 'Helvetica-Bold'),
+                    ('FONTSIZE', (0, 0), (-1, -1), 9),
+                    ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
+                    ('TOPPADDING', (0, 0), (-1, -1), 8),
+                    ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+                    ('BACKGROUND', (0, 0), (-1, -1), colors.lightyellow),
+                    ('GRID', (0, 0), (-1, -1), 1, colors.lightgrey)
+                ]))
+                
+                elements.append(medical_table)
+                elements.append(Spacer(1, 20))
+        
+        # Report generation date
+        generation_date = datetime.now().strftime("%B %d, %Y at %I:%M %p")
+        date_paragraph = Paragraph(f"<i>Report generated on {generation_date}</i>", self.styles['Normal'])
+        elements.append(date_paragraph)
+        
+        return elements
         
         # Patient name
         patient_title = Paragraph(f"Patient: {patient_name}", self.heading_style)

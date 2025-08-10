@@ -66,6 +66,79 @@ class Database:
             except sqlite3.OperationalError:
                 pass  # Column already exists
             
+            # Add new patient profile columns
+            try:
+                cursor.execute('ALTER TABLE patients ADD COLUMN age INTEGER')
+            except sqlite3.OperationalError:
+                pass  # Column already exists
+            
+            try:
+                cursor.execute('ALTER TABLE patients ADD COLUMN gender TEXT')
+            except sqlite3.OperationalError:
+                pass  # Column already exists
+            
+            try:
+                cursor.execute('ALTER TABLE patients ADD COLUMN phone TEXT')
+            except sqlite3.OperationalError:
+                pass  # Column already exists
+            
+            try:
+                cursor.execute('ALTER TABLE patients ADD COLUMN email TEXT')
+            except sqlite3.OperationalError:
+                pass  # Column already exists
+            
+            try:
+                cursor.execute('ALTER TABLE patients ADD COLUMN address TEXT')
+            except sqlite3.OperationalError:
+                pass  # Column already exists
+            
+            try:
+                cursor.execute('ALTER TABLE patients ADD COLUMN medical_history TEXT')
+            except sqlite3.OperationalError:
+                pass  # Column already exists
+            
+            try:
+                cursor.execute('ALTER TABLE patients ADD COLUMN medications TEXT')
+            except sqlite3.OperationalError:
+                pass  # Column already exists
+            
+            try:
+                cursor.execute('ALTER TABLE patients ADD COLUMN allergies TEXT')
+            except sqlite3.OperationalError:
+                pass  # Column already exists
+            
+            try:
+                cursor.execute('ALTER TABLE patients ADD COLUMN emergency_contact TEXT')
+            except sqlite3.OperationalError:
+                pass  # Column already exists
+            
+            try:
+                cursor.execute('ALTER TABLE patients ADD COLUMN notes TEXT')
+            except sqlite3.OperationalError:
+                pass  # Column already exists
+            
+            # Create patient_documents table for uploaded reports
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS patient_documents (
+                    document_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    patient_id INTEGER,
+                    document_name TEXT NOT NULL,
+                    original_filename TEXT NOT NULL,
+                    file_path TEXT NOT NULL,
+                    file_type TEXT,
+                    file_size INTEGER,
+                    upload_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    user_id INTEGER,
+                    description TEXT,
+                    FOREIGN KEY (patient_id) REFERENCES patients (patient_id)
+                )
+            ''')
+            
+            # Create index for patient documents
+            cursor.execute('''
+                CREATE INDEX IF NOT EXISTS idx_patient_documents ON patient_documents(patient_id)
+            ''')
+            
             # Create indexes after columns are added
             cursor.execute('''
                 CREATE INDEX IF NOT EXISTS idx_user_id ON patients(user_id)
@@ -77,7 +150,11 @@ class Database:
             
             conn.commit()
     
-    def add_patient(self, patient_name: str, user_id: int = None) -> int:
+    def add_patient(self, patient_name: str, user_id: int = None, age: int = None, 
+                   gender: str = None, phone: str = None, email: str = None, 
+                   address: str = None, medical_history: str = None, 
+                   medications: str = None, allergies: str = None, 
+                   emergency_contact: str = None, notes: str = None) -> int:
         """Add a new patient or get existing patient ID."""
         with sqlite3.connect(self.db_path) as conn:
             cursor = conn.cursor()
@@ -93,10 +170,161 @@ class Database:
             if result:
                 return result[0]
             
-            # Add new patient
-            cursor.execute('INSERT INTO patients (patient_name, user_id) VALUES (?, ?)', (patient_name, user_id))
+            # Add new patient with profile data
+            cursor.execute('''
+                INSERT INTO patients (patient_name, user_id, age, gender, phone, email, 
+                                    address, medical_history, medications, allergies, 
+                                    emergency_contact, notes) 
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ''', (patient_name, user_id, age, gender, phone, email, address, 
+                  medical_history, medications, allergies, emergency_contact, notes))
             conn.commit()
             return cursor.lastrowid
+    
+    def update_patient_profile(self, patient_id: int, age: int = None, gender: str = None, 
+                              phone: str = None, email: str = None, address: str = None, 
+                              medical_history: str = None, medications: str = None, 
+                              allergies: str = None, emergency_contact: str = None, 
+                              notes: str = None) -> bool:
+        """Update patient profile information."""
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+                cursor.execute('''
+                    UPDATE patients SET 
+                        age = ?, gender = ?, phone = ?, email = ?, address = ?,
+                        medical_history = ?, medications = ?, allergies = ?, 
+                        emergency_contact = ?, notes = ?
+                    WHERE patient_id = ?
+                ''', (age, gender, phone, email, address, medical_history, 
+                      medications, allergies, emergency_contact, notes, patient_id))
+                conn.commit()
+                return True
+        except Exception as e:
+            print(f"Error updating patient profile: {e}")
+            return False
+    
+    def get_patient_profile(self, patient_name: str, user_id: int = None) -> Optional[Dict]:
+        """Get complete patient profile including all fields."""
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+                if user_id:
+                    cursor.execute('''
+                        SELECT patient_id, patient_name, age, gender, phone, email, address,
+                               medical_history, medications, allergies, emergency_contact, 
+                               notes, created_at
+                        FROM patients 
+                        WHERE patient_name = ? AND user_id = ?
+                    ''', (patient_name, user_id))
+                else:
+                    cursor.execute('''
+                        SELECT patient_id, patient_name, age, gender, phone, email, address,
+                               medical_history, medications, allergies, emergency_contact, 
+                               notes, created_at
+                        FROM patients 
+                        WHERE patient_name = ? AND user_id IS NULL
+                    ''', (patient_name,))
+                
+                result = cursor.fetchone()
+                if result:
+                    return {
+                        'patient_id': result[0],
+                        'patient_name': result[1],
+                        'age': result[2],
+                        'gender': result[3],
+                        'phone': result[4],
+                        'email': result[5],
+                        'address': result[6],
+                        'medical_history': result[7],
+                        'medications': result[8],
+                        'allergies': result[9],
+                        'emergency_contact': result[10],
+                        'notes': result[11],
+                        'created_at': result[12]
+                    }
+                return None
+        except Exception as e:
+            print(f"Error getting patient profile: {e}")
+            return None
+    
+    def add_patient_document(self, patient_id: int, document_name: str, 
+                           original_filename: str, file_path: str, file_type: str, 
+                           file_size: int, user_id: int = None, 
+                           description: str = None) -> bool:
+        """Add a document for a patient."""
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+                cursor.execute('''
+                    INSERT INTO patient_documents 
+                    (patient_id, document_name, original_filename, file_path, 
+                     file_type, file_size, user_id, description)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                ''', (patient_id, document_name, original_filename, file_path, 
+                      file_type, file_size, user_id, description))
+                conn.commit()
+                return True
+        except Exception as e:
+            print(f"Error adding patient document: {e}")
+            return False
+    
+    def get_patient_documents(self, patient_id: int, user_id: int = None) -> List[Dict]:
+        """Get all documents for a patient."""
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+                if user_id:
+                    cursor.execute('''
+                        SELECT document_id, document_name, original_filename, file_path,
+                               file_type, file_size, upload_date, description
+                        FROM patient_documents 
+                        WHERE patient_id = ? AND user_id = ?
+                        ORDER BY upload_date DESC
+                    ''', (patient_id, user_id))
+                else:
+                    cursor.execute('''
+                        SELECT document_id, document_name, original_filename, file_path,
+                               file_type, file_size, upload_date, description
+                        FROM patient_documents 
+                        WHERE patient_id = ?
+                        ORDER BY upload_date DESC
+                    ''', (patient_id,))
+                
+                results = cursor.fetchall()
+                documents = []
+                for row in results:
+                    documents.append({
+                        'document_id': row[0],
+                        'document_name': row[1],
+                        'original_filename': row[2],
+                        'file_path': row[3],
+                        'file_type': row[4],
+                        'file_size': row[5],
+                        'upload_date': row[6],
+                        'description': row[7]
+                    })
+                return documents
+        except Exception as e:
+            print(f"Error getting patient documents: {e}")
+            return []
+    
+    def delete_patient_document(self, document_id: int, user_id: int = None) -> bool:
+        """Delete a patient document."""
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+                if user_id:
+                    cursor.execute('DELETE FROM patient_documents WHERE document_id = ? AND user_id = ?', 
+                                 (document_id, user_id))
+                else:
+                    cursor.execute('DELETE FROM patient_documents WHERE document_id = ?', 
+                                 (document_id,))
+                conn.commit()
+                return cursor.rowcount > 0
+        except Exception as e:
+            print(f"Error deleting patient document: {e}")
+            return False
     
     def add_test_result(self, patient_id: int, test_date: date, test_type: str, 
                        test_value: float, unit: str = None, reference_range: str = None, user_id: int = None) -> bool:

@@ -1654,41 +1654,88 @@ Extraction Method: {result.get('source', 'regex')}""")
                     st.error(f"Error processing file {uploaded_file.name}: {str(e)}")
 
 def view_patients_page(db, alert_system, user_id):
-    st.header("👥 View Patients")
+    st.header("👥 Patient Management")
     
+    # Patient management tabs
+    tab1, tab2, tab3 = st.tabs(["📋 Patient List", "👤 Patient Profile", "📁 Documents"])
+    
+    # Get all patients
     patients = db.get_all_patients(user_id)
     
-    if not patients:
-        st.info("No patients found. Please upload some blood test results first.")
-        return
-    
-    # Display patients in a table
-    patients_df = pd.DataFrame(patients, columns=['Patient ID', 'Patient Name', 'First Test', 'Last Test', 'Total Tests'])
-    
-    st.subheader(f"Total Patients: {len(patients)}")
-    
-    # Add search functionality
-    search_term = st.text_input("🔍 Search patients by name", placeholder="Enter patient name...")
-    
-    if search_term:
-        patients_df = patients_df[patients_df['Patient Name'].str.contains(search_term, case=False, na=False)]
-    
-    if not patients_df.empty:
-        st.dataframe(patients_df, use_container_width=True, hide_index=True)
+    with tab1:
+        st.subheader("Patient Directory")
         
-        # Patient selection for quick actions
-        selected_patient = st.selectbox(
-            "Select patient for quick view",
-            options=patients_df['Patient Name'].tolist(),
-            index=None,
-            placeholder="Choose a patient..."
-        )
-        
-        if selected_patient:
-            patient_tests = db.get_patient_tests(selected_patient, user_id)
-            patient_alerts = alert_system.get_patient_alerts(selected_patient)
+        if not patients:
+            st.info("No patients found. Upload some test results or add patients manually.")
             
-            if patient_tests:
+            # Add new patient option
+            with st.expander("➕ Add New Patient"):
+                with st.form("add_new_patient"):
+                    col1, col2 = st.columns(2)
+                    with col1:
+                        new_patient_name = st.text_input("Patient Name*", placeholder="Enter full name")
+                        age = st.number_input("Age", min_value=0, max_value=150, value=None)
+                        gender = st.selectbox("Gender", ["Male", "Female", "Other", "Not Specified"], index=3)
+                        phone = st.text_input("Phone", placeholder="+1-xxx-xxx-xxxx")
+                    
+                    with col2:
+                        email = st.text_input("Email", placeholder="patient@email.com")
+                        address = st.text_area("Address", placeholder="Street, City, State, ZIP")
+                        emergency_contact = st.text_input("Emergency Contact", placeholder="Name and phone")
+                    
+                    medical_history = st.text_area("Medical History", placeholder="Previous conditions, surgeries, etc.")
+                    medications = st.text_area("Current Medications", placeholder="List current medications and dosages")
+                    allergies = st.text_area("Allergies", placeholder="Known allergies and reactions")
+                    notes = st.text_area("Additional Notes", placeholder="Any other relevant information")
+                    
+                    if st.form_submit_button("Add Patient", type="primary"):
+                        if new_patient_name.strip():
+                            patient_id = db.add_patient(
+                                patient_name=new_patient_name.strip(),
+                                user_id=user_id,
+                                age=age,
+                                gender=gender,
+                                phone=phone,
+                                email=email,
+                                address=address,
+                                medical_history=medical_history,
+                                medications=medications,
+                                allergies=allergies,
+                                emergency_contact=emergency_contact,
+                                notes=notes
+                            )
+                            st.success(f"Patient '{new_patient_name}' added successfully!")
+                            st.rerun()
+                        else:
+                            st.error("Patient name is required")
+            return
+        
+        # Display patients in a table
+        patients_df = pd.DataFrame(patients, columns=['Patient ID', 'Patient Name', 'First Test', 'Last Test', 'Total Tests'])
+        
+        st.metric("Total Patients", len(patients))
+        
+        # Add search functionality
+        search_term = st.text_input("🔍 Search patients by name", placeholder="Enter patient name...")
+        
+        if search_term:
+            patients_df = patients_df[patients_df['Patient Name'].str.contains(search_term, case=False, na=False)]
+        
+        if not patients_df.empty:
+            st.dataframe(patients_df, use_container_width=True, hide_index=True)
+            
+            # Patient selection for quick actions
+            selected_patient = st.selectbox(
+                "Select patient for dashboard view",
+                options=patients_df['Patient Name'].tolist(),
+                index=None,
+                placeholder="Choose a patient..."
+            )
+            
+            if selected_patient:
+                patient_tests = db.get_patient_tests(selected_patient, user_id)
+                patient_alerts = alert_system.get_patient_alerts(selected_patient)
+                
                 # Display alerts summary
                 if patient_alerts:
                     critical_alerts = [a for a in patient_alerts if a['level'] == 'CRITICAL']
@@ -1713,11 +1760,257 @@ def view_patients_page(db, alert_system, user_id):
                         </div>
                         """, unsafe_allow_html=True)
                 
-                st.subheader(f"Recent Tests for {selected_patient}")
-                recent_df = pd.DataFrame(patient_tests[-5:], columns=['Date', 'Test Type', 'Value', 'Unit', 'Reference Range'])
-                st.dataframe(recent_df, use_container_width=True, hide_index=True)
-    else:
-        st.info("No patients found matching your search.")
+                if patient_tests:
+                    st.subheader(f"Recent Tests for {selected_patient}")
+                    recent_df = pd.DataFrame(patient_tests[-5:], columns=['Date', 'Test Type', 'Value', 'Unit', 'Reference Range'])
+                    st.dataframe(recent_df, use_container_width=True, hide_index=True)
+        else:
+            st.info("No patients found matching your search.")
+    
+    with tab2:
+        st.subheader("Patient Profile Management")
+        
+        if not patients:
+            st.info("No patients available. Add patients first.")
+            return
+        
+        patient_names = [patient[1] for patient in patients]
+        selected_profile_patient = st.selectbox(
+            "Select Patient to View/Edit Profile",
+            options=patient_names,
+            index=None,
+            placeholder="Choose a patient...",
+            key="profile_patient_select"
+        )
+        
+        if selected_profile_patient:
+            # Get complete patient profile
+            profile = db.get_patient_profile(selected_profile_patient, user_id)
+            
+            if profile:
+                # Display current profile
+                st.markdown("---")
+                st.subheader(f"Profile: {profile['patient_name']}")
+                
+                col1, col2, col3 = st.columns(3)
+                with col1:
+                    st.info(f"**Age:** {profile['age'] if profile['age'] else 'Not specified'}")
+                    st.info(f"**Gender:** {profile['gender'] if profile['gender'] else 'Not specified'}")
+                    st.info(f"**Phone:** {profile['phone'] if profile['phone'] else 'Not provided'}")
+                
+                with col2:
+                    st.info(f"**Email:** {profile['email'] if profile['email'] else 'Not provided'}")
+                    st.info(f"**Patient Since:** {profile['created_at'][:10] if profile['created_at'] else 'Unknown'}")
+                
+                with col3:
+                    # Get test summary
+                    patient_tests = db.get_patient_tests(selected_profile_patient, user_id)
+                    test_count = len(patient_tests) if patient_tests else 0
+                    st.info(f"**Total Tests:** {test_count}")
+                    
+                    # Get document count
+                    documents = db.get_patient_documents(profile['patient_id'], user_id)
+                    doc_count = len(documents)
+                    st.info(f"**Documents:** {doc_count}")
+                
+                # Display detailed sections
+                if profile['address']:
+                    st.markdown("**Address:**")
+                    st.text(profile['address'])
+                
+                if profile['emergency_contact']:
+                    st.markdown("**Emergency Contact:**")
+                    st.text(profile['emergency_contact'])
+                
+                if profile['medical_history']:
+                    with st.expander("📋 Medical History"):
+                        st.text(profile['medical_history'])
+                
+                if profile['medications']:
+                    with st.expander("💊 Current Medications"):
+                        st.text(profile['medications'])
+                
+                if profile['allergies']:
+                    with st.expander("⚠️ Allergies"):
+                        st.text(profile['allergies'])
+                
+                if profile['notes']:
+                    with st.expander("📝 Additional Notes"):
+                        st.text(profile['notes'])
+                
+                # Edit profile form
+                st.markdown("---")
+                st.subheader("Edit Profile")
+                
+                with st.form("edit_patient_profile"):
+                    col1, col2 = st.columns(2)
+                    
+                    with col1:
+                        edit_age = st.number_input("Age", min_value=0, max_value=150, 
+                                                 value=profile['age'] if profile['age'] else None)
+                        edit_gender = st.selectbox("Gender", ["Male", "Female", "Other", "Not Specified"], 
+                                                 index=["Male", "Female", "Other", "Not Specified"].index(profile['gender']) 
+                                                 if profile['gender'] in ["Male", "Female", "Other", "Not Specified"] else 3)
+                        edit_phone = st.text_input("Phone", value=profile['phone'] if profile['phone'] else "")
+                        edit_email = st.text_input("Email", value=profile['email'] if profile['email'] else "")
+                    
+                    with col2:
+                        edit_address = st.text_area("Address", value=profile['address'] if profile['address'] else "", height=100)
+                        edit_emergency = st.text_input("Emergency Contact", 
+                                                     value=profile['emergency_contact'] if profile['emergency_contact'] else "")
+                    
+                    edit_medical_history = st.text_area("Medical History", 
+                                                       value=profile['medical_history'] if profile['medical_history'] else "", 
+                                                       height=100)
+                    edit_medications = st.text_area("Current Medications", 
+                                                   value=profile['medications'] if profile['medications'] else "", 
+                                                   height=100)
+                    edit_allergies = st.text_area("Allergies", 
+                                                 value=profile['allergies'] if profile['allergies'] else "", 
+                                                 height=100)
+                    edit_notes = st.text_area("Additional Notes", 
+                                             value=profile['notes'] if profile['notes'] else "", 
+                                             height=100)
+                    
+                    if st.form_submit_button("Update Profile", type="primary"):
+                        if db.update_patient_profile(
+                            patient_id=profile['patient_id'],
+                            age=edit_age,
+                            gender=edit_gender,
+                            phone=edit_phone,
+                            email=edit_email,
+                            address=edit_address,
+                            medical_history=edit_medical_history,
+                            medications=edit_medications,
+                            allergies=edit_allergies,
+                            emergency_contact=edit_emergency,
+                            notes=edit_notes
+                        ):
+                            st.success("Profile updated successfully!")
+                            st.rerun()
+                        else:
+                            st.error("Failed to update profile")
+            else:
+                st.error("Patient profile not found")
+    
+    with tab3:
+        st.subheader("Patient Documents")
+        
+        if not patients:
+            st.info("No patients available.")
+            return
+        
+        patient_names = [patient[1] for patient in patients]
+        selected_doc_patient = st.selectbox(
+            "Select Patient for Document Management",
+            options=patient_names,
+            index=None,
+            placeholder="Choose a patient...",
+            key="doc_patient_select"
+        )
+        
+        if selected_doc_patient:
+            profile = db.get_patient_profile(selected_doc_patient, user_id)
+            
+            if profile:
+                # Document upload section
+                st.markdown("---")
+                st.subheader("Upload New Document")
+                
+                uploaded_docs = st.file_uploader(
+                    "Upload patient reports (PDF, Word, Images)",
+                    type=['pdf', 'docx', 'doc', 'jpg', 'jpeg', 'png', 'bmp', 'tiff'],
+                    accept_multiple_files=True,
+                    help="Supported formats: PDF, Word documents, and images"
+                )
+                
+                if uploaded_docs:
+                    for uploaded_doc in uploaded_docs:
+                        col1, col2 = st.columns([3, 1])
+                        
+                        with col1:
+                            description = st.text_input(
+                                f"Description for '{uploaded_doc.name}'",
+                                placeholder="Brief description of this document",
+                                key=f"desc_{uploaded_doc.name}"
+                            )
+                        
+                        with col2:
+                            if st.button(f"Upload {uploaded_doc.name}", key=f"upload_{uploaded_doc.name}"):
+                                # Create documents directory if it doesn't exist
+                                import os
+                                doc_dir = f"patient_documents/{profile['patient_id']}"
+                                os.makedirs(doc_dir, exist_ok=True)
+                                
+                                # Save file with original name
+                                file_path = f"{doc_dir}/{uploaded_doc.name}"
+                                with open(file_path, "wb") as f:
+                                    f.write(uploaded_doc.getbuffer())
+                                
+                                # Add to database
+                                if db.add_patient_document(
+                                    patient_id=profile['patient_id'],
+                                    document_name=uploaded_doc.name,
+                                    original_filename=uploaded_doc.name,
+                                    file_path=file_path,
+                                    file_type=uploaded_doc.type,
+                                    file_size=uploaded_doc.size,
+                                    user_id=user_id,
+                                    description=description
+                                ):
+                                    st.success(f"'{uploaded_doc.name}' uploaded successfully!")
+                                    st.rerun()
+                                else:
+                                    st.error(f"Failed to upload '{uploaded_doc.name}'")
+                
+                # Display existing documents
+                st.markdown("---")
+                st.subheader("Existing Documents")
+                
+                documents = db.get_patient_documents(profile['patient_id'], user_id)
+                
+                if documents:
+                    for doc in documents:
+                        with st.expander(f"📄 {doc['original_filename']} ({doc['upload_date'][:10]})"):
+                            col1, col2, col3 = st.columns([2, 1, 1])
+                            
+                            with col1:
+                                st.write(f"**File:** {doc['original_filename']}")
+                                st.write(f"**Type:** {doc['file_type']}")
+                                st.write(f"**Size:** {doc['file_size']:,} bytes")
+                                if doc['description']:
+                                    st.write(f"**Description:** {doc['description']}")
+                            
+                            with col2:
+                                # Download button
+                                import os
+                                if os.path.exists(doc['file_path']):
+                                    with open(doc['file_path'], "rb") as file:
+                                        st.download_button(
+                                            label="📥 Download",
+                                            data=file.read(),
+                                            file_name=doc['original_filename'],
+                                            mime=doc['file_type'],
+                                            key=f"download_{doc['document_id']}"
+                                        )
+                                else:
+                                    st.error("File not found")
+                            
+                            with col3:
+                                # Delete button
+                                if st.button("🗑️ Delete", key=f"delete_{doc['document_id']}", type="secondary"):
+                                    if db.delete_patient_document(doc['document_id'], user_id):
+                                        # Also delete physical file
+                                        if os.path.exists(doc['file_path']):
+                                            os.remove(doc['file_path'])
+                                        st.success("Document deleted!")
+                                        st.rerun()
+                                    else:
+                                        st.error("Failed to delete document")
+                else:
+                    st.info("No documents uploaded yet.")
+            else:
+                st.error("Patient profile not found")
 
 def patient_dashboard_page(db, visualization, alert_system, user_id):
     st.header("📊 Patient Dashboard")
@@ -1946,11 +2239,15 @@ def patient_dashboard_page(db, visualization, alert_system, user_id):
                                         test_data = test_data.sort_values('Date')
                                         
                                         with cols[j]:
+                                            # Get patient gender for gender-specific reference ranges
+                                            patient_profile = db.get_patient_profile(selected_patient, user_id)
+                                            patient_gender = patient_profile.get('gender') if patient_profile else None
+                                            
                                             # Create chart based on selected type
                                             if chart_type == "2D Beautiful":
-                                                fig = visualization.create_beautiful_2d_chart(test_data, test_type, selected_patient)
+                                                fig = visualization.create_beautiful_2d_chart(test_data, test_type, selected_patient, patient_gender)
                                             else:
-                                                fig = visualization.create_trend_chart(test_data, test_type, selected_patient)
+                                                fig = visualization.create_trend_chart(test_data, test_type, selected_patient, patient_gender)
                                             
                                             st.plotly_chart(fig, use_container_width=True, key=f"chart_{category.replace(' ', '_')}_{test_type.replace(' ', '_')}_{i}_{j}")
                                             
