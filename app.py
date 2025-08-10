@@ -2208,7 +2208,7 @@ def manage_data_page(db, user_id):
                 num_empty_rows = st.number_input(
                     "Empty rows to add",
                     min_value=1,
-                    max_value=50,
+                    max_value=200,
                     value=10,
                     step=1,
                     help="Number of empty rows for adding new test results"
