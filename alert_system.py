@@ -67,8 +67,8 @@ class AlertSystem:
             is_normal, status = is_value_normal(value, reference_range)
             if not is_normal:
                 severity = self._determine_severity(test_type, value, reference_range, status)
-                # Enhanced header with status, value and date
-                date_str = f" ({test_date})" if test_date else ""
+                # Enhanced header with status, value and date - move from message to header
+                date_str = f"({test_date})" if test_date else ""
                 header_text = f'{test_type} is {status.lower()}: {value}{date_str}'
                 alert.update({
                     'has_alert': True,
