@@ -37,7 +37,8 @@ class Visualization:
             'Potassium': '#A9CCE3'
         }
     
-    def create_trend_chart(self, test_data: pd.DataFrame, test_type: str, patient_name: str) -> go.Figure:
+    def create_trend_chart(self, test_data: pd.DataFrame, test_type: str, patient_name: str, 
+                          patient_gender: Optional[str] = None) -> go.Figure:
         """Create a trend chart for a specific test type and patient."""
         try:
             # Filter data for the specific test type
@@ -87,7 +88,8 @@ class Visualization:
             if not filtered_data['Reference Range'].isna().all():
                 ref_range = filtered_data['Reference Range'].iloc[0]
                 if ref_range and ref_range != '':
-                    self._add_reference_range(fig, ref_range, filtered_data['Date'].min(), filtered_data['Date'].max())
+                    self._add_reference_range(fig, ref_range, filtered_data['Date'].min(), 
+                                           filtered_data['Date'].max(), test_type, patient_gender)
             
             # Remove trend line to show all individual data points clearly
             # Focus on actual data points rather than averaged trend
@@ -348,7 +350,8 @@ class Visualization:
             if not filtered_data['Reference Range'].isna().all():
                 ref_range = filtered_data['Reference Range'].iloc[0]
                 if ref_range and ref_range != '':
-                    self._add_reference_range(fig, ref_range, filtered_data['Date'].min(), filtered_data['Date'].max())
+                    self._add_reference_range(fig, ref_range, filtered_data['Date'].min(), 
+                                           filtered_data['Date'].max(), test_type, patient_gender)
             
             # Update layout
             unit = filtered_data['Unit'].iloc[0] if not filtered_data['Unit'].isna().all() else ''
@@ -457,9 +460,16 @@ class Visualization:
             st.error(f"Error creating distribution chart: {str(e)}")
             return go.Figure()
     
-    def _add_reference_range(self, fig: go.Figure, ref_range: str, start_date: str, end_date: str):
-        """Add reference range as shaded area to the chart."""
+    def _add_reference_range(self, fig: go.Figure, ref_range: str, start_date: str, end_date: str, 
+                           test_type: Optional[str] = None, patient_gender: Optional[str] = None):
+        """Add reference range as shaded area to the chart, with gender-specific support."""
         try:
+            # First try to get gender-specific reference range from standards
+            if test_type and patient_gender:
+                gender_range = self._get_gender_specific_range(test_type, patient_gender)
+                if gender_range:
+                    ref_range = gender_range
+            
             # Parse reference range (e.g., "70-100 mg/dL" or "<200 mg/dL")
             import re
             
@@ -471,11 +481,15 @@ class Visualization:
                 min_val = float(numbers[0])
                 max_val = float(numbers[1])
                 
+                # Use gender-specific color coding
+                color = "lightblue" if patient_gender == "Female" else "lightgreen" if patient_gender == "Male" else "lightgray"
+                annotation = f"Normal Range ({patient_gender})" if patient_gender else "Normal Range"
+                
                 fig.add_hrect(
                     y0=min_val, y1=max_val,
-                    fillcolor="lightgreen", opacity=0.2,
+                    fillcolor=color, opacity=0.2,
                     layer="below", line_width=0,
-                    annotation_text="Normal Range",
+                    annotation_text=annotation,
                     annotation_position="top left"
                 )
             elif len(numbers) == 1 and ('<' in ref_range or '>' in ref_range):
@@ -494,6 +508,59 @@ class Visualization:
         except:
             # If parsing fails, skip adding reference range
             pass
+    
+    def _get_gender_specific_range(self, test_type: str, gender: str) -> Optional[str]:
+        """Get gender-specific reference range from investigation standards."""
+        try:
+            # Get investigation standards
+            standards = self.db.get_investigation_standards()
+            
+            if not standards:
+                return None
+            
+            # Convert to DataFrame for easier searching
+            standards_df = pd.DataFrame(standards)
+            
+            # Find matching test standard (case-insensitive)
+            match = standards_df[standards_df['standard_name'].str.lower() == test_type.lower()]
+            
+            if match.empty:
+                # Try with aliases if available
+                for _, row in standards_df.iterrows():
+                    aliases = row.get('aliases', '').split(',') if row.get('aliases') else []
+                    if any(alias.strip().lower() == test_type.lower() for alias in aliases):
+                        match = pd.DataFrame([row])
+                        break
+            
+            if not match.empty:
+                standard = match.iloc[0]
+                
+                # Get gender-specific range
+                if gender.lower() == 'male':
+                    min_val = standard.get('male_range_min')
+                    max_val = standard.get('male_range_max')
+                    unit = standard.get('male_unit', '')
+                elif gender.lower() == 'female':
+                    min_val = standard.get('female_range_min')
+                    max_val = standard.get('female_range_max')
+                    unit = standard.get('female_unit', '')
+                else:
+                    # Use general range or male as default
+                    min_val = standard.get('male_range_min') or standard.get('range_min')
+                    max_val = standard.get('male_range_max') or standard.get('range_max')
+                    unit = standard.get('male_unit', '') or standard.get('unit', '')
+                
+                # Format range if both values exist
+                if min_val is not None and max_val is not None:
+                    return f"{min_val}-{max_val} {unit}".strip()
+                elif max_val is not None:
+                    return f"<{max_val} {unit}".strip()
+                elif min_val is not None:
+                    return f">{min_val} {unit}".strip()
+            
+            return None
+        except Exception:
+            return None
     
     def _add_trend_line(self, fig: go.Figure, data: pd.DataFrame, color: str):
         """Add trend line to the chart."""
@@ -619,7 +686,8 @@ class Visualization:
         except:
             pass
     
-    def create_beautiful_2d_chart(self, test_data: pd.DataFrame, test_type: str, patient_name: str) -> go.Figure:
+    def create_beautiful_2d_chart(self, test_data: pd.DataFrame, test_type: str, patient_name: str, 
+                                 patient_gender: Optional[str] = None) -> go.Figure:
         """Create a beautiful 2D chart with enhanced styling."""
         try:
             # Filter data for the specific test type
@@ -723,7 +791,8 @@ class Visualization:
             print(f"Error creating beautiful 2D chart for {test_type}: {e}")
             return go.Figure()
     
-    def create_grouped_chart(self, category_data: pd.DataFrame, patient_name: str, test_types: list, category: str) -> go.Figure:
+    def create_grouped_chart(self, category_data: pd.DataFrame, patient_name: str, test_types: list, 
+                           category: str, patient_gender: Optional[str] = None) -> go.Figure:
         """Create a grouped comparison chart for multiple tests in a category."""
         try:
             fig = go.Figure()

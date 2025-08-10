@@ -30,14 +30,15 @@ User wants proper category grouping for visualizations using the investigation s
 
 ### Data Storage Solution
 - **Database**: SQLite for local data storage.
-- **Schema Design**: Tables for patients and test results with foreign key relationships and indexed fields for performance.
+- **Schema Design**: Tables for patients, test results, and patient documents with foreign key relationships and indexed fields for performance. Extended patient table includes comprehensive profile fields (age, gender, contact information, medical history, medications, allergies, emergency contacts, notes).
 - **Data Integrity**: Enforced through foreign key and unique constraints.
+- **Document Storage**: Physical file storage with database metadata tracking, supporting original filename preservation and multiple file formats.
 
 ### Key Features & Technical Implementations
 - **Data Management**: CRUD operations for patients and test results, automatic table creation, and schema management.
 - **File Parsing**: Supports PDF, Word, Excel, CSV, XML, and various image formats (JPEG, PNG, BMP, TIFF) with OCR. Features include regex-based extraction, tabular data handling, and intelligent reference range parsing.
 - **Data Processing**: Validates patient information, test dates, and result values; includes business logic for patient management and result aggregation.
-- **Visualization**: Utilizes Plotly for interactive 2D charts (trend, comparison, grouped) with consistent color schemes, compact layouts, and annotations. Supports category grouping based on investigation standards.
+- **Visualization**: Utilizes Plotly for interactive 2D charts (trend, comparison, grouped) with consistent color schemes, compact layouts, and annotations. Supports category grouping based on investigation standards and gender-specific reference ranges with visual indicators.
 - **Investigation Standards Management**: Manages predefined and user-defined test standards, including reference ranges, units, and aliases. Features auto-synchronization of test results with standard changes and Excel-style editing.
 - **AI-Powered Anomaly Detection**: Integrates multiple machine learning algorithms (Isolation Forest, Statistical Outlier, DBSCAN, Temporal, Correlation-based) for comprehensive anomaly detection across patients, providing medical insights and actionable recommendations.
 - **Alert System**: Implements a four-level severity system (Critical, High, Medium, Low) for abnormal values based on deviation from normal ranges, with a dedicated alert dashboard and integrated display.
@@ -45,6 +46,8 @@ User wants proper category grouping for visualizations using the investigation s
 - **Document Preview & Comparison**: Provides side-by-side document preview with extracted results, highlighting, search functionality, and tools for verification.
 - **Data Filtering & Sorting**: Advanced filtering and sorting capabilities for database records, including multi-column sorting, date/value range filtering, and text search.
 - **PDF Report Generation**: Generates comprehensive, shareable PDF reports with patient summaries, tables, and 2D charts.
+- **Comprehensive Patient Profile Management**: Three-tab system including patient directory with search, detailed profile management with age/gender/contact/medical information, and document upload/management with original filename preservation and file type support.
+- **Gender-Specific Reference Ranges**: Visualization system automatically applies appropriate reference ranges based on patient gender, with color-coded indicators and fallback logic for missing data.
 
 ## External Dependencies
 
