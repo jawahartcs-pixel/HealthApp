@@ -141,23 +141,37 @@ class FileParser:
             'ferritin': '12-150 ng/mL (F), 12-300 ng/mL (M)'
         }
         
-        # Date patterns - prioritize DD-MM-YY format at document top
+        # Enhanced date patterns - prioritize 2020s dates over 2000s for medical reports
         self.date_patterns = [
+            # Priority for explicit date labels with 2020s years
+            r'(?:date|test\s+date|report\s+date|collection\s+date)[:\-]?\s*(\d{1,2}[\-\/]\d{1,2}[\-\/]20[2-9]\d)',
+            r'(?:date|test\s+date|report\s+date|collection\s+date)[:\-]?\s*(\d{1,2}[\-\/]\d{1,2}[\-\/]202[2-9])',
+            # General 2020s date patterns
+            r'(\d{1,2}[\-\/]\d{1,2}[\-\/]20[2-9]\d)',  # DD-MM-202X or DD/MM/202X
+            r'(\d{1,2}[\-\/]\d{1,2}[\-\/]202[2-9])',   # DD-MM-2022+ or DD/MM/2022+
+            # Fallback to other years
             r'(?:date|test\s+date|report\s+date|collection\s+date)[:\-]?\s*(\d{1,2}[\-\/]\d{1,2}[\-\/]\d{2,4})',
-            r'(\d{1,2}[\-\/]\d{1,2}[\-\/]\d{2})',  # DD-MM-YY or DD/MM/YY
             r'(\d{1,2}[\-\/]\d{1,2}[\-\/]\d{4})',  # DD-MM-YYYY or DD/MM/YYYY
+            r'(\d{1,2}[\-\/]\d{1,2}[\-\/]\d{2})',  # DD-MM-YY or DD/MM/YY (last resort)
             r'(\d{2,4}[\-\/]\d{1,2}[\-\/]\d{1,2})'
         ]
         
-        # Patient name patterns - prioritize Mr/Mrs at document top near "Name"
+        # Enhanced patient name patterns - use "patient" tag for intelligent identification
         self.patient_patterns = [
-            r'(?:mr|mrs|ms|dr)\.?\s+([A-Za-z]+(?:\s+[A-Za-z]+)*)',  # Mr/Mrs prefix first
+            # Priority patterns - use "patient" tag for intelligent identification
+            r'(?:patient|patient\s+name)[:\-]?\s*(?:mr|mrs|ms|dr)\.?\s+([A-Za-z\s]{2,50}?)(?:\n|$|,)',
+            r'Patient\s*[:\-]?\s*(?:mr|mrs|ms|dr)\.?\s+([A-Za-z\s]{2,50})',
+            r'Patient\s*[:\-]?\s*([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)',  # Patient: Name
+            r'patient\s*[:\-]?\s*([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)',  # patient: Name
+            r'PATIENT\s*[:\-]?\s*([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)',  # PATIENT: Name
+            # Look for lines containing "patient" followed by a proper name
+            r'patient[^\n]*?([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)',
+            # Traditional patterns as fallback
+            r'(?:mr|mrs|ms|dr)\.?\s+([A-Za-z]+(?:\s+[A-Za-z]+)*)',  # Mr/Mrs prefix
             r'Name\s*[:\-]?\s*(?:mr|mrs|ms|dr)\.?\s+([A-Za-z\s]{2,50})',  # Name: Mr/Mrs
             r'Name\s*[:\-]?\s*([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)',  # Name: Capitalized words
             r'name\s*[:\-]?\s*(?:mr|mrs|ms|dr)\.?\s+([A-Za-z\s]{2,50})',
             r'NAME\s*[:\-]?\s*(?:mr|mrs|ms|dr)\.?\s+([A-Za-z\s]{2,50})',
-            r'(?:patient|patient\s+name)[:\-]?\s*(?:mr|mrs|ms|dr)\.?\s+([A-Za-z\s]+?)(?:\n|$|,)',
-            r'Patient\s*[:\-]?\s*(?:mr|mrs|ms|dr)\.?\s+([A-Za-z\s]{2,50})',
             r'Name\s*[:\-]?\s*([A-Za-z\s]{2,50})',
             r'name\s*[:\-]?\s*([A-Za-z\s]{2,50})',
             r'NAME\s*[:\-]?\s*([A-Za-z\s]{2,50})',
