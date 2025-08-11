@@ -3870,9 +3870,19 @@ def investigation_standards_page(investigation_standards):
                 
                 # Add computed columns for display but keep original data for editing
                 edit_df['computed_unit'] = edit_df.apply(
-                    lambda row: row.get('common_unit') or row.get('male_unit') or row.get('female_unit') or '', 
+                    lambda row: str(row.get('common_unit') or row.get('male_unit') or row.get('female_unit') or ''), 
                     axis=1
                 )
+                
+                # Ensure proper data types for Streamlit data_editor compatibility
+                edit_df = edit_df.fillna({
+                    'male_range_min': 0.0,
+                    'male_range_max': 0.0,
+                    'female_range_min': 0.0,
+                    'female_range_max': 0.0,
+                    'aliases': '',
+                    'description': ''
+                })
                 
                 # Define column configuration for editing
                 edit_column_config = {
