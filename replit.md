@@ -13,7 +13,7 @@ A Streamlit-based web application designed for healthcare professionals to manag
 
 ### Improved Alert System Terminology
 - Updated alert levels to "Minor Alert/Medium Alert/Major Alert/Critical Alert" with descriptive labels
-- Enhanced alert headers now display complete status with values and dates: "CHOL/HDL is high: 5.74(2025-07-17)"
+- Enhanced alert headers now display complete status with values and dates: "Vitamin D is low: 21.7 on 2025-05-30"
 - Moved detailed information from expandable message to header for immediate visibility
 - Alert display uses consistent descriptive labels throughout all dashboard sections
 
