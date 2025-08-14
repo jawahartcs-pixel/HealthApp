@@ -48,12 +48,16 @@ class AlertSystem:
         
         # Check for critical values first
         if self._is_critical_value(test_type, value):
+            date_str = f" on {test_date}" if test_date else ""
+            header_text = f'{test_type} is critical: {value}{date_str}'
             alert.update({
                 'has_alert': True,
                 'level': 'CRITICAL',
-                'message': f'Critical {test_type} value: {value}',
+                'message': f'Critical value requiring immediate attention',
+                'header': header_text,
                 'color': self.alert_levels['CRITICAL']['color'],
                 'icon': self.alert_levels['CRITICAL']['icon'],
+                'label': self.alert_levels['CRITICAL']['label'],
                 'recommendations': [
                     'Contact healthcare provider immediately',
                     'Do not delay medical attention',
@@ -212,7 +216,7 @@ class AlertSystem:
         test_results = self.database.get_patient_tests(patient_name)
         
         for test_date, test_type, value, unit, reference_range in test_results:
-            alert = self.check_test_result(test_type, value, reference_range)
+            alert = self.check_test_result(test_type, value, reference_range, test_date)
             if alert['has_alert']:
                 alert.update({
                     'patient_name': patient_name,
