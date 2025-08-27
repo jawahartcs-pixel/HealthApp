@@ -4775,8 +4775,8 @@ def medication_reminders_page(medication_reminder, db, user_id):
     with tab1:
         st.subheader("Current Medications")
         
-        # Patient selector
-        patient_names = [patient[0] for patient in patients]
+        # Patient selector - use patient[1] for patient_name, not patient[0] which is patient_id
+        patient_names = [patient[1] for patient in patients]
         selected_patient = st.selectbox(
             "Select Patient", 
             patient_names,
@@ -4834,6 +4834,7 @@ def medication_reminders_page(medication_reminder, db, user_id):
             col1, col2 = st.columns(2)
             
             with col1:
+                # Use same patient_names list which now correctly contains names not IDs
                 med_patient = st.selectbox("Patient", patient_names, key="add_med_patient")
                 med_name = st.text_input("Medication Name", placeholder="e.g., Metformin")
                 med_dosage = st.text_input("Dosage", placeholder="e.g., 500mg")
