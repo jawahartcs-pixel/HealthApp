@@ -4764,12 +4764,13 @@ def medication_reminders_page(medication_reminder, db, user_id):
         return
     
     # Create tabs for different medication features
-    tab1, tab2, tab3, tab4, tab5 = st.tabs([
+    tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
         "📋 My Medications", 
         "➕ Add Medication", 
         "✅ Daily Tracking", 
         "📊 Adherence Stats", 
-        "🎯 Effectiveness Analysis"
+        "🎯 Effectiveness Analysis",
+        "📧 Email Reminders"
     ])
     
     with tab1:
@@ -4840,7 +4841,8 @@ def medication_reminders_page(medication_reminder, db, user_id):
                 med_dosage = st.text_input("Dosage", placeholder="e.g., 500mg")
                 med_frequency = st.selectbox("Frequency", [
                     "Once daily", "Twice daily", "Three times daily", "Four times daily",
-                    "Every other day", "Weekly", "As needed", "Custom"
+                    "Every other day", "Weekly", "Bi-weekly (14 days)", "Every 21 days", 
+                    "Monthly", "Custom interval", "As needed"
                 ])
             
             with col2:
@@ -4851,53 +4853,106 @@ def medication_reminders_page(medication_reminder, db, user_id):
             
             instructions = st.text_area("Instructions", placeholder="Special instructions for taking this medication")
             
-            # Schedule section
-            st.subheader("Reminder Schedule")
-            num_times = st.number_input("How many times per day?", min_value=1, max_value=6, value=1)
+            # Enhanced Schedule section with flexible intervals
+            st.subheader("Reminder Schedule & Email Notifications")
             
+            # Email notification settings
+            enable_email_reminders = st.checkbox("Enable Email Reminders", value=True)
+            if enable_email_reminders:
+                st.info("📧 Email reminders will be sent to the patient's registered email address")
+            
+            # Schedule configuration based on frequency
             schedule_times = []
-            schedule_days = []
-            
-            cols = st.columns(min(num_times, 3))
-            for i in range(num_times):
-                with cols[i % 3]:
-                    time_input = st.time_input(f"Time {i+1}", key=f"time_{i}")
-                    schedule_times.append(time_input.strftime('%H:%M:%S'))
-            
-            # Days of week
-            st.write("Select days of the week:")
-            days_col1, days_col2 = st.columns(2)
-            
-            with days_col1:
-                mon = st.checkbox("Monday", value=True)
-                tue = st.checkbox("Tuesday", value=True)
-                wed = st.checkbox("Wednesday", value=True)
-                thu = st.checkbox("Thursday", value=True)
-            
-            with days_col2:
-                fri = st.checkbox("Friday", value=True)
-                sat = st.checkbox("Saturday", value=True)
-                sun = st.checkbox("Sunday", value=True)
-            
             selected_days = []
-            if mon: selected_days.append(1)
-            if tue: selected_days.append(2)
-            if wed: selected_days.append(3)
-            if thu: selected_days.append(4)
-            if fri: selected_days.append(5)
-            if sat: selected_days.append(6)
-            if sun: selected_days.append(7)
+            custom_interval_days = None
+            
+            if med_frequency in ["Once daily", "Twice daily", "Three times daily", "Four times daily"]:
+                # Daily frequencies
+                freq_map = {"Once daily": 1, "Twice daily": 2, "Three times daily": 3, "Four times daily": 4}
+                num_times = freq_map[med_frequency]
+                
+                st.write(f"**{med_frequency}** - Set reminder times:")
+                cols = st.columns(min(num_times, 3))
+                for i in range(num_times):
+                    with cols[i % 3]:
+                        time_input = st.time_input(f"Time {i+1}", key=f"time_{i}")
+                        schedule_times.append(time_input.strftime('%H:%M:%S'))
+                
+                # Days of week for daily medications
+                st.write("Select days of the week:")
+                days_col1, days_col2 = st.columns(2)
+                
+                with days_col1:
+                    mon = st.checkbox("Monday", value=True)
+                    tue = st.checkbox("Tuesday", value=True)
+                    wed = st.checkbox("Wednesday", value=True)
+                    thu = st.checkbox("Thursday", value=True)
+                
+                with days_col2:
+                    fri = st.checkbox("Friday", value=True)
+                    sat = st.checkbox("Saturday", value=True)
+                    sun = st.checkbox("Sunday", value=True)
+                
+                if mon: selected_days.append(1)
+                if tue: selected_days.append(2)
+                if wed: selected_days.append(3)
+                if thu: selected_days.append(4)
+                if fri: selected_days.append(5)
+                if sat: selected_days.append(6)
+                if sun: selected_days.append(7)
+                
+            elif med_frequency == "Every other day":
+                custom_interval_days = 2
+                time_input = st.time_input("Reminder time", key="interval_time")
+                schedule_times.append(time_input.strftime('%H:%M:%S'))
+                
+            elif med_frequency == "Weekly":
+                custom_interval_days = 7
+                time_input = st.time_input("Reminder time", key="weekly_time")
+                schedule_times.append(time_input.strftime('%H:%M:%S'))
+                preferred_day = st.selectbox("Preferred day of week", 
+                    ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"])
+                day_map = {"Monday": 1, "Tuesday": 2, "Wednesday": 3, "Thursday": 4, 
+                          "Friday": 5, "Saturday": 6, "Sunday": 7}
+                selected_days = [day_map[preferred_day]]
+                
+            elif med_frequency == "Bi-weekly (14 days)":
+                custom_interval_days = 14
+                time_input = st.time_input("Reminder time", key="biweekly_time")
+                schedule_times.append(time_input.strftime('%H:%M:%S'))
+                
+            elif med_frequency == "Every 21 days":
+                custom_interval_days = 21
+                time_input = st.time_input("Reminder time", key="21day_time")
+                schedule_times.append(time_input.strftime('%H:%M:%S'))
+                
+            elif med_frequency == "Monthly":
+                custom_interval_days = 30
+                time_input = st.time_input("Reminder time", key="monthly_time")
+                schedule_times.append(time_input.strftime('%H:%M:%S'))
+                
+            elif med_frequency == "Custom interval":
+                custom_interval_days = st.number_input("Interval (days)", min_value=1, max_value=365, value=7)
+                time_input = st.time_input("Reminder time", key="custom_time")
+                schedule_times.append(time_input.strftime('%H:%M:%S'))
+                
+            elif med_frequency == "As needed":
+                st.info("No automatic reminders will be set for 'As needed' medications")
+                schedule_times = []
+                selected_days = []
             
             submitted = st.form_submit_button("Add Medication")
             
             if submitted and med_patient and med_name and med_dosage:
-                # Prepare schedule data
+                # Prepare schedule data with enhanced interval support
                 schedule_data = []
                 for time_str in schedule_times:
                     schedule_data.append({
                         'time': time_str,
                         'days': selected_days,
-                        'reminder_enabled': True
+                        'interval_days': custom_interval_days,
+                        'reminder_enabled': True,
+                        'email_enabled': enable_email_reminders
                     })
                 
                 medication_data = {
@@ -5075,6 +5130,127 @@ def medication_reminders_page(medication_reminder, db, user_id):
                             st.info("No significant trends detected in test results since starting this medication.")
             else:
                 st.info(f"No medications found for {eff_patient}.")
+    
+    with tab6:
+        st.subheader("📧 Email Reminder Management")
+        
+        # Email configuration status
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            st.write("**Email Configuration Status:**")
+            import os
+            email_configured = bool(os.getenv('EMAIL_USERNAME') and os.getenv('EMAIL_PASSWORD'))
+            if email_configured:
+                st.success("✅ Email configuration detected")
+            else:
+                st.warning("⚠️ Email credentials not configured")
+                st.info("Set EMAIL_USERNAME and EMAIL_PASSWORD environment variables to enable email reminders")
+        
+        with col2:
+            st.write("**Today's Due Reminders:**")
+            from datetime import date
+            due_reminders = medication_reminder.get_due_reminders(date.today())
+            st.metric("Reminders Due Today", len(due_reminders))
+        
+        # Show due reminders
+        if due_reminders:
+            st.subheader("📋 Medications Due Today")
+            
+            for reminder in due_reminders:
+                with st.expander(f"💊 {reminder['patient_name']} - {reminder['medication_name']}", expanded=False):
+                    col1, col2, col3 = st.columns(3)
+                    
+                    with col1:
+                        st.write(f"**Patient:** {reminder['patient_name']}")
+                        st.write(f"**Medication:** {reminder['medication_name']}")
+                        st.write(f"**Dosage:** {reminder['dosage']}")
+                    
+                    with col2:
+                        st.write(f"**Scheduled Time:** {reminder['time']}")
+                        st.write(f"**Email Enabled:** {'✅' if reminder['email_enabled'] else '❌'}")
+                        st.write(f"**Patient Email:** {reminder['patient_email'] or 'Not provided'}")
+                    
+                    with col3:
+                        if reminder['email_enabled'] and reminder['patient_email'] and email_configured:
+                            if st.button(f"Send Reminder Email", key=f"send_email_{reminder['medication_id']}"):
+                                success = medication_reminder.send_email_reminder(
+                                    reminder['patient_email'],
+                                    reminder['patient_name'],
+                                    reminder['medication_name'],
+                                    reminder['dosage'],
+                                    reminder['time']
+                                )
+                                
+                                if success:
+                                    st.success("📧 Email sent successfully!")
+                                else:
+                                    st.error("❌ Failed to send email")
+                        else:
+                            reasons = []
+                            if not reminder['email_enabled']:
+                                reasons.append("Email disabled")
+                            if not reminder['patient_email']:
+                                reasons.append("No email address")
+                            if not email_configured:
+                                reasons.append("Email not configured")
+                            st.info(f"Email not available: {', '.join(reasons)}")
+        
+        # Manual reminder processing
+        st.markdown("---")
+        st.subheader("🔄 Manual Reminder Processing")
+        
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            if st.button("📧 Process All Due Reminders", type="primary"):
+                if email_configured:
+                    stats = medication_reminder.process_daily_reminders(send_emails=True)
+                    st.success(f"""
+                    ✅ Processed {stats['total_due']} reminders:
+                    - 📧 Emails sent: {stats['emails_sent']}
+                    - ❌ Failed: {stats['emails_failed']}
+                    """)
+                else:
+                    st.error("Cannot send emails: Email configuration missing")
+        
+        with col2:
+            if st.button("🔍 Check Due Reminders (No Email)"):
+                stats = medication_reminder.process_daily_reminders(send_emails=False)
+                st.info(f"Found {stats['total_due']} reminders due today")
+        
+        # Email reminder schedule preview
+        st.markdown("---")
+        st.subheader("📅 Upcoming Reminders (Next 7 Days)")
+        
+        from datetime import timedelta
+        upcoming_dates = [date.today() + timedelta(days=i) for i in range(1, 8)]
+        
+        for check_date in upcoming_dates:
+            upcoming_reminders = medication_reminder.get_due_reminders(check_date)
+            if upcoming_reminders:
+                with st.expander(f"📅 {check_date.strftime('%A, %B %d')} - {len(upcoming_reminders)} reminders"):
+                    for reminder in upcoming_reminders:
+                        st.write(f"• {reminder['patient_name']}: {reminder['medication_name']} at {reminder['time']}")
+        
+        # Instructions for setting up email
+        if not email_configured:
+            st.markdown("---")
+            st.subheader("📧 Setting Up Email Reminders")
+            st.info("""
+            To enable email reminders, you need to configure email credentials:
+            
+            1. **EMAIL_USERNAME**: Your email address (e.g., your-email@gmail.com)
+            2. **EMAIL_PASSWORD**: Your email password or app-specific password
+            3. **SMTP_SERVER**: SMTP server (default: smtp.gmail.com)
+            4. **SMTP_PORT**: SMTP port (default: 587)
+            
+            For Gmail users:
+            - Use an app-specific password instead of your regular password
+            - Enable 2-factor authentication and generate an app password
+            
+            Set these as environment variables in your Replit project.
+            """)
 
 if __name__ == "__main__":
     main()

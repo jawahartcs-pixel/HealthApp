@@ -28,6 +28,14 @@ A Streamlit-based web application designed for healthcare professionals to manag
 - Age calculation hidden until date of birth is provided, then auto-calculated and displayed
 - Profile forms provide better user experience with informative messages
 
+### Enhanced Medication Reminder System with Flexible Scheduling
+- Added support for flexible scheduling intervals: 7 days, 14 days, 21 days, monthly, or custom intervals
+- Implemented email notification system for medication reminders sent to patient email addresses
+- Enhanced medication frequency options: Every other day, Weekly, Bi-weekly, Every 21 days, Monthly, Custom interval
+- Added email reminder management tab with manual processing and upcoming reminders preview
+- Intelligent interval calculation with automatic next reminder date updates
+- Fixed patient display to show names instead of IDs in medication reminder interface
+
 ## User Preferences
 
 Preferred communication style: Simple, everyday language.
@@ -66,7 +74,7 @@ User wants proper category grouping for visualizations using the investigation s
 - **Investigation Standards Management**: Manages predefined and user-defined test standards, including reference ranges, units, and aliases. Features auto-synchronization of test results with standard changes and Excel-style editing.
 - **AI-Powered Anomaly Detection**: Integrates multiple machine learning algorithms (Isolation Forest, Statistical Outlier, DBSCAN, Temporal, Correlation-based) for comprehensive anomaly detection across patients, providing medical insights and actionable recommendations.
 - **Alert System**: Implements a four-level severity system (Critical Alert, Major Alert, Medium Alert, Minor Alert) for abnormal values based on deviation from normal ranges, with enhanced headers showing complete status and values in expandable titles, and a dedicated alert dashboard with integrated display.
-- **Medication Management**: Tracks medications, schedules, adherence, and effectiveness, integrated with test results for analysis. Includes a multi-tab UI for comprehensive management.
+- **Enhanced Medication Management**: Advanced medication tracking with flexible scheduling intervals (daily, weekly, bi-weekly, monthly, custom intervals), automated email reminder system, adherence monitoring, and effectiveness analysis. Features comprehensive multi-tab UI with email notification management and intelligent interval-based reminder scheduling.
 - **Document Preview & Comparison**: Provides side-by-side document preview with extracted results, highlighting, search functionality, and tools for verification.
 - **Data Filtering & Sorting**: Advanced filtering and sorting capabilities for database records, including multi-column sorting, date/value range filtering, and text search.
 - **PDF Report Generation**: Generates comprehensive, shareable PDF reports with patient summaries, tables, and 2D charts.

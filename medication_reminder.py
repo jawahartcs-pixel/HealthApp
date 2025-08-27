@@ -5,9 +5,13 @@ Handles medication tracking, reminders, adherence monitoring, and integration wi
 
 import sqlite3
 import pandas as pd
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, date
 from typing import Dict, List, Tuple, Optional
 import json
+import smtplib
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
+import os
 
 class MedicationReminder:
     def __init__(self, db_path: str = "blood_test_results.db"):
@@ -43,14 +47,18 @@ class MedicationReminder:
                 )
             ''')
             
-            # Medication schedule table - stores reminder schedules
+            # Enhanced medication schedule table - stores reminder schedules with intervals
             cursor.execute('''
                 CREATE TABLE IF NOT EXISTS medication_schedule (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     medication_id INTEGER NOT NULL,
                     time_of_day TIME NOT NULL,
                     days_of_week TEXT,
+                    interval_days INTEGER DEFAULT NULL,
                     reminder_enabled BOOLEAN DEFAULT 1,
+                    email_enabled BOOLEAN DEFAULT 1,
+                    last_reminder_date DATE DEFAULT NULL,
+                    next_reminder_date DATE DEFAULT NULL,
                     created_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     FOREIGN KEY (medication_id) REFERENCES medications(id)
                 )
@@ -113,18 +121,28 @@ class MedicationReminder:
                 
                 medication_id = cursor.lastrowid
                 
-                # Add schedule if provided
+                # Add enhanced schedule if provided
                 if 'schedule' in medication_data:
                     for schedule in medication_data['schedule']:
+                        next_reminder = self._calculate_next_reminder_date(
+                            medication_data['start_date'], 
+                            schedule.get('interval_days'), 
+                            schedule.get('days', [])
+                        )
+                        
                         cursor.execute('''
                             INSERT INTO medication_schedule 
-                            (medication_id, time_of_day, days_of_week, reminder_enabled)
-                            VALUES (?, ?, ?, ?)
+                            (medication_id, time_of_day, days_of_week, interval_days, 
+                             reminder_enabled, email_enabled, next_reminder_date)
+                            VALUES (?, ?, ?, ?, ?, ?, ?)
                         ''', (
                             medication_id,
                             schedule['time'],
-                            json.dumps(schedule.get('days', [1,2,3,4,5,6,7])),  # Default: daily
-                            schedule.get('reminder_enabled', True)
+                            json.dumps(schedule.get('days', [])),
+                            schedule.get('interval_days'),
+                            schedule.get('reminder_enabled', True),
+                            schedule.get('email_enabled', True),
+                            next_reminder
                         ))
                 
                 conn.commit()
@@ -133,6 +151,220 @@ class MedicationReminder:
         except Exception as e:
             print(f"Error adding medication: {e}")
             return False
+    
+    def _calculate_next_reminder_date(self, start_date_str: str, interval_days: int = None, days_of_week: List[int] = None) -> str:
+        """Calculate the next reminder date based on interval or days of week."""
+        try:
+            start_date = datetime.strptime(start_date_str, '%Y-%m-%d').date()
+            today = date.today()
+            
+            if interval_days:
+                # For interval-based medications (every X days)
+                if start_date <= today:
+                    # Calculate how many intervals have passed since start
+                    days_passed = (today - start_date).days
+                    intervals_passed = days_passed // interval_days
+                    next_date = start_date + timedelta(days=(intervals_passed + 1) * interval_days)
+                else:
+                    next_date = start_date
+                return next_date.strftime('%Y-%m-%d')
+            
+            elif days_of_week:
+                # For weekly medications on specific days
+                next_date = today + timedelta(days=1)
+                while next_date.weekday() + 1 not in days_of_week:
+                    next_date += timedelta(days=1)
+                return next_date.strftime('%Y-%m-%d')
+            
+            else:
+                # Default: daily
+                return (today + timedelta(days=1)).strftime('%Y-%m-%d')
+                
+        except Exception as e:
+            print(f"Error calculating next reminder date: {e}")
+            return (date.today() + timedelta(days=1)).strftime('%Y-%m-%d')
+    
+    def send_email_reminder(self, patient_email: str, patient_name: str, medication_name: str, 
+                           dosage: str, scheduled_time: str) -> bool:
+        """Send email reminder to patient."""
+        try:
+            # Email configuration (these should be environment variables)
+            smtp_server = os.getenv('SMTP_SERVER', 'smtp.gmail.com')
+            smtp_port = int(os.getenv('SMTP_PORT', '587'))
+            email_username = os.getenv('EMAIL_USERNAME')
+            email_password = os.getenv('EMAIL_PASSWORD')
+            
+            if not email_username or not email_password:
+                print("Email credentials not configured")
+                return False
+            
+            # Create message
+            msg = MIMEMultipart()
+            msg['From'] = email_username
+            msg['To'] = patient_email
+            msg['Subject'] = f"Medication Reminder: {medication_name}"
+            
+            # Email body
+            body = f"""
+            Dear {patient_name},
+            
+            This is a friendly reminder to take your medication:
+            
+            Medication: {medication_name}
+            Dosage: {dosage}
+            Scheduled Time: {scheduled_time}
+            
+            Please take your medication as prescribed by your healthcare provider.
+            
+            If you have any questions or concerns, please contact your doctor.
+            
+            Best regards,
+            Your Healthcare Team
+            """
+            
+            msg.attach(MIMEText(body, 'plain'))
+            
+            # Send email
+            server = smtplib.SMTP(smtp_server, smtp_port)
+            server.starttls()
+            server.login(email_username, email_password)
+            text = msg.as_string()
+            server.sendmail(email_username, patient_email, text)
+            server.quit()
+            
+            return True
+            
+        except Exception as e:
+            print(f"Error sending email reminder: {e}")
+            return False
+    
+    def get_due_reminders(self, check_date: date = None) -> List[Dict]:
+        """Get all medication reminders due for a specific date."""
+        if check_date is None:
+            check_date = date.today()
+            
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+                
+                # Get medications with reminders due today
+                cursor.execute('''
+                    SELECT m.id, m.patient_name, m.medication_name, m.dosage,
+                           ms.time_of_day, ms.email_enabled, ms.interval_days,
+                           ms.next_reminder_date, ms.days_of_week
+                    FROM medications m
+                    JOIN medication_schedule ms ON m.id = ms.medication_id
+                    JOIN patients p ON m.patient_name = p.patient_name
+                    WHERE m.active = 1 
+                    AND ms.reminder_enabled = 1
+                    AND (
+                        (ms.interval_days IS NOT NULL AND ms.next_reminder_date <= ?)
+                        OR 
+                        (ms.interval_days IS NULL AND ms.days_of_week IS NOT NULL)
+                    )
+                ''', (check_date.strftime('%Y-%m-%d'),))
+                
+                results = cursor.fetchall()
+                due_reminders = []
+                
+                for row in results:
+                    medication_id, patient_name, medication_name, dosage, time_of_day, email_enabled, interval_days, next_reminder_date, days_of_week_json = row
+                    
+                    # Check if reminder is actually due today
+                    is_due = False
+                    
+                    if interval_days:
+                        # Interval-based medication
+                        if next_reminder_date and next_reminder_date <= check_date.strftime('%Y-%m-%d'):
+                            is_due = True
+                    else:
+                        # Weekly medication - check if today is in the allowed days
+                        try:
+                            days_of_week = json.loads(days_of_week_json) if days_of_week_json else []
+                            if check_date.weekday() + 1 in days_of_week:
+                                is_due = True
+                        except:
+                            pass
+                    
+                    if is_due:
+                        # Get patient email
+                        cursor.execute('SELECT email FROM patients WHERE patient_name = ?', (patient_name,))
+                        email_result = cursor.fetchone()
+                        patient_email = email_result[0] if email_result and email_result[0] else None
+                        
+                        due_reminders.append({
+                            'medication_id': medication_id,
+                            'patient_name': patient_name,
+                            'patient_email': patient_email,
+                            'medication_name': medication_name,
+                            'dosage': dosage,
+                            'time': time_of_day,
+                            'email_enabled': email_enabled,
+                            'check_date': check_date.strftime('%Y-%m-%d')
+                        })
+                
+                return due_reminders
+                
+        except Exception as e:
+            print(f"Error getting due reminders: {e}")
+            return []
+    
+    def process_daily_reminders(self, send_emails: bool = True) -> Dict[str, int]:
+        """Process all due reminders for today and optionally send emails."""
+        due_reminders = self.get_due_reminders()
+        stats = {'total_due': len(due_reminders), 'emails_sent': 0, 'emails_failed': 0}
+        
+        for reminder in due_reminders:
+            if send_emails and reminder['email_enabled'] and reminder['patient_email']:
+                success = self.send_email_reminder(
+                    reminder['patient_email'],
+                    reminder['patient_name'],
+                    reminder['medication_name'],
+                    reminder['dosage'],
+                    reminder['time']
+                )
+                
+                if success:
+                    stats['emails_sent'] += 1
+                    # Update next reminder date for interval-based medications
+                    self._update_next_reminder_date(reminder['medication_id'])
+                else:
+                    stats['emails_failed'] += 1
+        
+        return stats
+    
+    def _update_next_reminder_date(self, medication_id: int):
+        """Update the next reminder date for interval-based medications."""
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+                
+                # Get current schedule info
+                cursor.execute('''
+                    SELECT interval_days, next_reminder_date 
+                    FROM medication_schedule 
+                    WHERE medication_id = ? AND interval_days IS NOT NULL
+                ''', (medication_id,))
+                
+                result = cursor.fetchone()
+                if result:
+                    interval_days, current_next_date = result
+                    
+                    # Calculate new next reminder date
+                    current_date = datetime.strptime(current_next_date, '%Y-%m-%d').date()
+                    new_next_date = current_date + timedelta(days=interval_days)
+                    
+                    # Update the schedule
+                    cursor.execute('''
+                        UPDATE medication_schedule 
+                        SET last_reminder_date = ?, next_reminder_date = ?
+                        WHERE medication_id = ? AND interval_days IS NOT NULL
+                    ''', (date.today().strftime('%Y-%m-%d'), new_next_date.strftime('%Y-%m-%d'), medication_id))
+                    
+                    conn.commit()
+                    
+        except Exception as e:
+            print(f"Error updating next reminder date: {e}")
     
     def get_patient_medications(self, patient_name: str, active_only: bool = True) -> List[Dict]:
         """Get all medications for a patient."""
