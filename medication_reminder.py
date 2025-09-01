@@ -47,7 +47,7 @@ class MedicationReminder:
                 )
             ''')
             
-            # Enhanced medication schedule table - stores reminder schedules with intervals
+            # Enhanced medication schedule table - stores reminder schedules with intervals and alert timings
             cursor.execute('''
                 CREATE TABLE IF NOT EXISTS medication_schedule (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -57,6 +57,7 @@ class MedicationReminder:
                     interval_days INTEGER DEFAULT NULL,
                     reminder_enabled BOOLEAN DEFAULT 1,
                     email_enabled BOOLEAN DEFAULT 1,
+                    alert_timings TEXT DEFAULT NULL,
                     last_reminder_date DATE DEFAULT NULL,
                     next_reminder_date DATE DEFAULT NULL,
                     created_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -93,6 +94,13 @@ class MedicationReminder:
                     FOREIGN KEY (test_result_id) REFERENCES test_results(id)
                 )
             ''')
+            
+            # Add alert_timings column if it doesn't exist (for existing databases)
+            try:
+                cursor.execute('ALTER TABLE medication_schedule ADD COLUMN alert_timings TEXT DEFAULT NULL')
+            except sqlite3.OperationalError:
+                # Column already exists
+                pass
             
             conn.commit()
     
@@ -133,8 +141,8 @@ class MedicationReminder:
                         cursor.execute('''
                             INSERT INTO medication_schedule 
                             (medication_id, time_of_day, days_of_week, interval_days, 
-                             reminder_enabled, email_enabled, next_reminder_date)
-                            VALUES (?, ?, ?, ?, ?, ?, ?)
+                             reminder_enabled, email_enabled, alert_timings, next_reminder_date)
+                            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                         ''', (
                             medication_id,
                             schedule['time'],
@@ -142,6 +150,7 @@ class MedicationReminder:
                             schedule.get('interval_days'),
                             schedule.get('reminder_enabled', True),
                             schedule.get('email_enabled', True),
+                            json.dumps(schedule.get('alert_timings', ["1 hour before"])),
                             next_reminder
                         ))
                 
@@ -238,10 +247,23 @@ class MedicationReminder:
             print(f"Error sending email reminder: {e}")
             return False
     
-    def get_due_reminders(self, check_date: date = None) -> List[Dict]:
-        """Get all medication reminders due for a specific date."""
+    def _calculate_alert_datetime(self, medication_datetime: datetime, alert_timing: str) -> datetime:
+        """Calculate the actual alert datetime based on timing preference."""
+        if alert_timing == "5 minutes before":
+            return medication_datetime - timedelta(minutes=5)
+        elif alert_timing == "1 hour before":
+            return medication_datetime - timedelta(hours=1)
+        elif alert_timing == "1 day before":
+            return medication_datetime - timedelta(days=1)
+        else:
+            return medication_datetime  # Default: at medication time
+    
+    def get_due_reminders(self, check_date: date = None, check_time: datetime = None) -> List[Dict]:
+        """Get all medication reminders due for a specific date and time with alert timing consideration."""
         if check_date is None:
             check_date = date.today()
+        if check_time is None:
+            check_time = datetime.now()
             
         try:
             with sqlite3.connect(self.db_path) as conn:
@@ -251,7 +273,7 @@ class MedicationReminder:
                 cursor.execute('''
                     SELECT m.id, m.patient_name, m.medication_name, m.dosage,
                            ms.time_of_day, ms.email_enabled, ms.interval_days,
-                           ms.next_reminder_date, ms.days_of_week
+                           ms.next_reminder_date, ms.days_of_week, ms.alert_timings
                     FROM medications m
                     JOIN medication_schedule ms ON m.id = ms.medication_id
                     JOIN patients p ON m.patient_name = p.patient_name
@@ -268,40 +290,66 @@ class MedicationReminder:
                 due_reminders = []
                 
                 for row in results:
-                    medication_id, patient_name, medication_name, dosage, time_of_day, email_enabled, interval_days, next_reminder_date, days_of_week_json = row
+                    medication_id, patient_name, medication_name, dosage, time_of_day, email_enabled, interval_days, next_reminder_date, days_of_week_json, alert_timings_json = row
                     
                     # Check if reminder is actually due today
                     is_due = False
+                    medication_datetime = None
                     
                     if interval_days:
                         # Interval-based medication
                         if next_reminder_date and next_reminder_date <= check_date.strftime('%Y-%m-%d'):
                             is_due = True
+                            medication_datetime = datetime.combine(
+                                datetime.strptime(next_reminder_date, '%Y-%m-%d').date(),
+                                datetime.strptime(time_of_day, '%H:%M:%S').time()
+                            )
                     else:
                         # Weekly medication - check if today is in the allowed days
                         try:
                             days_of_week = json.loads(days_of_week_json) if days_of_week_json else []
                             if check_date.weekday() + 1 in days_of_week:
                                 is_due = True
+                                medication_datetime = datetime.combine(
+                                    check_date,
+                                    datetime.strptime(time_of_day, '%H:%M:%S').time()
+                                )
                         except:
                             pass
                     
-                    if is_due:
-                        # Get patient email
-                        cursor.execute('SELECT email FROM patients WHERE patient_name = ?', (patient_name,))
-                        email_result = cursor.fetchone()
-                        patient_email = email_result[0] if email_result and email_result[0] else None
+                    if is_due and medication_datetime:
+                        # Parse alert timings
+                        try:
+                            alert_timings = json.loads(alert_timings_json) if alert_timings_json else ["1 hour before"]
+                        except:
+                            alert_timings = ["1 hour before"]
                         
-                        due_reminders.append({
-                            'medication_id': medication_id,
-                            'patient_name': patient_name,
-                            'patient_email': patient_email,
-                            'medication_name': medication_name,
-                            'dosage': dosage,
-                            'time': time_of_day,
-                            'email_enabled': email_enabled,
-                            'check_date': check_date.strftime('%Y-%m-%d')
-                        })
+                        # Check if any alert should be triggered now
+                        alert_due = False
+                        for alert_timing in alert_timings:
+                            alert_datetime = self._calculate_alert_datetime(medication_datetime, alert_timing)
+                            if check_time >= alert_datetime:
+                                alert_due = True
+                                break
+                        
+                        if alert_due:
+                            # Get patient email
+                            cursor.execute('SELECT email FROM patients WHERE patient_name = ?', (patient_name,))
+                            email_result = cursor.fetchone()
+                            patient_email = email_result[0] if email_result and email_result[0] else None
+                            
+                            due_reminders.append({
+                                'medication_id': medication_id,
+                                'patient_name': patient_name,
+                                'patient_email': patient_email,
+                                'medication_name': medication_name,
+                                'dosage': dosage,
+                                'time': time_of_day,
+                                'email_enabled': email_enabled,
+                                'alert_timings': alert_timings,
+                                'medication_datetime': medication_datetime,
+                                'check_date': check_date.strftime('%Y-%m-%d')
+                            })
                 
                 return due_reminders
                 
@@ -365,6 +413,17 @@ class MedicationReminder:
                     
         except Exception as e:
             print(f"Error updating next reminder date: {e}")
+    
+    def get_all_patients(self) -> List[Tuple]:
+        """Get all patients from the database."""
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+                cursor.execute('SELECT DISTINCT patient_name FROM patients ORDER BY patient_name')
+                return cursor.fetchall()
+        except Exception as e:
+            print(f"Error getting patients: {e}")
+            return []
     
     def get_patient_medications(self, patient_name: str, active_only: bool = True) -> List[Dict]:
         """Get all medications for a patient."""

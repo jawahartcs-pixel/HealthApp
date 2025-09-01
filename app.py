@@ -4853,13 +4853,27 @@ def medication_reminders_page(medication_reminder, db, user_id):
             
             instructions = st.text_area("Instructions", placeholder="Special instructions for taking this medication")
             
-            # Enhanced Schedule section with flexible intervals
-            st.subheader("Reminder Schedule & Email Notifications")
+            # Enhanced Schedule section with flexible intervals and timing alerts
+            st.subheader("Reminder Schedule & Alert Timing")
             
             # Email notification settings
             enable_email_reminders = st.checkbox("Enable Email Reminders", value=True)
             if enable_email_reminders:
                 st.info("📧 Email reminders will be sent to the patient's registered email address")
+            
+            # Alert timing settings
+            st.write("**Alert Timing Options:**")
+            alert_timing_col1, alert_timing_col2 = st.columns(2)
+            
+            with alert_timing_col1:
+                alert_before_options = ["5 minutes before", "1 hour before", "1 day before"]
+                selected_alert_timing = st.selectbox("Send alert", alert_before_options, index=1)
+            
+            with alert_timing_col2:
+                enable_multiple_alerts = st.checkbox("Enable multiple alert times", value=False)
+                additional_alerts = []
+                if enable_multiple_alerts:
+                    additional_alerts = st.multiselect("Additional alerts", alert_before_options, default=[])
             
             # Schedule configuration based on frequency
             schedule_times = []
@@ -4878,28 +4892,8 @@ def medication_reminders_page(medication_reminder, db, user_id):
                         time_input = st.time_input(f"Time {i+1}", key=f"time_{i}")
                         schedule_times.append(time_input.strftime('%H:%M:%S'))
                 
-                # Days of week for daily medications
-                st.write("Select days of the week:")
-                days_col1, days_col2 = st.columns(2)
-                
-                with days_col1:
-                    mon = st.checkbox("Monday", value=True)
-                    tue = st.checkbox("Tuesday", value=True)
-                    wed = st.checkbox("Wednesday", value=True)
-                    thu = st.checkbox("Thursday", value=True)
-                
-                with days_col2:
-                    fri = st.checkbox("Friday", value=True)
-                    sat = st.checkbox("Saturday", value=True)
-                    sun = st.checkbox("Sunday", value=True)
-                
-                if mon: selected_days.append(1)
-                if tue: selected_days.append(2)
-                if wed: selected_days.append(3)
-                if thu: selected_days.append(4)
-                if fri: selected_days.append(5)
-                if sat: selected_days.append(6)
-                if sun: selected_days.append(7)
+                # For daily medications, set all days by default
+                selected_days = [1, 2, 3, 4, 5, 6, 7]  # All days of week
                 
             elif med_frequency == "Every other day":
                 custom_interval_days = 2
@@ -4944,7 +4938,14 @@ def medication_reminders_page(medication_reminder, db, user_id):
             submitted = st.form_submit_button("Add Medication")
             
             if submitted and med_patient and med_name and med_dosage:
-                # Prepare schedule data with enhanced interval support
+                # Prepare alert timing data
+                alert_times = [selected_alert_timing]
+                if enable_multiple_alerts:
+                    for alert in additional_alerts:
+                        if alert not in alert_times:
+                            alert_times.append(alert)
+                
+                # Prepare schedule data with enhanced interval support and alert timing
                 schedule_data = []
                 for time_str in schedule_times:
                     schedule_data.append({
@@ -4952,7 +4953,8 @@ def medication_reminders_page(medication_reminder, db, user_id):
                         'days': selected_days,
                         'interval_days': custom_interval_days,
                         'reminder_enabled': True,
-                        'email_enabled': enable_email_reminders
+                        'email_enabled': enable_email_reminders,
+                        'alert_timings': alert_times
                     })
                 
                 medication_data = {
