@@ -928,6 +928,134 @@ class MedicationReminder:
             print(f"Error analyzing medication effectiveness: {e}")
             return {'status': 'error', 'message': str(e)}
     
+    def _get_smtp_config(self) -> Dict[str, Any]:
+        """Get SMTP configuration from database."""
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+                cursor.execute('''
+                    SELECT smtp_server, smtp_port, email_username, email_password, 
+                           sender_name, use_ssl
+                    FROM smtp_config 
+                    ORDER BY updated_date DESC 
+                    LIMIT 1
+                ''')
+                
+                result = cursor.fetchone()
+                if result:
+                    return {
+                        'smtp_server': result[0],
+                        'smtp_port': result[1],
+                        'email_username': result[2],
+                        'email_password': result[3],
+                        'sender_name': result[4],
+                        'use_ssl': bool(result[5])
+                    }
+                return {}
+                
+        except Exception as e:
+            print(f"Error getting SMTP configuration: {e}")
+            return {}
+    
+    def send_reminder_email(self, patient_name: str, patient_email: str, medication_name: str, 
+                           dosage: str, reminder_time: str, alert_type: str = "reminder") -> bool:
+        """Send reminder email using database SMTP configuration."""
+        smtp_config = self._get_smtp_config()
+        if not smtp_config:
+            print("No SMTP configuration found")
+            return False
+            
+        try:
+            # Create message
+            msg = MIMEMultipart()
+            msg['From'] = f"{smtp_config['sender_name']} <{smtp_config['email_username']}>"
+            msg['To'] = patient_email
+            
+            if alert_type == "reminder":
+                msg['Subject'] = f"Medication Reminder: {medication_name}"
+                body = f"""
+Dear {patient_name},
+
+This is a reminder for your medication:
+
+Medication: {medication_name}
+Dosage: {dosage}
+Time: {reminder_time}
+
+Please take your medication as prescribed.
+
+Best regards,
+{smtp_config['sender_name']}
+                """
+            else:  # alert_type == "alert"
+                msg['Subject'] = f"Medication Alert: {medication_name} - {alert_type}"
+                body = f"""
+Dear {patient_name},
+
+Alert: Your medication {medication_name} ({dosage}) is due at {reminder_time}.
+
+Please prepare to take your medication.
+
+Best regards,
+{smtp_config['sender_name']}
+                """
+            
+            msg.attach(MIMEText(body, 'plain'))
+            
+            # Send email
+            if smtp_config['use_ssl']:
+                server = smtplib.SMTP(smtp_config['smtp_server'], smtp_config['smtp_port'])
+                server.starttls()
+            else:
+                server = smtplib.SMTP(smtp_config['smtp_server'], smtp_config['smtp_port'])
+            
+            server.login(smtp_config['email_username'], smtp_config['email_password'])
+            server.send_message(msg)
+            server.quit()
+            
+            print(f"Email reminder sent to {patient_email} for {medication_name}")
+            return True
+            
+        except Exception as e:
+            print(f"Error sending email reminder: {e}")
+            return False
+    
+    def send_automatic_reminders(self) -> int:
+        """Send automatic reminders for due medications. Returns count of sent reminders."""
+        try:
+            current_time = datetime.now()
+            due_reminders = self.get_due_reminders(current_time.date(), current_time)
+            sent_count = 0
+            
+            # Get patient emails from database
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+                cursor.execute('SELECT patient_name, email FROM patients WHERE email IS NOT NULL AND email != ""')
+                patient_emails = dict(cursor.fetchall())
+            
+            # Send reminders
+            for reminder in due_reminders:
+                patient_name = reminder.get('patient_name')
+                patient_email = patient_emails.get(patient_name)
+                
+                if patient_email:
+                    success = self.send_reminder_email(
+                        patient_name=patient_name,
+                        patient_email=patient_email,
+                        medication_name=reminder['medication_name'],
+                        dosage=reminder['dosage'],
+                        reminder_time=reminder['time'],
+                        alert_type="reminder"
+                    )
+                    if success:
+                        sent_count += 1
+            
+            return sent_count
+            
+        except Exception as e:
+            print(f"Error sending automatic reminders: {e}")
+            return 0
+    
     def update_medication(self, medication_id: int, updates: Dict) -> bool:
         """Update medication information."""
         try:

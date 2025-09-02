@@ -122,6 +122,21 @@ class Database:
             except sqlite3.OperationalError:
                 pass  # Column already exists
             
+            # Create SMTP configuration table
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS smtp_config (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    smtp_server TEXT NOT NULL,
+                    smtp_port INTEGER NOT NULL,
+                    email_username TEXT NOT NULL,
+                    email_password TEXT NOT NULL,
+                    sender_name TEXT DEFAULT 'Medical Reminder System',
+                    use_ssl BOOLEAN DEFAULT 1,
+                    created_date DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    updated_date DATETIME DEFAULT CURRENT_TIMESTAMP
+                )
+            ''')
+            
             # Create patient_documents table for uploaded reports
             cursor.execute('''
                 CREATE TABLE IF NOT EXISTS patient_documents (
@@ -681,3 +696,70 @@ class Database:
                 'earliest_test': date_range[0],
                 'latest_test': date_range[1]
             }
+    
+    def save_smtp_config(self, smtp_server: str, smtp_port: int, email_username: str, 
+                        email_password: str, sender_name: str = 'Medical Reminder System', 
+                        use_ssl: bool = True) -> bool:
+        """Save or update SMTP configuration."""
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+                
+                # Check if configuration exists
+                cursor.execute('SELECT id FROM smtp_config LIMIT 1')
+                existing = cursor.fetchone()
+                
+                if existing:
+                    # Update existing configuration
+                    cursor.execute('''
+                        UPDATE smtp_config 
+                        SET smtp_server = ?, smtp_port = ?, email_username = ?, 
+                            email_password = ?, sender_name = ?, use_ssl = ?,
+                            updated_date = CURRENT_TIMESTAMP
+                        WHERE id = ?
+                    ''', (smtp_server, smtp_port, email_username, email_password, 
+                          sender_name, use_ssl, existing[0]))
+                else:
+                    # Insert new configuration
+                    cursor.execute('''
+                        INSERT INTO smtp_config (smtp_server, smtp_port, email_username, 
+                                                email_password, sender_name, use_ssl)
+                        VALUES (?, ?, ?, ?, ?, ?)
+                    ''', (smtp_server, smtp_port, email_username, email_password, 
+                          sender_name, use_ssl))
+                
+                conn.commit()
+                return True
+                
+        except Exception as e:
+            print(f"Error saving SMTP configuration: {e}")
+            return False
+    
+    def get_smtp_config(self) -> Dict[str, Any]:
+        """Get SMTP configuration."""
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+                cursor.execute('''
+                    SELECT smtp_server, smtp_port, email_username, email_password, 
+                           sender_name, use_ssl
+                    FROM smtp_config 
+                    ORDER BY updated_date DESC 
+                    LIMIT 1
+                ''')
+                
+                result = cursor.fetchone()
+                if result:
+                    return {
+                        'smtp_server': result[0],
+                        'smtp_port': result[1],
+                        'email_username': result[2],
+                        'email_password': result[3],
+                        'sender_name': result[4],
+                        'use_ssl': bool(result[5])
+                    }
+                return {}
+                
+        except Exception as e:
+            print(f"Error getting SMTP configuration: {e}")
+            return {}
