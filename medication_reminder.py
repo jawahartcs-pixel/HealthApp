@@ -1144,3 +1144,269 @@ Best regards,
         except Exception as e:
             print(f"Error getting missed medications summary: {e}")
             return {}
+    
+    def get_pending_email_reminders(self) -> List[Dict]:
+        """Get all medications that need email reminders sent based on current time."""
+        try:
+            current_datetime = datetime.now()
+            current_date = current_datetime.date()
+            current_time = current_datetime.time()
+            
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+                
+                # Get medications with their schedules and patient emails
+                cursor.execute('''
+                    SELECT DISTINCT 
+                        m.id as medication_id,
+                        m.patient_name,
+                        m.medication_name,
+                        m.dosage,
+                        ms.time_of_day,
+                        ms.alert_timings,
+                        ms.email_enabled,
+                        ms.last_reminder_date,
+                        p.patient_id,
+                        p.email as patient_email
+                    FROM medications m
+                    JOIN medication_schedule ms ON m.id = ms.medication_id
+                    LEFT JOIN patients p ON m.patient_name = p.patient_name
+                    WHERE m.active = 1 
+                    AND ms.reminder_enabled = 1 
+                    AND ms.email_enabled = 1
+                    AND p.email IS NOT NULL
+                    AND p.email != ''
+                    AND (m.end_date IS NULL OR m.end_date >= ?)
+                ''', (current_date,))
+                
+                results = cursor.fetchall()
+                pending_reminders = []
+                
+                for row in results:
+                    medication_id, patient_name, medication_name, dosage, time_of_day, \
+                    alert_timings, email_enabled, last_reminder_date, patient_id, patient_email = row
+                    
+                    # Parse alert timings
+                    if alert_timings:
+                        try:
+                            alert_list = json.loads(alert_timings) if isinstance(alert_timings, str) else alert_timings
+                        except:
+                            alert_list = ["1 hour before"]
+                    else:
+                        alert_list = ["1 hour before"]
+                    
+                    # Parse scheduled time
+                    try:
+                        scheduled_time = datetime.strptime(time_of_day, '%H:%M:%S').time()
+                    except:
+                        try:
+                            scheduled_time = datetime.strptime(time_of_day, '%H:%M').time()
+                        except:
+                            continue
+                    
+                    # Check if we should send reminders for each alert timing
+                    for alert_timing in alert_list:
+                        offset_minutes = self._parse_alert_offset(alert_timing)
+                        
+                        # Calculate reminder time
+                        scheduled_datetime = datetime.combine(current_date, scheduled_time)
+                        reminder_datetime = scheduled_datetime + timedelta(minutes=offset_minutes)
+                        
+                        # Check if it's time to send this reminder
+                        if self._should_send_reminder(current_datetime, reminder_datetime, last_reminder_date):
+                            pending_reminders.append({
+                                'medication_id': medication_id,
+                                'patient_id': patient_id,
+                                'patient_name': patient_name,
+                                'patient_email': patient_email,
+                                'medication_name': medication_name,
+                                'dosage': dosage,
+                                'reminder_time': time_of_day,
+                                'alert_timing': alert_timing,
+                                'scheduled_datetime': scheduled_datetime,
+                                'reminder_datetime': reminder_datetime
+                            })
+                
+                return pending_reminders
+                
+        except Exception as e:
+            print(f"Error getting pending reminders: {e}")
+            return []
+    
+    def _parse_alert_offset(self, alert_timing: str) -> int:
+        """Parse alert timing string to minutes offset."""
+        alert_timing = alert_timing.lower()
+        if "5 minutes before" in alert_timing:
+            return -5
+        elif "1 hour before" in alert_timing:
+            return -60
+        elif "1 day before" in alert_timing:
+            return -1440  # 24 hours * 60 minutes
+        else:
+            return -60  # Default 1 hour before
+    
+    def _should_send_reminder(self, current_datetime: datetime, reminder_datetime: datetime, 
+                             last_reminder_date: str = None) -> bool:
+        """Check if reminder should be sent based on timing and last sent date."""
+        # Check if reminder time has passed (within 2 minutes window)
+        time_diff = (current_datetime - reminder_datetime).total_seconds() / 60
+        
+        # Send if within 2 minutes of reminder time (past or future)
+        if abs(time_diff) <= 2:
+            # Check if we already sent a reminder today
+            if last_reminder_date:
+                try:
+                    last_date = datetime.strptime(last_reminder_date, '%Y-%m-%d').date()
+                    if last_date >= current_datetime.date():
+                        return False  # Already sent today
+                except:
+                    pass
+            return True
+        
+        return False
+    
+    def process_pending_email_reminders(self) -> Dict[str, Any]:
+        """Process all pending email reminders and send emails."""
+        try:
+            pending_reminders = self.get_pending_email_reminders()
+            results = {
+                'total_pending': len(pending_reminders),
+                'sent_successfully': 0,
+                'failed': 0,
+                'sent_reminders': [],
+                'failed_reminders': []
+            }
+            
+            from database import Database
+            db = Database(self.db_path)
+            
+            for reminder in pending_reminders:
+                # Enhanced email sending with history logging
+                success = self._send_enhanced_reminder_email(
+                    reminder=reminder,
+                    db=db
+                )
+                
+                if success:
+                    results['sent_successfully'] += 1
+                    results['sent_reminders'].append(reminder)
+                    
+                    # Update last reminder date
+                    self._update_last_reminder_date(reminder['medication_id'])
+                else:
+                    results['failed'] += 1
+                    results['failed_reminders'].append(reminder)
+            
+            return results
+            
+        except Exception as e:
+            print(f"Error processing pending reminders: {e}")
+            return {
+                'total_pending': 0,
+                'sent_successfully': 0,
+                'failed': 0,
+                'error': str(e)
+            }
+    
+    def _send_enhanced_reminder_email(self, reminder: Dict, db) -> bool:
+        """Send enhanced reminder email with history logging."""
+        try:
+            smtp_config = db.get_smtp_config()
+            if not smtp_config or not smtp_config.get('smtp_server'):
+                return False
+            
+            # Create email content
+            subject = f"💊 Medication Reminder: {reminder['medication_name']}"
+            
+            body = f"""
+Dear {reminder['patient_name']},
+
+This is your scheduled medication reminder:
+
+Medication: {reminder['medication_name']}
+Dosage: {reminder['dosage']}
+Scheduled Time: {reminder['reminder_time']}
+Alert Type: {reminder['alert_timing']}
+
+Please take your medication as prescribed by your doctor.
+
+If you have any questions about your medication, please consult with your healthcare provider.
+
+Best regards,
+Medical Reminder System
+"""
+            
+            # Create email message
+            msg = MIMEMultipart()
+            msg['From'] = f"{smtp_config.get('sender_name', 'Medical Reminder System')} <{smtp_config['email_username']}>"
+            msg['To'] = reminder['patient_email']
+            msg['Subject'] = subject
+            
+            msg.attach(MIMEText(body, 'plain'))
+            
+            # Send email
+            if smtp_config.get('use_ssl', True):
+                server = smtplib.SMTP_SSL(smtp_config['smtp_server'], smtp_config['smtp_port'])
+            else:
+                server = smtplib.SMTP(smtp_config['smtp_server'], smtp_config['smtp_port'])
+                server.starttls()
+            
+            server.login(smtp_config['email_username'], smtp_config['email_password'])
+            
+            text = msg.as_string()
+            server.sendmail(smtp_config['email_username'], reminder['patient_email'], text)
+            server.quit()
+            
+            # Log email to history
+            db.add_email_history(
+                patient_id=reminder['patient_id'],
+                patient_name=reminder['patient_name'],
+                patient_email=reminder['patient_email'],
+                medication_name=reminder['medication_name'],
+                medication_dosage=reminder['dosage'],
+                reminder_time=reminder['reminder_time'],
+                email_subject=subject,
+                email_body=body,
+                email_type="automated_reminder"
+            )
+            
+            print(f"Automated email reminder sent to {reminder['patient_email']} for {reminder['medication_name']}")
+            return True
+            
+        except Exception as e:
+            print(f"Error sending enhanced reminder email: {e}")
+            return False
+    
+    def _update_last_reminder_date(self, medication_id: int):
+        """Update the last reminder date for a medication."""
+        try:
+            current_date = datetime.now().date()
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+                cursor.execute('''
+                    UPDATE medication_schedule 
+                    SET last_reminder_date = ?
+                    WHERE medication_id = ?
+                ''', (current_date, medication_id))
+                conn.commit()
+        except Exception as e:
+            print(f"Error updating last reminder date: {e}")
+    
+    def add_custom_reminder_time(self, medication_id: int, custom_time: str, 
+                                custom_date: str = None, alert_offset: int = -60) -> bool:
+        """Add custom reminder time for specific medication."""
+        try:
+            from database import Database
+            db = Database(self.db_path)
+            
+            # Add to custom reminder times table
+            return db.add_custom_reminder_time(
+                medication_id=medication_id,
+                reminder_time=custom_time,
+                reminder_date=custom_date,
+                alert_offset_minutes=alert_offset
+            )
+            
+        except Exception as e:
+            print(f"Error adding custom reminder time: {e}")
+            return False

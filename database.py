@@ -137,6 +137,40 @@ class Database:
                 )
             ''')
             
+            # Add email history table for tracking sent emails
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS email_history (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    patient_id INTEGER,
+                    patient_name TEXT NOT NULL,
+                    patient_email TEXT NOT NULL,
+                    medication_name TEXT NOT NULL,
+                    medication_dosage TEXT,
+                    reminder_time TEXT,
+                    email_subject TEXT,
+                    email_body TEXT,
+                    sent_timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    email_type TEXT DEFAULT 'reminder',
+                    status TEXT DEFAULT 'sent',
+                    FOREIGN KEY (patient_id) REFERENCES patients (patient_id)
+                )
+            ''')
+            
+            # Add custom reminder times table
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS custom_reminder_times (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    medication_id INTEGER,
+                    reminder_time TIME NOT NULL,
+                    reminder_date DATE,
+                    alert_offset_minutes INTEGER DEFAULT -60,
+                    is_recurring BOOLEAN DEFAULT 1,
+                    is_active BOOLEAN DEFAULT 1,
+                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (medication_id) REFERENCES medications (id)
+                )
+            ''')
+            
             # Create patient_documents table for uploaded reports
             cursor.execute('''
                 CREATE TABLE IF NOT EXISTS patient_documents (
@@ -833,4 +867,69 @@ class Database:
                 
         except Exception as e:
             print(f"Error updating patient details: {e}")
+            return False
+    
+    def add_email_history(self, patient_id: int, patient_name: str, patient_email: str, 
+                         medication_name: str, medication_dosage: str, reminder_time: str,
+                         email_subject: str, email_body: str, email_type: str = 'reminder') -> bool:
+        """Add email history record."""
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+                cursor.execute('''
+                    INSERT INTO email_history 
+                    (patient_id, patient_name, patient_email, medication_name, medication_dosage,
+                     reminder_time, email_subject, email_body, email_type)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ''', (patient_id, patient_name, patient_email, medication_name, medication_dosage,
+                      reminder_time, email_subject, email_body, email_type))
+                conn.commit()
+                return True
+        except Exception as e:
+            print(f"Error adding email history: {e}")
+            return False
+    
+    def get_email_history(self, limit: int = 100) -> List[Dict]:
+        """Get email history records."""
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+                cursor.execute('''
+                    SELECT id, patient_name, patient_email, medication_name, medication_dosage,
+                           reminder_time, email_subject, sent_timestamp, email_type, status
+                    FROM email_history
+                    ORDER BY sent_timestamp DESC
+                    LIMIT ?
+                ''', (limit,))
+                
+                results = cursor.fetchall()
+                history = []
+                for row in results:
+                    history.append({
+                        'id': row[0],
+                        'patient_name': row[1],
+                        'patient_email': row[2],
+                        'medication_name': row[3],
+                        'medication_dosage': row[4],
+                        'reminder_time': row[5],
+                        'email_subject': row[6],
+                        'sent_timestamp': row[7],
+                        'email_type': row[8],
+                        'status': row[9]
+                    })
+                return history
+        except Exception as e:
+            print(f"Error getting email history: {e}")
+            return []
+    
+    def clear_email_history(self) -> bool:
+        """Clear all email history records."""
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+                cursor.execute('DELETE FROM email_history')
+                conn.commit()
+                return True
+        except Exception as e:
+            print(f"Error clearing email history: {e}")
             return False

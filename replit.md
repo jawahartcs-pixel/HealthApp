@@ -23,6 +23,16 @@ A Streamlit-based web application designed for healthcare professionals to manag
 - Improved today's medication filtering to include current day medications if time hasn't passed
 - Added comprehensive database methods for patient detail management and email updates
 
+### Advanced Email Reminder System with Background Processing
+- Implemented custom reminder times allowing users to set specific times for email alerts
+- Added background email processor running every minute to automatically check and send pending reminders
+- Comprehensive email history tracking with database storage of all sent emails and timestamps
+- Enhanced email processing with intelligent timing algorithms and duplicate prevention
+- Real-time email status monitoring with pending reminder detection and processing controls
+- Email history management with viewing, filtering, and clearing capabilities
+- Custom alert timing options (5 min, 15 min, 30 min, 1 hour, 2 hours before, or exact time)
+- Automated email logging with detailed metadata including patient info, medication details, and sending timestamps
+
 ## Recent Changes (August 2025)
 
 ### Enhanced Patient Profile Management

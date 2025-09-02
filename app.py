@@ -5800,28 +5800,164 @@ def medication_reminders_page(medication_reminder, db, user_id):
                                 reasons.append("Email not configured")
                             st.info(f"Email not available: {', '.join(reasons)}")
         
-        # Manual reminder processing
+        # Enhanced Email Processing Section
         st.markdown("---")
-        st.subheader("🔄 Manual Reminder Processing")
+        st.subheader("⚡ Enhanced Email Processing")
         
-        col1, col2 = st.columns(2)
+        col1, col2, col3 = st.columns(3)
         
         with col1:
-            if st.button("📧 Process All Due Reminders", type="primary"):
-                if email_configured:
-                    stats = medication_reminder.process_daily_reminders(send_emails=True)
-                    st.success(f"""
-                    ✅ Processed {stats['total_due']} reminders:
-                    - 📧 Emails sent: {stats['emails_sent']}
-                    - ❌ Failed: {stats['emails_failed']}
-                    """)
-                else:
-                    st.error("Cannot send emails: Email configuration missing")
+            if st.button("🚀 Process All Pending", type="primary"):
+                try:
+                    results = medication_reminder.process_pending_email_reminders()
+                    if results['total_pending'] > 0:
+                        st.success(f"✅ Processed {results['total_pending']} reminders: {results['sent_successfully']} sent, {results['failed']} failed")
+                        if results['sent_reminders']:
+                            with st.expander("📧 Sent Emails"):
+                                for reminder in results['sent_reminders']:
+                                    st.write(f"- {reminder['patient_name']}: {reminder['medication_name']} at {reminder['reminder_time']}")
+                    else:
+                        st.info("No pending reminders found")
+                except Exception as e:
+                    st.error(f"Error processing reminders: {e}")
         
         with col2:
-            if st.button("🔍 Check Due Reminders (No Email)"):
-                stats = medication_reminder.process_daily_reminders(send_emails=False)
-                st.info(f"Found {stats['total_due']} reminders due today")
+            if st.button("🔍 Check Pending"):
+                try:
+                    pending = medication_reminder.get_pending_email_reminders()
+                    if pending:
+                        st.info(f"📋 {len(pending)} reminders pending")
+                        with st.expander("Pending Details"):
+                            for reminder in pending:
+                                st.write(f"- {reminder['patient_name']}: {reminder['medication_name']} (Alert: {reminder['alert_timing']})")
+                    else:
+                        st.success("✅ No pending reminders")
+                except Exception as e:
+                    st.error(f"Error checking reminders: {e}")
+        
+        with col3:
+            st.info("💡 **Background Processing**\n\nRun `python background_email_processor.py` for automatic processing every minute")
+        
+        # Email History Section
+        st.markdown("---")
+        st.subheader("📜 Email History")
+        
+        col1, col2 = st.columns([3, 1])
+        
+        with col1:
+            history_limit = st.selectbox("Show last", [50, 100, 200, 500], index=1, key="history_limit")
+        
+        with col2:
+            if st.button("🗑️ Clear History", type="secondary"):
+                if st.session_state.get('confirm_clear_history', False):
+                    try:
+                        if db.clear_email_history():
+                            st.success("✅ Email history cleared")
+                            del st.session_state['confirm_clear_history']
+                            st.rerun()
+                        else:
+                            st.error("❌ Failed to clear history")
+                    except Exception as e:
+                        st.error(f"Error: {e}")
+                else:
+                    st.session_state['confirm_clear_history'] = True
+                    st.warning("⚠️ Click again to confirm deletion")
+        
+        # Display email history
+        try:
+            email_history = db.get_email_history(limit=history_limit)
+            
+            if email_history:
+                st.write(f"**Showing last {len(email_history)} emails:**")
+                
+                for email in email_history:
+                    with st.expander(f"📧 {email['patient_name']} - {email['medication_name']} | {email['sent_timestamp']}", expanded=False):
+                        col1, col2 = st.columns(2)
+                        
+                        with col1:
+                            st.write(f"**To:** {email['patient_email']}")
+                            st.write(f"**Medication:** {email['medication_name']}")
+                            st.write(f"**Dosage:** {email['medication_dosage']}")
+                            st.write(f"**Reminder Time:** {email['reminder_time']}")
+                        
+                        with col2:
+                            st.write(f"**Subject:** {email['email_subject']}")
+                            st.write(f"**Type:** {email['email_type']}")
+                            st.write(f"**Status:** {email['status']}")
+                            st.write(f"**Sent:** {email['sent_timestamp']}")
+                        
+                        with st.expander("View Email Content"):
+                            st.text_area("Email Body", value=email['email_body'], height=200, disabled=True, key=f"email_body_{email['id']}")
+            else:
+                st.info("📭 No email history found")
+                
+        except Exception as e:
+            st.error(f"Error loading email history: {e}")
+        
+        # Custom Reminder Times Section
+        st.markdown("---")
+        st.subheader("⏰ Custom Reminder Times")
+        
+        with st.form("add_custom_reminder"):
+            st.write("**Add Custom Reminder Time**")
+            
+            col1, col2, col3 = st.columns(3)
+            
+            with col1:
+                # Get all medications for dropdown
+                try:
+                    all_medications = medication_reminder.get_all_medications()
+                    if all_medications:
+                        med_options = [f"{med['patient_name']} - {med['medication_name']}" for med in all_medications]
+                        selected_med = st.selectbox("Select Medication", med_options)
+                        selected_med_id = None
+                        if selected_med:
+                            for med in all_medications:
+                                if f"{med['patient_name']} - {med['medication_name']}" == selected_med:
+                                    selected_med_id = med['id']
+                                    break
+                    else:
+                        st.warning("No medications found")
+                        selected_med_id = None
+                except:
+                    st.error("Error loading medications")
+                    selected_med_id = None
+            
+            with col2:
+                custom_time = st.time_input("Custom Reminder Time", value=time(9, 0))
+                custom_date = st.date_input("Specific Date (optional)", value=None)
+            
+            with col3:
+                alert_offset_options = {
+                    "5 minutes before": -5,
+                    "15 minutes before": -15,
+                    "30 minutes before": -30,
+                    "1 hour before": -60,
+                    "2 hours before": -120,
+                    "At exact time": 0
+                }
+                selected_offset = st.selectbox("Alert Timing", list(alert_offset_options.keys()), index=3)
+                offset_minutes = alert_offset_options[selected_offset]
+            
+            if st.form_submit_button("➕ Add Custom Reminder"):
+                if selected_med_id:
+                    try:
+                        success = medication_reminder.add_custom_reminder_time(
+                            medication_id=selected_med_id,
+                            custom_time=custom_time.strftime('%H:%M:%S'),
+                            custom_date=custom_date.strftime('%Y-%m-%d') if custom_date else None,
+                            alert_offset=offset_minutes
+                        )
+                        
+                        if success:
+                            st.success("✅ Custom reminder time added successfully!")
+                            st.rerun()
+                        else:
+                            st.error("❌ Failed to add custom reminder time")
+                    except Exception as e:
+                        st.error(f"Error adding custom reminder: {e}")
+                else:
+                    st.error("Please select a medication")
         
         # Email reminder schedule preview
         st.markdown("---")
