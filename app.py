@@ -4843,6 +4843,7 @@ def investigation_standards_page(investigation_standards):
 
 def medication_reminders_page(medication_reminder, db, user_id):
     """Medication reminders and adherence tracking page."""
+    from datetime import datetime as dt, date, time
     st.header("💊 Medication Reminders & Adherence Tracking")
     
     # Get all patients for the current user
@@ -4995,7 +4996,7 @@ def medication_reminders_page(medication_reminder, db, user_id):
                                     current_end_date = None
                                     if med.get('end_date'):
                                         try:
-                                            current_end_date = datetime.strptime(med['end_date'], '%Y-%m-%d').date()
+                                            current_end_date = dt.strptime(med['end_date'], '%Y-%m-%d').date()
                                         except:
                                             current_end_date = None
                                     
@@ -5124,7 +5125,7 @@ def medication_reminders_page(medication_reminder, db, user_id):
                 ])
             
             with col2:
-                start_date = st.date_input("Start Date", value=datetime.now().date())
+                start_date = st.date_input("Start Date", value=dt.now().date())
                 end_date = st.date_input("End Date (optional)", value=None)
                 doctor_name = st.text_input("Doctor Name (optional)")
                 indication = st.text_input("Indication", placeholder="What is this medication for?")
@@ -5181,7 +5182,7 @@ def medication_reminders_page(medication_reminder, db, user_id):
                         label = time_labels[i] if i < len(time_labels) else f"Time {i+1}"
                         default_time = default_times[i] if i < len(default_times) else "09:00"
                         time_input = st.time_input(f"{label}", 
-                                                 value=datetime.strptime(default_time, "%H:%M").time(),
+                                                 value=dt.strptime(default_time, "%H:%M").time(),
                                                  key=f"add_time_{i}_{med_frequency}")
                         schedule_times.append(time_input.strftime('%H:%M:%S'))
                 
@@ -5477,8 +5478,7 @@ def medication_reminders_page(medication_reminder, db, user_id):
         
         with col2:
             st.write("**Today's Due Reminders:**")
-            from datetime import date, datetime
-            current_time = datetime.now()
+            current_time = dt.now()
             due_reminders = medication_reminder.get_due_reminders(date.today(), current_time)
             st.metric("Reminders Due Today", len(due_reminders))
             
@@ -5488,7 +5488,7 @@ def medication_reminders_page(medication_reminder, db, user_id):
                 patient_meds = medication_reminder.get_patient_medications(patient_name)
                 for med in patient_meds:
                     for schedule in med.get('schedule', []):
-                        med_time = datetime.strptime(schedule['time'], '%H:%M:%S').time()
+                        med_time = dt.strptime(schedule['time'], '%H:%M:%S').time()
                         days = schedule.get('days', [1,2,3,4,5,6,7])
                         today_weekday = date.today().weekday() + 1
                         
@@ -5514,16 +5514,15 @@ def medication_reminders_page(medication_reminder, db, user_id):
         
         # Show all today's medications including future ones
         all_today_meds = []
-        from datetime import date, datetime, time
         today = date.today()
-        current_time = datetime.now().time()
+        current_time = dt.now().time()
         
         for patient_name in patient_names:
             patient_meds = medication_reminder.get_patient_medications(patient_name)
             for med in patient_meds:
                 for schedule in med.get('schedule', []):
                     med_time_str = schedule['time']
-                    med_time = datetime.strptime(med_time_str, '%H:%M:%S').time()
+                    med_time = dt.strptime(med_time_str, '%H:%M:%S').time()
                     days = schedule.get('days', [1,2,3,4,5,6,7])
                     today_weekday = today.weekday() + 1
                     
