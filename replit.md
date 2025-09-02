@@ -4,6 +4,25 @@
 
 A Streamlit-based web application designed for healthcare professionals to manage, visualize, and analyze patient blood test results. This system facilitates uploading various file formats, storing data in a structured database, and generating meaningful visualizations to track health trends over time. The project aims to provide an intuitive tool for patient health monitoring, offering comprehensive data analysis and reporting capabilities.
 
+## Recent Changes (September 2025)
+
+### Enhanced SMTP Configuration and Email Management System  
+- Added permanent SMTP configuration storage in database with secure form interface
+- Implemented comprehensive patient email management with add/edit functionality
+- Enhanced medication forms to display patient email status and provide quick email editing
+- Added manual reminder sending with "Send Reminders Now" button for immediate email delivery
+- Fixed medication edit forms to pre-select correct frequency and display current schedule timing
+- Integrated database-stored SMTP configuration replacing environment variable dependencies
+- Added robust error handling for email functionality with fallback mechanisms
+
+### Enhanced Medication Reminder User Interface
+- Improved medication schedule display showing today's date and alert times with status indicators
+- Fixed edit medication form to show correct frequency defaults instead of "Daily one time"
+- Enhanced multiple daily dose selection to show time inputs immediately (Morning, Afternoon, Evening, Night)
+- Added dynamic alert timing options that appear immediately when multiple alerts are enabled
+- Improved today's medication filtering to include current day medications if time hasn't passed
+- Added comprehensive database methods for patient detail management and email updates
+
 ## Recent Changes (August 2025)
 
 ### Enhanced Patient Profile Management

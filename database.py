@@ -763,3 +763,74 @@ class Database:
         except Exception as e:
             print(f"Error getting SMTP configuration: {e}")
             return {}
+    
+    def get_patient_details(self, patient_id: int) -> Dict[str, Any]:
+        """Get detailed patient information by patient ID."""
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+                cursor.execute('''
+                    SELECT patient_id, patient_name, user_id, created_at, age, gender, 
+                           phone, email, address, medical_history, medications, 
+                           allergies, emergency_contact, notes, date_of_birth
+                    FROM patients 
+                    WHERE patient_id = ?
+                ''', (patient_id,))
+                
+                result = cursor.fetchone()
+                if result:
+                    return {
+                        'patient_id': result[0],
+                        'patient_name': result[1],
+                        'user_id': result[2],
+                        'created_at': result[3],
+                        'age': result[4],
+                        'gender': result[5],
+                        'phone': result[6],
+                        'email': result[7],
+                        'address': result[8],
+                        'medical_history': result[9],
+                        'medications': result[10],
+                        'allergies': result[11],
+                        'emergency_contact': result[12],
+                        'notes': result[13],
+                        'date_of_birth': result[14]
+                    }
+                return {}
+                
+        except Exception as e:
+            print(f"Error getting patient details: {e}")
+            return {}
+    
+    def update_patient_details(self, patient_id: int, updates: Dict[str, Any]) -> bool:
+        """Update patient details with provided fields."""
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+                
+                # Build dynamic update query
+                set_clauses = []
+                params = []
+                
+                valid_fields = ['patient_name', 'age', 'gender', 'phone', 'email', 
+                               'address', 'medical_history', 'medications', 'allergies', 
+                               'emergency_contact', 'notes', 'date_of_birth']
+                
+                for field, value in updates.items():
+                    if field in valid_fields:
+                        set_clauses.append(f"{field} = ?")
+                        params.append(value)
+                
+                if not set_clauses:
+                    return False
+                
+                params.append(patient_id)
+                query = f"UPDATE patients SET {', '.join(set_clauses)} WHERE patient_id = ?"
+                
+                cursor.execute(query, params)
+                conn.commit()
+                return cursor.rowcount > 0
+                
+        except Exception as e:
+            print(f"Error updating patient details: {e}")
+            return False
