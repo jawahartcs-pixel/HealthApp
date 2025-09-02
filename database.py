@@ -122,32 +122,6 @@ class Database:
             except sqlite3.OperationalError:
                 pass  # Column already exists
             
-            # Add SMTP configuration columns for patient-specific email reminders
-            try:
-                cursor.execute('ALTER TABLE patients ADD COLUMN smtp_server TEXT')
-            except sqlite3.OperationalError:
-                pass  # Column already exists
-            
-            try:
-                cursor.execute('ALTER TABLE patients ADD COLUMN smtp_port INTEGER')
-            except sqlite3.OperationalError:
-                pass  # Column already exists
-            
-            try:
-                cursor.execute('ALTER TABLE patients ADD COLUMN smtp_username TEXT')
-            except sqlite3.OperationalError:
-                pass  # Column already exists
-            
-            try:
-                cursor.execute('ALTER TABLE patients ADD COLUMN smtp_password TEXT')
-            except sqlite3.OperationalError:
-                pass  # Column already exists
-            
-            try:
-                cursor.execute('ALTER TABLE patients ADD COLUMN smtp_use_tls BOOLEAN DEFAULT 1')
-            except sqlite3.OperationalError:
-                pass  # Column already exists
-            
             # Create patient_documents table for uploaded reports
             cursor.execute('''
                 CREATE TABLE IF NOT EXISTS patient_documents (
@@ -216,9 +190,7 @@ class Database:
                               gender: str = None, phone: str = None, email: str = None, address: str = None, 
                               medical_history: str = None, medications: str = None, 
                               allergies: str = None, emergency_contact: str = None, 
-                              notes: str = None, smtp_server: str = None, smtp_port: int = None,
-                              smtp_username: str = None, smtp_password: str = None,
-                              smtp_use_tls: bool = None) -> bool:
+                              notes: str = None) -> bool:
         """Update patient profile information."""
         try:
             with sqlite3.connect(self.db_path) as conn:
@@ -227,12 +199,10 @@ class Database:
                     UPDATE patients SET 
                         date_of_birth = ?, age = ?, gender = ?, phone = ?, email = ?, address = ?,
                         medical_history = ?, medications = ?, allergies = ?, 
-                        emergency_contact = ?, notes = ?, smtp_server = ?, smtp_port = ?,
-                        smtp_username = ?, smtp_password = ?, smtp_use_tls = ?
+                        emergency_contact = ?, notes = ?
                     WHERE patient_id = ?
                 ''', (date_of_birth, age, gender, phone, email, address, medical_history, 
-                      medications, allergies, emergency_contact, notes, smtp_server, smtp_port,
-                      smtp_username, smtp_password, smtp_use_tls, patient_id))
+                      medications, allergies, emergency_contact, notes, patient_id))
                 conn.commit()
                 return True
         except Exception as e:
@@ -248,7 +218,7 @@ class Database:
                     cursor.execute('''
                         SELECT patient_id, patient_name, date_of_birth, age, gender, phone, email, address,
                                medical_history, medications, allergies, emergency_contact, 
-                               notes, created_at, smtp_server, smtp_port, smtp_username, smtp_password, smtp_use_tls
+                               notes, created_at
                         FROM patients 
                         WHERE patient_name = ? AND user_id = ?
                     ''', (patient_name, user_id))
@@ -256,7 +226,7 @@ class Database:
                     cursor.execute('''
                         SELECT patient_id, patient_name, date_of_birth, age, gender, phone, email, address,
                                medical_history, medications, allergies, emergency_contact, 
-                               notes, created_at, smtp_server, smtp_port, smtp_username, smtp_password, smtp_use_tls
+                               notes, created_at
                         FROM patients 
                         WHERE patient_name = ? AND user_id IS NULL
                     ''', (patient_name,))
@@ -277,12 +247,7 @@ class Database:
                         'allergies': result[10],
                         'emergency_contact': result[11],
                         'notes': result[12],
-                        'created_at': result[13],
-                        'smtp_server': result[14],
-                        'smtp_port': result[15],
-                        'smtp_username': result[16],
-                        'smtp_password': result[17],
-                        'smtp_use_tls': result[18]
+                        'created_at': result[13]
                     }
                 return None
         except Exception as e:
