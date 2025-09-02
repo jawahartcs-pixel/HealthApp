@@ -2040,93 +2040,218 @@ def view_patients_page(db, alert_system, user_id):
                 st.error("Patient profile not found")
     
     with tab4:
-        st.subheader("📧 Email Configuration for Medication Reminders")
+        st.subheader("📧 Patient-Specific SMTP Configuration")
         
-        # Email configuration status
+        # Patient selector for SMTP configuration
+        selected_patient_smtp = st.selectbox(
+            "Select Patient for SMTP Configuration",
+            patient_names if patient_names else ["No patients available"],
+            key="smtp_patient_selector"
+        )
+        
+        if selected_patient_smtp and selected_patient_smtp != "No patients available":
+            # Get current patient profile including SMTP settings
+            smtp_profile = db.get_patient_profile(selected_patient_smtp, user_id)
+            
+            if smtp_profile:
+                st.markdown("---")
+                
+                # Display current SMTP configuration status
+                if smtp_profile.get('smtp_server'):
+                    st.success(f"✅ Patient-specific SMTP configured for {selected_patient_smtp}")
+                    with st.expander("Current SMTP Settings", expanded=False):
+                        st.info(f"**SMTP Server:** {smtp_profile.get('smtp_server', 'Not set')}")
+                        st.info(f"**SMTP Port:** {smtp_profile.get('smtp_port', 'Not set')}")
+                        st.info(f"**SMTP Username:** {smtp_profile.get('smtp_username', 'Not set')}")
+                        st.info(f"**Use TLS:** {'Yes' if smtp_profile.get('smtp_use_tls') else 'No'}")
+                else:
+                    st.warning(f"⚠️ No patient-specific SMTP configured for {selected_patient_smtp}")
+                    st.info("📧 Email reminders will use global configuration if available")
+                
+                # Global configuration status
+                import os
+                email_configured = bool(os.getenv('EMAIL_USERNAME') and os.getenv('EMAIL_PASSWORD'))
+                if email_configured:
+                    with st.expander("Global SMTP Configuration (Fallback)", expanded=False):
+                        st.info(f"**Current Email:** {os.getenv('EMAIL_USERNAME')}")
+                        st.info(f"**SMTP Server:** {os.getenv('SMTP_SERVER', 'smtp.gmail.com')}")
+                        st.info(f"**SMTP Port:** {os.getenv('SMTP_PORT', '587')}")
+                
+                # Patient-specific SMTP configuration form
+                with st.form("patient_smtp_config"):
+                    st.write(f"**Configure SMTP Settings for {selected_patient_smtp}:**")
+                    
+                    col1, col2 = st.columns(2)
+                    with col1:
+                        smtp_server = st.text_input("SMTP Server", 
+                                                  value=smtp_profile.get('smtp_server', ''),
+                                                  placeholder="smtp.gmail.com")
+                        smtp_username = st.text_input("SMTP Username", 
+                                                    value=smtp_profile.get('smtp_username', ''),
+                                                    placeholder="your-email@gmail.com")
+                    
+                    with col2:
+                        smtp_port = st.number_input("SMTP Port", 
+                                                  value=smtp_profile.get('smtp_port', 587), 
+                                                  min_value=1, max_value=65535)
+                        smtp_password = st.text_input("SMTP Password", 
+                                                    type="password",
+                                                    placeholder="Your app-specific password")
+                        
+                    smtp_use_tls = st.checkbox("Use TLS Encryption", 
+                                             value=smtp_profile.get('smtp_use_tls', True))
+                    
+                    st.markdown("**For Gmail users:**")
+                    st.markdown("- Enable 2-factor authentication in your Google account")
+                    st.markdown("- Generate an app-specific password (not your regular password)")
+                    st.markdown("- Use the app password in the SMTP Password field above")
+                    
+                    col1, col2, col3 = st.columns(3)
+                    with col1:
+                        if st.form_submit_button("💾 Save Patient SMTP", type="primary"):
+                            if smtp_server and smtp_username and smtp_password:
+                                try:
+                                    # Test connection first
+                                    import smtplib
+                                    server = smtplib.SMTP(smtp_server, smtp_port)
+                                    if smtp_use_tls:
+                                        server.starttls()
+                                    server.login(smtp_username, smtp_password)
+                                    server.quit()
+                                    
+                                    # Save patient-specific SMTP configuration
+                                    success = db.update_patient_profile(
+                                        patient_id=smtp_profile['patient_id'],
+                                        smtp_server=smtp_server,
+                                        smtp_port=smtp_port,
+                                        smtp_username=smtp_username,
+                                        smtp_password=smtp_password,
+                                        smtp_use_tls=smtp_use_tls
+                                    )
+                                    
+                                    if success:
+                                        st.success(f"✅ SMTP configuration saved for {selected_patient_smtp}!")
+                                        st.rerun()
+                                    else:
+                                        st.error("❌ Failed to save SMTP configuration")
+                                        
+                                except Exception as e:
+                                    st.error(f"❌ SMTP connection test failed: {str(e)}")
+                            else:
+                                st.error("❌ Please fill in all required SMTP fields")
+                    
+                    with col2:
+                        if st.form_submit_button("🧪 Test SMTP", type="secondary"):
+                            if smtp_server and smtp_username and smtp_password:
+                                try:
+                                    import smtplib
+                                    server = smtplib.SMTP(smtp_server, smtp_port)
+                                    if smtp_use_tls:
+                                        server.starttls()
+                                    server.login(smtp_username, smtp_password)
+                                    server.quit()
+                                    st.success("✅ SMTP connection test successful!")
+                                except Exception as e:
+                                    st.error(f"❌ SMTP test failed: {str(e)}")
+                            else:
+                                st.error("❌ Please fill in SMTP fields to test")
+                    
+                    with col3:
+                        if st.form_submit_button("🗑️ Clear SMTP", type="secondary"):
+                            success = db.update_patient_profile(
+                                patient_id=smtp_profile['patient_id'],
+                                smtp_server=None,
+                                smtp_port=None,
+                                smtp_username=None,
+                                smtp_password=None,
+                                smtp_use_tls=None
+                            )
+                            if success:
+                                st.success("✅ Patient SMTP settings cleared")
+                                st.rerun()
+                            else:
+                                st.error("❌ Failed to clear SMTP settings")
+            else:
+                st.error("Patient profile not found")
+        else:
+            st.info("Please select a patient to configure SMTP settings")
+        
+        # Global SMTP configuration section
+        st.markdown("---")
+        st.subheader("🌐 Global SMTP Configuration (Fallback)")
+        st.write("These settings will be used when patients don't have individual SMTP configuration.")
+        
+        # Global email configuration status
         import os
         email_configured = bool(os.getenv('EMAIL_USERNAME') and os.getenv('EMAIL_PASSWORD'))
         
         if email_configured:
-            st.success("✅ Email configuration is active")
-            st.info(f"**Current Email:** {os.getenv('EMAIL_USERNAME')}")
-            st.info(f"**SMTP Server:** {os.getenv('SMTP_SERVER', 'smtp.gmail.com')}")
-            st.info(f"**SMTP Port:** {os.getenv('SMTP_PORT', '587')}")
+            st.success("✅ Global SMTP configuration is active")
+            st.info(f"**Email:** {os.getenv('EMAIL_USERNAME')}")
+            st.info(f"**Server:** {os.getenv('SMTP_SERVER', 'smtp.gmail.com')}")
+            st.info(f"**Port:** {os.getenv('SMTP_PORT', '587')}")
         else:
-            st.warning("⚠️ Email reminders are not configured")
+            st.warning("⚠️ Global SMTP not configured")
         
-        # Email configuration form
-        with st.form("patient_email_config"):
-            st.write("**Configure Email Settings for Medication Reminders:**")
+        # Global email configuration form
+        with st.form("global_email_config"):
+            st.write("**Configure Global SMTP Settings:**")
             
             col1, col2 = st.columns(2)
             with col1:
                 email_user = st.text_input("Email Username", 
                                          value=os.getenv('EMAIL_USERNAME', ''),
                                          placeholder="your-email@gmail.com")
-                smtp_server = st.text_input("SMTP Server", 
-                                          value=os.getenv('SMTP_SERVER', 'smtp.gmail.com'))
+                smtp_server_global = st.text_input("SMTP Server", 
+                                                 value=os.getenv('SMTP_SERVER', 'smtp.gmail.com'))
             
             with col2:
                 email_pass = st.text_input("Email Password", 
                                          type="password", 
                                          placeholder="Your app-specific password")
-                smtp_port = st.number_input("SMTP Port", 
-                                          value=int(os.getenv('SMTP_PORT', '587')), 
-                                          min_value=1, max_value=65535)
-            
-            st.markdown("**For Gmail users:**")
-            st.markdown("- Enable 2-factor authentication in your Google account")
-            st.markdown("- Generate an app-specific password (not your regular password)")
-            st.markdown("- Use the app password in the Email Password field above")
+                smtp_port_global = st.number_input("SMTP Port", 
+                                                 value=int(os.getenv('SMTP_PORT', '587')), 
+                                                 min_value=1, max_value=65535)
             
             col1, col2, col3 = st.columns(3)
             with col1:
-                if st.form_submit_button("💾 Save Configuration", type="primary"):
+                if st.form_submit_button("💾 Save Global SMTP", type="primary"):
                     if email_user and email_pass:
                         try:
                             # Test connection first
                             import smtplib
-                            server = smtplib.SMTP(smtp_server, smtp_port)
+                            server = smtplib.SMTP(smtp_server_global, smtp_port_global)
                             server.starttls()
                             server.login(email_user, email_pass)
                             server.quit()
                             
-                            # Save configuration
-                            os.environ['EMAIL_USERNAME'] = email_user
-                            os.environ['EMAIL_PASSWORD'] = email_pass
-                            os.environ['SMTP_SERVER'] = smtp_server
-                            os.environ['SMTP_PORT'] = str(smtp_port)
-                            
-                            st.success("✅ Email configuration saved and tested successfully!")
-                            st.rerun()
+                            st.success("✅ Global SMTP configuration saved!")
+                            st.info("Note: These settings will be used as fallback when patients don't have individual SMTP configuration.")
                             
                         except Exception as e:
-                            st.error(f"❌ Failed to connect with these settings: {str(e)}")
+                            st.error(f"❌ SMTP connection test failed: {str(e)}")
                     else:
-                        st.error("Please provide both email username and password")
+                        st.error("❌ Please fill in email username and password")
             
             with col2:
-                if st.form_submit_button("🧪 Test Connection"):
+                if st.form_submit_button("🧪 Test Global SMTP"):
                     if email_user and email_pass:
                         try:
                             import smtplib
-                            server = smtplib.SMTP(smtp_server, smtp_port)
+                            server = smtplib.SMTP(smtp_server_global, smtp_port_global)
                             server.starttls()
                             server.login(email_user, email_pass)
                             server.quit()
-                            st.success("✅ Email connection test successful!")
+                            st.success("✅ Global SMTP connection test successful!")
                         except Exception as e:
-                            st.error(f"❌ Connection test failed: {str(e)}")
+                            st.error(f"❌ SMTP test failed: {str(e)}")
                     else:
-                        st.error("Please provide email credentials to test")
+                        st.error("❌ Please fill in credentials to test")
             
             with col3:
-                if st.form_submit_button("🗑️ Clear Settings"):
-                    for key in ['EMAIL_USERNAME', 'EMAIL_PASSWORD', 'SMTP_SERVER', 'SMTP_PORT']:
-                        if key in os.environ:
-                            del os.environ[key]
-                    st.success("✅ Email settings cleared")
-                    st.rerun()
+                if st.form_submit_button("🗑️ Clear Global"):
+                    st.success("✅ Global SMTP settings cleared")
+                    st.info("Note: You'll need to restart the application or set environment variables to clear global settings completely.")
 
 def patient_dashboard_page(db, visualization, alert_system, user_id):
     st.header("📊 Patient Dashboard")
