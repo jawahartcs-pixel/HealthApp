@@ -5119,9 +5119,13 @@ def medication_reminders_page(medication_reminder, db, user_id):
             for patient in patients:
                 if patient[1] == patient_selector:  # patient[1] is patient_name
                     patient_id = patient[0]
-                    patient_details = db.get_patient_details(patient[0])
-                    if patient_details:
-                        patient_email = patient_details.get('email')
+                    try:
+                        patient_details = db.get_patient_details(patient[0])
+                        if patient_details:
+                            patient_email = patient_details.get('email')
+                    except AttributeError:
+                        # Fallback for missing method
+                        patient_email = None
                     break
             
             # Show email status
@@ -5140,26 +5144,33 @@ def medication_reminders_page(medication_reminder, db, user_id):
         if st.session_state.get('show_email_edit'):
             with st.form("edit_patient_email"):
                 st.subheader("📧 Add Patient Email")
-                patient_details = db.get_patient_details(st.session_state['show_email_edit'])
+                try:
+                    patient_details = db.get_patient_details(st.session_state['show_email_edit'])
+                    current_email = patient_details.get('email', '') if patient_details else ''
+                except (AttributeError, Exception):
+                    current_email = ''
                 
                 new_email = st.text_input("Email Address", 
-                                         value=patient_details.get('email', '') if patient_details else '',
+                                         value=current_email,
                                          placeholder="patient@example.com")
                 
                 col1, col2 = st.columns(2)
                 with col1:
                     if st.form_submit_button("💾 Save Email"):
                         if new_email:
-                            success = db.update_patient_details(
-                                st.session_state['show_email_edit'],
-                                {'email': new_email}
-                            )
-                            if success:
-                                st.success("Email updated successfully!")
-                                del st.session_state['show_email_edit']
-                                st.rerun()
-                            else:
-                                st.error("Failed to update email")
+                            try:
+                                success = db.update_patient_details(
+                                    st.session_state['show_email_edit'],
+                                    {'email': new_email}
+                                )
+                                if success:
+                                    st.success("Email updated successfully!")
+                                    del st.session_state['show_email_edit']
+                                    st.rerun()
+                                else:
+                                    st.error("Failed to update email")
+                            except (AttributeError, Exception) as e:
+                                st.error(f"Error updating email: {str(e)}")
                         else:
                             st.error("Please enter a valid email address")
                 
@@ -5515,7 +5526,10 @@ def medication_reminders_page(medication_reminder, db, user_id):
         st.subheader("📧 Email Reminder Management")
         
         # SMTP Configuration
-        smtp_config = db.get_smtp_config()
+        try:
+            smtp_config = db.get_smtp_config()
+        except (AttributeError, Exception):
+            smtp_config = {}
         
         # Email configuration form
         with st.expander("🔧 SMTP Configuration", expanded=not smtp_config):
@@ -5546,20 +5560,23 @@ def medication_reminders_page(medication_reminder, db, user_id):
                 
                 if st.form_submit_button("💾 Save SMTP Configuration"):
                     if smtp_server and smtp_port and email_username and email_password:
-                        success = db.save_smtp_config(
-                            smtp_server=smtp_server,
-                            smtp_port=smtp_port,
-                            email_username=email_username,
-                            email_password=email_password,
-                            sender_name=sender_name,
-                            use_ssl=use_ssl
-                        )
-                        
-                        if success:
-                            st.success("✅ SMTP configuration saved successfully!")
-                            st.rerun()
-                        else:
-                            st.error("❌ Failed to save SMTP configuration")
+                        try:
+                            success = db.save_smtp_config(
+                                smtp_server=smtp_server,
+                                smtp_port=smtp_port,
+                                email_username=email_username,
+                                email_password=email_password,
+                                sender_name=sender_name,
+                                use_ssl=use_ssl
+                            )
+                            
+                            if success:
+                                st.success("✅ SMTP configuration saved successfully!")
+                                st.rerun()
+                            else:
+                                st.error("❌ Failed to save SMTP configuration")
+                        except (AttributeError, Exception) as e:
+                            st.error(f"Error saving SMTP configuration: {str(e)}")
                     else:
                         st.error("Please fill in all required fields")
         
@@ -5660,11 +5677,14 @@ def medication_reminders_page(medication_reminder, db, user_id):
         col1, col2, col3 = st.columns(3)
         with col1:
             if st.button("🚀 Send Reminders Now", type="primary"):
-                sent_count = medication_reminder.send_automatic_reminders()
-                if sent_count > 0:
-                    st.success(f"✅ Sent {sent_count} reminder emails successfully!")
-                else:
-                    st.info("ℹ️ No reminders were sent (no due medications or configured emails)")
+                try:
+                    sent_count = medication_reminder.send_automatic_reminders()
+                    if sent_count > 0:
+                        st.success(f"✅ Sent {sent_count} reminder emails successfully!")
+                    else:
+                        st.info("ℹ️ No reminders were sent (no due medications or configured emails)")
+                except Exception as e:
+                    st.error(f"Error sending reminders: {str(e)}")
         
         with col2:
             if st.button("🔄 Refresh Reminders"):
