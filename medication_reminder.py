@@ -348,13 +348,13 @@ class MedicationReminder:
                         except:
                             alert_timings = ["1 hour before"]
                         
-                        # Check if any alert should be triggered now (allow current date if time hasn't passed)
+                        # Check if any alert should be triggered now (include current date if medication time hasn't passed)
                         alert_due = False
                         for alert_timing in alert_timings:
                             alert_datetime = self._calculate_alert_datetime(medication_datetime, alert_timing)
-                            # For current date, check if the medication time hasn't passed yet
+                            # For current date, include if medication time hasn't passed yet
                             if check_date == date.today():
-                                if check_time >= alert_datetime and check_time <= medication_datetime:
+                                if medication_datetime.time() >= check_time.time():
                                     alert_due = True
                                     break
                             elif check_time >= alert_datetime:
@@ -669,12 +669,12 @@ class MedicationReminder:
             return []
     
     def get_medication_schedule(self, medication_id: int) -> List[Dict]:
-        """Get schedule for a specific medication."""
+        """Get schedule for a specific medication including alert timings."""
         try:
             with sqlite3.connect(self.db_path) as conn:
                 cursor = conn.cursor()
                 cursor.execute('''
-                    SELECT id, time_of_day, days_of_week, reminder_enabled
+                    SELECT id, time_of_day, days_of_week, reminder_enabled, alert_timings
                     FROM medication_schedule
                     WHERE medication_id = ?
                     ORDER BY time_of_day
@@ -684,11 +684,22 @@ class MedicationReminder:
                 schedule = []
                 
                 for row in results:
+                    # Parse alert timings
+                    alert_timings = []
+                    if row[4]:
+                        try:
+                            alert_timings = json.loads(row[4])
+                        except:
+                            alert_timings = ["1 hour before"]
+                    else:
+                        alert_timings = ["1 hour before"]
+                    
                     schedule.append({
                         'id': row[0],
                         'time': row[1],
                         'days': json.loads(row[2]) if row[2] else [1,2,3,4,5,6,7],
-                        'reminder_enabled': row[3]
+                        'reminder_enabled': row[3],
+                        'alert_timings': alert_timings
                     })
                 
                 return schedule
