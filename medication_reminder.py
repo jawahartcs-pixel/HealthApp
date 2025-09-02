@@ -348,11 +348,16 @@ class MedicationReminder:
                         except:
                             alert_timings = ["1 hour before"]
                         
-                        # Check if any alert should be triggered now
+                        # Check if any alert should be triggered now (allow current date if time hasn't passed)
                         alert_due = False
                         for alert_timing in alert_timings:
                             alert_datetime = self._calculate_alert_datetime(medication_datetime, alert_timing)
-                            if check_time >= alert_datetime:
+                            # For current date, check if the medication time hasn't passed yet
+                            if check_date == date.today():
+                                if check_time >= alert_datetime and check_time <= medication_datetime:
+                                    alert_due = True
+                                    break
+                            elif check_time >= alert_datetime:
                                 alert_due = True
                                 break
                         

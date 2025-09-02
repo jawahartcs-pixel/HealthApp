@@ -4974,6 +4974,86 @@ def medication_reminders_page(medication_reminder, db, user_id):
                                 else:
                                     st.info("No schedule found for this medication")
                         
+                        # Edit medication form
+                        if st.session_state.get(f'editing_med_{med["id"]}', False):
+                            st.markdown("---")
+                            st.subheader(f"Edit {med['medication_name']}")
+                            
+                            with st.form(f"edit_medication_{med['id']}"):
+                                edit_col1, edit_col2 = st.columns(2)
+                                
+                                with edit_col1:
+                                    new_med_name = st.text_input("Medication Name", value=med['medication_name'])
+                                    new_dosage = st.text_input("Dosage", value=med['dosage'])
+                                    new_frequency = st.selectbox("Frequency", [
+                                        "Once daily", "Twice daily", "Three times daily", "Four times daily",
+                                        "Every other day", "Weekly", "Bi-weekly (14 days)", "Every 21 days", 
+                                        "Monthly", "Custom interval", "As needed"
+                                    ], index=0)
+                                
+                                with edit_col2:
+                                    current_end_date = None
+                                    if med.get('end_date'):
+                                        try:
+                                            current_end_date = datetime.strptime(med['end_date'], '%Y-%m-%d').date()
+                                        except:
+                                            current_end_date = None
+                                    
+                                    new_end_date = st.date_input("End Date", value=current_end_date)
+                                    new_doctor = st.text_input("Doctor Name", value=med.get('doctor_name', ''))
+                                    new_indication = st.text_input("Indication", value=med.get('indication', ''))
+                                
+                                new_instructions = st.text_area("Instructions", value=med.get('instructions', ''))
+                                
+                                # Alert timing for edit
+                                st.write("**Alert Timing Options:**")
+                                alert_options = ["5 minutes before", "1 hour before", "1 day before"]
+                                edit_alert_timing = st.selectbox("Primary alert timing", alert_options, index=1, key=f"edit_alert_{med['id']}")
+                                edit_multiple_alerts = st.checkbox("Enable multiple alerts", key=f"edit_multiple_{med['id']}")
+                                additional_edit_alerts = []
+                                if edit_multiple_alerts:
+                                    additional_edit_alerts = st.multiselect("Additional alerts", alert_options, default=[], key=f"edit_additional_{med['id']}")
+                                
+                                col1, col2 = st.columns(2)
+                                with col1:
+                                    if st.form_submit_button("💾 Save Changes", type="primary"):
+                                        # Prepare alert timings
+                                        edit_alert_times = [edit_alert_timing]
+                                        if edit_multiple_alerts:
+                                            for alert in additional_edit_alerts:
+                                                if alert not in edit_alert_times:
+                                                    edit_alert_times.append(alert)
+                                        
+                                        update_data = {
+                                            'medication_name': new_med_name,
+                                            'dosage': new_dosage,
+                                            'frequency': new_frequency,
+                                            'end_date': new_end_date.strftime('%Y-%m-%d') if new_end_date else None,
+                                            'instructions': new_instructions,
+                                            'indication': new_indication,
+                                            'doctor_name': new_doctor,
+                                            'schedule': [{
+                                                'time': '09:00:00',  # Default time
+                                                'days': [1, 2, 3, 4, 5, 6, 7],
+                                                'interval_days': None,
+                                                'reminder_enabled': True,
+                                                'email_enabled': True,
+                                                'alert_timings': edit_alert_times
+                                            }]
+                                        }
+                                        
+                                        if medication_reminder.update_medication(med['id'], update_data):
+                                            st.success("Medication updated successfully!")
+                                            del st.session_state[f'editing_med_{med["id"]}']
+                                            st.rerun()
+                                        else:
+                                            st.error("Failed to update medication")
+                                
+                                with col2:
+                                    if st.form_submit_button("❌ Cancel"):
+                                        del st.session_state[f'editing_med_{med["id"]}']
+                                        st.rerun()
+                        
                         # Delete confirmation
                         if st.session_state.get(f'delete_confirm_{med["id"]}', False):
                             st.error(f"⚠️ Are you sure you want to delete '{med['medication_name']}'? This action cannot be undone.")
@@ -5026,19 +5106,21 @@ def medication_reminders_page(medication_reminder, db, user_id):
             if enable_email_reminders:
                 st.info("📧 Email reminders will be sent to the patient's registered email address")
             
-            # Alert timing settings
+            # Alert timing settings - show multiple options immediately
             st.write("**Alert Timing Options:**")
             alert_timing_col1, alert_timing_col2 = st.columns(2)
             
             with alert_timing_col1:
                 alert_before_options = ["5 minutes before", "1 hour before", "1 day before"]
-                selected_alert_timing = st.selectbox("Send alert", alert_before_options, index=1)
+                selected_alert_timing = st.selectbox("Primary alert timing", alert_before_options, index=1)
             
             with alert_timing_col2:
                 enable_multiple_alerts = st.checkbox("Enable multiple alert times", value=False)
-                additional_alerts = []
-                if enable_multiple_alerts:
-                    additional_alerts = st.multiselect("Additional alerts", alert_before_options, default=[])
+            
+            # Show additional alerts immediately when checkbox is checked
+            additional_alerts = []
+            if enable_multiple_alerts:
+                additional_alerts = st.multiselect("Additional alerts", alert_before_options, default=[])
             
             # Schedule configuration based on frequency
             schedule_times = []
@@ -5051,10 +5133,18 @@ def medication_reminders_page(medication_reminder, db, user_id):
                 num_times = freq_map[med_frequency]
                 
                 st.write(f"**{med_frequency}** - Set reminder times:")
-                cols = st.columns(min(num_times, 3))
+                # Show all times immediately based on frequency
+                default_times = ["09:00", "13:00", "18:00", "22:00"]
+                time_labels = ["Morning", "Afternoon", "Evening", "Night"]
+                
+                cols = st.columns(min(num_times, 4))
                 for i in range(num_times):
-                    with cols[i % 3]:
-                        time_input = st.time_input(f"Time {i+1}", key=f"time_{i}")
+                    with cols[i % 4]:
+                        label = time_labels[i] if i < len(time_labels) else f"Time {i+1}"
+                        default_time = default_times[i] if i < len(default_times) else "09:00"
+                        time_input = st.time_input(f"{label}", 
+                                                 value=datetime.strptime(default_time, "%H:%M").time(),
+                                                 key=f"add_time_{i}")
                         schedule_times.append(time_input.strftime('%H:%M:%S'))
                 
                 # For daily medications, set all days by default
