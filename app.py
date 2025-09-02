@@ -4843,7 +4843,7 @@ def investigation_standards_page(investigation_standards):
 
 def medication_reminders_page(medication_reminder, db, user_id):
     """Medication reminders and adherence tracking page."""
-    from datetime import datetime as dt, date, time
+    from datetime import datetime as dt, time, date
     st.header("💊 Medication Reminders & Adherence Tracking")
     
     # Get all patients for the current user
@@ -4986,11 +4986,19 @@ def medication_reminders_page(medication_reminder, db, user_id):
                                 with edit_col1:
                                     new_med_name = st.text_input("Medication Name", value=med['medication_name'])
                                     new_dosage = st.text_input("Dosage", value=med['dosage'])
-                                    new_frequency = st.selectbox("Frequency", [
+                                    
+                                    # Get current frequency and set correct default
+                                    frequency_options = [
                                         "Once daily", "Twice daily", "Three times daily", "Four times daily",
                                         "Every other day", "Weekly", "Bi-weekly (14 days)", "Every 21 days", 
                                         "Monthly", "Custom interval", "As needed"
-                                    ], index=0)
+                                    ]
+                                    current_freq = med.get('frequency', 'Once daily')
+                                    freq_index = 0
+                                    if current_freq in frequency_options:
+                                        freq_index = frequency_options.index(current_freq)
+                                    
+                                    new_frequency = st.selectbox("Frequency", frequency_options, index=freq_index)
                                 
                                 with edit_col2:
                                     current_end_date = None
@@ -5005,6 +5013,53 @@ def medication_reminders_page(medication_reminder, db, user_id):
                                     new_indication = st.text_input("Indication", value=med.get('indication', ''))
                                 
                                 new_instructions = st.text_area("Instructions", value=med.get('instructions', ''))
+                                
+                                # Show reminder times based on frequency
+                                st.write("**Reminder Times:**")
+                                
+                                # Get existing reminder times from schedule
+                                existing_times = []
+                                if med.get('schedule'):
+                                    for sched in med['schedule']:
+                                        if sched.get('time'):
+                                            existing_times.append(sched['time'])
+                                
+                                # Determine number of times needed based on frequency
+                                times_needed = 1
+                                if 'twice' in new_frequency.lower():
+                                    times_needed = 2
+                                elif 'three times' in new_frequency.lower():
+                                    times_needed = 3
+                                elif 'four times' in new_frequency.lower():
+                                    times_needed = 4
+                                
+                                # Display time inputs
+                                reminder_times = []
+                                time_labels = ["Morning", "Afternoon", "Evening", "Night"]
+                                
+                                for i in range(times_needed):
+                                    label = time_labels[i] if i < len(time_labels) else f"Time {i+1}"
+                                    
+                                    # Get existing time or default
+                                    default_time = time(9, 0)  # Default 9:00 AM
+                                    if i < len(existing_times):
+                                        try:
+                                            existing_time_str = existing_times[i]
+                                            if isinstance(existing_time_str, str):
+                                                default_time = time.fromisoformat(existing_time_str.split('.')[0])
+                                            else:
+                                                default_time = existing_time_str
+                                        except:
+                                            default_time = time(9 + i * 4, 0)  # 9 AM, 1 PM, 5 PM, 9 PM
+                                    else:
+                                        # Default times for multiple doses
+                                        default_times = [time(8, 0), time(14, 0), time(20, 0), time(22, 0)]
+                                        default_time = default_times[i] if i < len(default_times) else time(9 + i * 4, 0)
+                                    
+                                    reminder_time = st.time_input(f"{label} reminder time", 
+                                                                value=default_time,
+                                                                key=f"edit_time_{med['id']}_{i}")
+                                    reminder_times.append(reminder_time)
                                 
                                 # Alert timing for edit - show existing alert timings
                                 st.write("**Alert Timing Options:**")
@@ -5058,6 +5113,18 @@ def medication_reminders_page(medication_reminder, db, user_id):
                                                 if alert not in edit_alert_times:
                                                     edit_alert_times.append(alert)
                                         
+                                        # Create schedule entries for each reminder time
+                                        schedule_entries = []
+                                        for reminder_time in reminder_times:
+                                            schedule_entries.append({
+                                                'time': reminder_time.strftime('%H:%M:%S'),
+                                                'days': [1, 2, 3, 4, 5, 6, 7],
+                                                'interval_days': None,
+                                                'reminder_enabled': True,
+                                                'email_enabled': True,
+                                                'alert_timings': edit_alert_times
+                                            })
+                                        
                                         update_data = {
                                             'medication_name': new_med_name,
                                             'dosage': new_dosage,
@@ -5066,14 +5133,7 @@ def medication_reminders_page(medication_reminder, db, user_id):
                                             'instructions': new_instructions,
                                             'indication': new_indication,
                                             'doctor_name': new_doctor,
-                                            'schedule': [{
-                                                'time': '09:00:00',  # Default time
-                                                'days': [1, 2, 3, 4, 5, 6, 7],
-                                                'interval_days': None,
-                                                'reminder_enabled': True,
-                                                'email_enabled': True,
-                                                'alert_timings': edit_alert_times
-                                            }]
+                                            'schedule': schedule_entries
                                         }
                                         
                                         if medication_reminder.update_medication(med['id'], update_data):
