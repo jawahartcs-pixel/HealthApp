@@ -5693,6 +5693,9 @@ def medication_reminders_page(medication_reminder, db, user_id):
         with col3:
             st.write(f"**Total Due:** {len(due_reminders)}")
         
+        # Check if email is configured
+        email_configured = bool(smtp_config and smtp_config.get('smtp_server') and smtp_config.get('email_username'))
+        
         # Show due reminders
         if due_reminders:
             st.subheader("📋 Medications Due Today")
