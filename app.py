@@ -5110,12 +5110,70 @@ def medication_reminders_page(medication_reminder, db, user_id):
     with tab2:
         st.subheader("Add New Medication")
         
+        # Show patient email info first
+        patient_selector = st.selectbox("Select Patient for New Medication", patient_names, key="email_check_patient")
+        if patient_selector:
+            # Get patient email
+            patient_email = None
+            patient_id = None
+            for patient in patients:
+                if patient[1] == patient_selector:  # patient[1] is patient_name
+                    patient_id = patient[0]
+                    patient_details = db.get_patient_details(patient[0])
+                    if patient_details:
+                        patient_email = patient_details.get('email')
+                    break
+            
+            # Show email status
+            if patient_email:
+                st.success(f"📧 Reminders will be sent to: **{patient_email}**")
+            else:
+                col1, col2 = st.columns([3, 1])
+                with col1:
+                    st.warning("⚠️ No email configured for this patient - reminders cannot be sent")
+                with col2:
+                    if st.button("📝 Add Email", key="add_patient_email_btn"):
+                        st.session_state['show_email_edit'] = patient_id
+                        st.rerun()
+        
+        # Email edit popup
+        if st.session_state.get('show_email_edit'):
+            with st.form("edit_patient_email"):
+                st.subheader("📧 Add Patient Email")
+                patient_details = db.get_patient_details(st.session_state['show_email_edit'])
+                
+                new_email = st.text_input("Email Address", 
+                                         value=patient_details.get('email', '') if patient_details else '',
+                                         placeholder="patient@example.com")
+                
+                col1, col2 = st.columns(2)
+                with col1:
+                    if st.form_submit_button("💾 Save Email"):
+                        if new_email:
+                            success = db.update_patient_details(
+                                st.session_state['show_email_edit'],
+                                {'email': new_email}
+                            )
+                            if success:
+                                st.success("Email updated successfully!")
+                                del st.session_state['show_email_edit']
+                                st.rerun()
+                            else:
+                                st.error("Failed to update email")
+                        else:
+                            st.error("Please enter a valid email address")
+                
+                with col2:
+                    if st.form_submit_button("❌ Cancel"):
+                        del st.session_state['show_email_edit']
+                        st.rerun()
+
         with st.form("add_medication_form"):
             col1, col2 = st.columns(2)
             
             with col1:
                 # Use same patient_names list which now correctly contains names not IDs
-                med_patient = st.selectbox("Patient", patient_names, key="add_med_patient")
+                med_patient = st.selectbox("Patient", patient_names, key="add_med_patient", index=patient_names.index(patient_selector) if patient_selector in patient_names else 0)
                 med_name = st.text_input("Medication Name", placeholder="e.g., Metformin")
                 med_dosage = st.text_input("Dosage", placeholder="e.g., 500mg")
                 med_frequency = st.selectbox("Frequency", [
@@ -5456,25 +5514,67 @@ def medication_reminders_page(medication_reminder, db, user_id):
     with tab6:
         st.subheader("📧 Email Reminder Management")
         
+        # SMTP Configuration
+        smtp_config = db.get_smtp_config()
+        
+        # Email configuration form
+        with st.expander("🔧 SMTP Configuration", expanded=not smtp_config):
+            st.write("Configure email server settings to send medication reminders:")
+            
+            with st.form("smtp_config_form"):
+                config_col1, config_col2 = st.columns(2)
+                
+                with config_col1:
+                    smtp_server = st.text_input("SMTP Server", 
+                                              value=smtp_config.get('smtp_server', 'smtp.gmail.com'),
+                                              help="e.g., smtp.gmail.com for Gmail")
+                    smtp_port = st.number_input("SMTP Port", 
+                                              value=smtp_config.get('smtp_port', 587),
+                                              min_value=1, max_value=65535)
+                    use_ssl = st.checkbox("Use SSL/TLS", value=smtp_config.get('use_ssl', True))
+                
+                with config_col2:
+                    email_username = st.text_input("Email Username", 
+                                                  value=smtp_config.get('email_username', ''),
+                                                  help="Your email address")
+                    email_password = st.text_input("Email Password", 
+                                                  value=smtp_config.get('email_password', ''),
+                                                  type="password",
+                                                  help="App password (not regular password)")
+                    sender_name = st.text_input("Sender Name", 
+                                              value=smtp_config.get('sender_name', 'Medical Reminder System'))
+                
+                if st.form_submit_button("💾 Save SMTP Configuration"):
+                    if smtp_server and smtp_port and email_username and email_password:
+                        success = db.save_smtp_config(
+                            smtp_server=smtp_server,
+                            smtp_port=smtp_port,
+                            email_username=email_username,
+                            email_password=email_password,
+                            sender_name=sender_name,
+                            use_ssl=use_ssl
+                        )
+                        
+                        if success:
+                            st.success("✅ SMTP configuration saved successfully!")
+                            st.rerun()
+                        else:
+                            st.error("❌ Failed to save SMTP configuration")
+                    else:
+                        st.error("Please fill in all required fields")
+        
         # Email configuration status
         col1, col2 = st.columns(2)
         
         with col1:
             st.write("**Email Configuration Status:**")
-            import os
-            email_configured = bool(os.getenv('EMAIL_USERNAME') and os.getenv('EMAIL_PASSWORD'))
-            if email_configured:
-                st.success("✅ Email configuration detected")
+            if smtp_config:
+                st.success("✅ SMTP configuration saved")
+                st.write(f"Server: {smtp_config.get('smtp_server', 'N/A')}")
+                st.write(f"Username: {smtp_config.get('email_username', 'N/A')}")
             else:
-                st.warning("⚠️ Email credentials not configured")
-                st.info("Set EMAIL_USERNAME and EMAIL_PASSWORD environment variables to enable email reminders")
-                col1, col2 = st.columns(2)
-                with col1:
-                    if st.button("🔧 Configure Email Settings"):
-                        st.session_state['show_email_config'] = True
-                        st.rerun()
-                with col2:
-                    st.markdown("**[📧 Go to Email Settings →](?page=view_patients)**")
+                st.warning("⚠️ SMTP not configured")
+                st.info("Configure SMTP settings above to enable email reminders")
         
         with col2:
             st.write("**Today's Due Reminders:**")
@@ -5552,6 +5652,26 @@ def medication_reminders_page(medication_reminder, db, user_id):
                     st.write(f"**Alert timings:** {', '.join(med['alert_timings'])}")
         else:
             st.info("No medications scheduled for today")
+        
+        # Manual reminder sending
+        st.markdown("---")
+        st.subheader("📤 Manual Reminder Management")
+        
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            if st.button("🚀 Send Reminders Now", type="primary"):
+                sent_count = medication_reminder.send_automatic_reminders()
+                if sent_count > 0:
+                    st.success(f"✅ Sent {sent_count} reminder emails successfully!")
+                else:
+                    st.info("ℹ️ No reminders were sent (no due medications or configured emails)")
+        
+        with col2:
+            if st.button("🔄 Refresh Reminders"):
+                st.rerun()
+        
+        with col3:
+            st.write(f"**Total Due:** {len(due_reminders)}")
         
         # Show due reminders
         if due_reminders:
