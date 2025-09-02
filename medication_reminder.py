@@ -219,30 +219,16 @@ class MedicationReminder:
     
     def send_email_reminder(self, patient_email: str, patient_name: str, medication_name: str, 
                            dosage: str, scheduled_time: str) -> bool:
-        """Send email reminder to patient using patient-specific SMTP configuration."""
+        """Send email reminder to patient."""
         try:
-            # Get patient profile with SMTP configuration
-            patient_profile = self.get_patient_profile_with_smtp(patient_name)
-            
-            # Use patient-specific SMTP configuration if available
-            if patient_profile and patient_profile.get('smtp_server'):
-                smtp_server = patient_profile.get('smtp_server')
-                smtp_port = patient_profile.get('smtp_port') or 587
-                email_username = patient_profile.get('smtp_username')
-                email_password = patient_profile.get('smtp_password')
-                smtp_use_tls = patient_profile.get('smtp_use_tls', True)
-                print(f"Using patient-specific SMTP configuration for {patient_name}")
-            else:
-                # Fallback to global environment variables
-                smtp_server = os.getenv('SMTP_SERVER', 'smtp.gmail.com')
-                smtp_port = int(os.getenv('SMTP_PORT', '587'))
-                email_username = os.getenv('EMAIL_USERNAME')
-                email_password = os.getenv('EMAIL_PASSWORD')
-                smtp_use_tls = True
-                print(f"Using global SMTP configuration for {patient_name}")
+            # Email configuration (these should be environment variables)
+            smtp_server = os.getenv('SMTP_SERVER', 'smtp.gmail.com')
+            smtp_port = int(os.getenv('SMTP_PORT', '587'))
+            email_username = os.getenv('EMAIL_USERNAME')
+            email_password = os.getenv('EMAIL_PASSWORD')
             
             if not email_username or not email_password:
-                print("Email credentials not configured (neither patient-specific nor global)")
+                print("Email credentials not configured")
                 return False
             
             # Create message
@@ -273,8 +259,7 @@ class MedicationReminder:
             
             # Send email
             server = smtplib.SMTP(smtp_server, smtp_port)
-            if smtp_use_tls:
-                server.starttls()
+            server.starttls()
             server.login(email_username, email_password)
             text = msg.as_string()
             server.sendmail(email_username, patient_email, text)
@@ -774,35 +759,6 @@ class MedicationReminder:
         except Exception as e:
             print(f"Error getting due medications: {e}")
             return []
-    
-    def get_patient_profile_with_smtp(self, patient_name: str) -> Optional[Dict]:
-        """Get patient profile including SMTP configuration."""
-        try:
-            with sqlite3.connect(self.db_path) as conn:
-                cursor = conn.cursor()
-                cursor.execute('''
-                    SELECT patient_id, patient_name, email, smtp_server, smtp_port, 
-                           smtp_username, smtp_password, smtp_use_tls
-                    FROM patients 
-                    WHERE patient_name = ?
-                ''', (patient_name,))
-                
-                result = cursor.fetchone()
-                if result:
-                    return {
-                        'patient_id': result[0],
-                        'patient_name': result[1],
-                        'email': result[2],
-                        'smtp_server': result[3],
-                        'smtp_port': result[4],
-                        'smtp_username': result[5],
-                        'smtp_password': result[6],
-                        'smtp_use_tls': result[7]
-                    }
-                return None
-        except Exception as e:
-            print(f"Error getting patient profile with SMTP: {e}")
-            return None
     
     def record_medication_taken(self, medication_id: int, scheduled_date: str, scheduled_time: str, 
                               taken_date: str = None, taken_time: str = None, notes: str = '') -> bool:
