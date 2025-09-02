@@ -95,9 +95,33 @@ class MedicationReminder:
                 )
             ''')
             
-            # Add alert_timings column if it doesn't exist (for existing databases)
+            # Add new columns if they don't exist (for existing databases)
+            try:
+                cursor.execute('ALTER TABLE medication_schedule ADD COLUMN interval_days INTEGER DEFAULT NULL')
+            except sqlite3.OperationalError:
+                # Column already exists
+                pass
+            
+            try:
+                cursor.execute('ALTER TABLE medication_schedule ADD COLUMN email_enabled BOOLEAN DEFAULT 1')
+            except sqlite3.OperationalError:
+                # Column already exists
+                pass
+            
             try:
                 cursor.execute('ALTER TABLE medication_schedule ADD COLUMN alert_timings TEXT DEFAULT NULL')
+            except sqlite3.OperationalError:
+                # Column already exists
+                pass
+            
+            try:
+                cursor.execute('ALTER TABLE medication_schedule ADD COLUMN last_reminder_date DATE DEFAULT NULL')
+            except sqlite3.OperationalError:
+                # Column already exists
+                pass
+            
+            try:
+                cursor.execute('ALTER TABLE medication_schedule ADD COLUMN next_reminder_date DATE DEFAULT NULL')
             except sqlite3.OperationalError:
                 # Column already exists
                 pass
@@ -424,6 +448,174 @@ class MedicationReminder:
         except Exception as e:
             print(f"Error getting patients: {e}")
             return []
+    
+    def get_medication_schedule_for_year(self, patient_name: str, medication_id: int) -> List[Dict]:
+        """Generate medication schedule for the next year from current date."""
+        try:
+            from datetime import date, timedelta
+            import calendar
+            
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+                
+                # Get medication and schedule info
+                cursor.execute('''
+                    SELECT m.medication_name, m.dosage, m.frequency, m.start_date, m.end_date,
+                           ms.time_of_day, ms.days_of_week, ms.interval_days, ms.alert_timings
+                    FROM medications m
+                    JOIN medication_schedule ms ON m.id = ms.medication_id
+                    WHERE m.id = ? AND m.patient_name = ? AND m.active = 1
+                ''', (medication_id, patient_name))
+                
+                result = cursor.fetchone()
+                if not result:
+                    return []
+                
+                med_name, dosage, frequency, start_date_str, end_date_str, time_of_day, days_of_week_json, interval_days, alert_timings_json = result
+                
+                # Parse data
+                start_date = datetime.strptime(start_date_str, '%Y-%m-%d').date()
+                end_date = datetime.strptime(end_date_str, '%Y-%m-%d').date() if end_date_str else None
+                days_of_week = json.loads(days_of_week_json) if days_of_week_json else []
+                alert_timings = json.loads(alert_timings_json) if alert_timings_json else ["1 hour before"]
+                
+                # Generate schedule for next year
+                current_date = date.today()
+                end_generate_date = current_date + timedelta(days=365)
+                
+                if end_date and end_date < end_generate_date:
+                    end_generate_date = end_date
+                
+                schedule = []
+                check_date = max(start_date, current_date)
+                
+                while check_date <= end_generate_date:
+                    include_date = False
+                    
+                    if interval_days:
+                        # Interval-based medication
+                        days_since_start = (check_date - start_date).days
+                        if days_since_start >= 0 and days_since_start % interval_days == 0:
+                            include_date = True
+                    else:
+                        # Weekly medication
+                        if check_date.weekday() + 1 in days_of_week:
+                            include_date = True
+                    
+                    if include_date:
+                        med_datetime = datetime.combine(check_date, datetime.strptime(time_of_day, '%H:%M:%S').time())
+                        
+                        # Calculate alert times
+                        alerts = []
+                        for alert_timing in alert_timings:
+                            alert_dt = self._calculate_alert_datetime(med_datetime, alert_timing)
+                            alerts.append({
+                                'timing': alert_timing,
+                                'datetime': alert_dt.strftime('%Y-%m-%d %H:%M:%S')
+                            })
+                        
+                        schedule.append({
+                            'date': check_date.strftime('%Y-%m-%d'),
+                            'time': time_of_day,
+                            'medication_name': med_name,
+                            'dosage': dosage,
+                            'frequency': frequency,
+                            'alerts': alerts,
+                            'day_of_week': calendar.day_name[check_date.weekday()],
+                            'week_number': check_date.isocalendar()[1]
+                        })
+                    
+                    check_date += timedelta(days=1)
+                
+                return schedule
+                
+        except Exception as e:
+            print(f"Error generating medication schedule: {e}")
+            return []
+    
+    def delete_medication(self, medication_id: int) -> bool:
+        """Delete a medication and its associated schedules."""
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+                
+                # Delete schedule first
+                cursor.execute('DELETE FROM medication_schedule WHERE medication_id = ?', (medication_id,))
+                
+                # Delete adherence records
+                cursor.execute('DELETE FROM medication_adherence WHERE medication_id = ?', (medication_id,))
+                
+                # Delete effectiveness records
+                cursor.execute('DELETE FROM medication_effectiveness WHERE medication_id = ?', (medication_id,))
+                
+                # Delete medication
+                cursor.execute('DELETE FROM medications WHERE id = ?', (medication_id,))
+                
+                conn.commit()
+                return True
+                
+        except Exception as e:
+            print(f"Error deleting medication: {e}")
+            return False
+    
+    def update_medication(self, medication_id: int, medication_data: Dict) -> bool:
+        """Update an existing medication."""
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+                
+                # Update medication info
+                cursor.execute('''
+                    UPDATE medications 
+                    SET medication_name = ?, dosage = ?, frequency = ?, end_date = ?,
+                        instructions = ?, indication = ?, doctor_name = ?, updated_date = CURRENT_TIMESTAMP
+                    WHERE id = ?
+                ''', (
+                    medication_data['medication_name'],
+                    medication_data['dosage'],
+                    medication_data['frequency'],
+                    medication_data.get('end_date'),
+                    medication_data.get('instructions', ''),
+                    medication_data.get('indication', ''),
+                    medication_data.get('doctor_name', ''),
+                    medication_id
+                ))
+                
+                # Update schedule if provided
+                if 'schedule' in medication_data:
+                    # Delete existing schedules
+                    cursor.execute('DELETE FROM medication_schedule WHERE medication_id = ?', (medication_id,))
+                    
+                    # Add new schedules
+                    for schedule in medication_data['schedule']:
+                        next_reminder = self._calculate_next_reminder_date(
+                            medication_data.get('start_date', datetime.now().strftime('%Y-%m-%d')), 
+                            schedule.get('interval_days'), 
+                            schedule.get('days', [])
+                        )
+                        
+                        cursor.execute('''
+                            INSERT INTO medication_schedule 
+                            (medication_id, time_of_day, days_of_week, interval_days, 
+                             reminder_enabled, email_enabled, alert_timings, next_reminder_date)
+                            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                        ''', (
+                            medication_id,
+                            schedule['time'],
+                            json.dumps(schedule.get('days', [])),
+                            schedule.get('interval_days'),
+                            schedule.get('reminder_enabled', True),
+                            schedule.get('email_enabled', True),
+                            json.dumps(schedule.get('alert_timings', ["1 hour before"])),
+                            next_reminder
+                        ))
+                
+                conn.commit()
+                return True
+                
+        except Exception as e:
+            print(f"Error updating medication: {e}")
+            return False
     
     def get_patient_medications(self, patient_name: str, active_only: bool = True) -> List[Dict]:
         """Get all medications for a patient."""

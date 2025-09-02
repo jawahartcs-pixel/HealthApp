@@ -1657,7 +1657,7 @@ def view_patients_page(db, alert_system, user_id):
     st.header("👥 Patient Management")
     
     # Patient management tabs
-    tab1, tab2, tab3 = st.tabs(["📋 Patient List", "👤 Patient Profile", "📁 Documents"])
+    tab1, tab2, tab3, tab4 = st.tabs(["📋 Patient List", "👤 Patient Profile", "📁 Documents", "📧 Email Settings"])
     
     # Get all patients
     patients = db.get_all_patients(user_id)
@@ -2038,6 +2038,95 @@ def view_patients_page(db, alert_system, user_id):
                     st.info("No documents uploaded yet.")
             else:
                 st.error("Patient profile not found")
+    
+    with tab4:
+        st.subheader("📧 Email Configuration for Medication Reminders")
+        
+        # Email configuration status
+        import os
+        email_configured = bool(os.getenv('EMAIL_USERNAME') and os.getenv('EMAIL_PASSWORD'))
+        
+        if email_configured:
+            st.success("✅ Email configuration is active")
+            st.info(f"**Current Email:** {os.getenv('EMAIL_USERNAME')}")
+            st.info(f"**SMTP Server:** {os.getenv('SMTP_SERVER', 'smtp.gmail.com')}")
+            st.info(f"**SMTP Port:** {os.getenv('SMTP_PORT', '587')}")
+        else:
+            st.warning("⚠️ Email reminders are not configured")
+        
+        # Email configuration form
+        with st.form("patient_email_config"):
+            st.write("**Configure Email Settings for Medication Reminders:**")
+            
+            col1, col2 = st.columns(2)
+            with col1:
+                email_user = st.text_input("Email Username", 
+                                         value=os.getenv('EMAIL_USERNAME', ''),
+                                         placeholder="your-email@gmail.com")
+                smtp_server = st.text_input("SMTP Server", 
+                                          value=os.getenv('SMTP_SERVER', 'smtp.gmail.com'))
+            
+            with col2:
+                email_pass = st.text_input("Email Password", 
+                                         type="password", 
+                                         placeholder="Your app-specific password")
+                smtp_port = st.number_input("SMTP Port", 
+                                          value=int(os.getenv('SMTP_PORT', '587')), 
+                                          min_value=1, max_value=65535)
+            
+            st.markdown("**For Gmail users:**")
+            st.markdown("- Enable 2-factor authentication in your Google account")
+            st.markdown("- Generate an app-specific password (not your regular password)")
+            st.markdown("- Use the app password in the Email Password field above")
+            
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                if st.form_submit_button("💾 Save Configuration", type="primary"):
+                    if email_user and email_pass:
+                        try:
+                            # Test connection first
+                            import smtplib
+                            server = smtplib.SMTP(smtp_server, smtp_port)
+                            server.starttls()
+                            server.login(email_user, email_pass)
+                            server.quit()
+                            
+                            # Save configuration
+                            os.environ['EMAIL_USERNAME'] = email_user
+                            os.environ['EMAIL_PASSWORD'] = email_pass
+                            os.environ['SMTP_SERVER'] = smtp_server
+                            os.environ['SMTP_PORT'] = str(smtp_port)
+                            
+                            st.success("✅ Email configuration saved and tested successfully!")
+                            st.rerun()
+                            
+                        except Exception as e:
+                            st.error(f"❌ Failed to connect with these settings: {str(e)}")
+                    else:
+                        st.error("Please provide both email username and password")
+            
+            with col2:
+                if st.form_submit_button("🧪 Test Connection"):
+                    if email_user and email_pass:
+                        try:
+                            import smtplib
+                            server = smtplib.SMTP(smtp_server, smtp_port)
+                            server.starttls()
+                            server.login(email_user, email_pass)
+                            server.quit()
+                            st.success("✅ Email connection test successful!")
+                        except Exception as e:
+                            st.error(f"❌ Connection test failed: {str(e)}")
+                    else:
+                        st.error("Please provide email credentials to test")
+            
+            with col3:
+                if st.form_submit_button("🗑️ Clear Settings"):
+                    for key in ['EMAIL_USERNAME', 'EMAIL_PASSWORD', 'SMTP_SERVER', 'SMTP_PORT']:
+                        if key in os.environ:
+                            del os.environ[key]
+                    st.success("✅ Email settings cleared")
+                    st.rerun()
 
 def patient_dashboard_page(db, visualization, alert_system, user_id):
     st.header("📊 Patient Dashboard")
@@ -4814,17 +4903,93 @@ def medication_reminders_page(medication_reminder, db, user_id):
                                 st.write(f"⏰ {sched['time']} - {days_str}")
                         
                         # Action buttons
-                        col3, col4 = st.columns(2)
+                        col3, col4, col5, col6 = st.columns(4)
                         with col3:
-                            if st.button(f"Deactivate", key=f"deactivate_{med['id']}"):
+                            if st.button(f"📅 Schedule", key=f"schedule_{med['id']}"):
+                                st.session_state[f'show_schedule_{med["id"]}'] = True
+                                st.rerun()
+                        
+                        with col4:
+                            if st.button(f"✏️ Edit", key=f"edit_{med['id']}"):
+                                st.session_state[f'editing_med_{med["id"]}'] = True
+                                st.rerun()
+                        
+                        with col5:
+                            if st.button(f"❌ Delete", key=f"delete_{med['id']}"):
+                                st.session_state[f'delete_confirm_{med["id"]}'] = True
+                                st.rerun()
+                        
+                        with col6:
+                            if st.button(f"⏸️ Deactivate", key=f"deactivate_{med['id']}"):
                                 if medication_reminder.deactivate_medication(med['id']):
                                     st.success("Medication deactivated successfully!")
                                     st.rerun()
                         
-                        with col4:
-                            if st.button(f"Edit", key=f"edit_{med['id']}"):
-                                st.session_state[f'editing_med_{med["id"]}'] = True
-                                st.rerun()
+                        # Show year schedule
+                        if st.session_state.get(f'show_schedule_{med["id"]}', False):
+                            with st.expander(f"📅 Year Schedule for {med['medication_name']}", expanded=True):
+                                schedule = medication_reminder.get_medication_schedule_for_year(selected_patient, med['id'])
+                                
+                                if schedule:
+                                    st.write(f"**Total scheduled doses in next year:** {len(schedule)}")
+                                    
+                                    # Filter options
+                                    filter_col1, filter_col2 = st.columns(2)
+                                    with filter_col1:
+                                        view_mode = st.selectbox("View mode", ["Next 30 days", "Next 90 days", "Full year"], key=f"view_mode_{med['id']}")
+                                    with filter_col2:
+                                        show_alerts = st.checkbox("Show alert times", value=True, key=f"show_alerts_{med['id']}")
+                                    
+                                    # Filter schedule based on view mode
+                                    from datetime import date, timedelta
+                                    today = date.today()
+                                    if view_mode == "Next 30 days":
+                                        end_date = today + timedelta(days=30)
+                                    elif view_mode == "Next 90 days":
+                                        end_date = today + timedelta(days=90)
+                                    else:
+                                        end_date = today + timedelta(days=365)
+                                    
+                                    filtered_schedule = [s for s in schedule if datetime.strptime(s['date'], '%Y-%m-%d').date() <= end_date]
+                                    
+                                    # Display schedule
+                                    for i, entry in enumerate(filtered_schedule[:100]):  # Limit to 100 entries for performance
+                                        schedule_date = datetime.strptime(entry['date'], '%Y-%m-%d').date()
+                                        is_today = schedule_date == today
+                                        
+                                        date_color = "🔹" if is_today else "📅"
+                                        st.write(f"{date_color} **{entry['day_of_week']}, {entry['date']}** at {entry['time']}")
+                                        
+                                        if show_alerts and entry['alerts']:
+                                            for alert in entry['alerts']:
+                                                alert_dt = datetime.strptime(alert['datetime'], '%Y-%m-%d %H:%M:%S')
+                                                st.write(f"   🔔 Alert ({alert['timing']}): {alert_dt.strftime('%Y-%m-%d %H:%M')}")
+                                    
+                                    if len(filtered_schedule) > 100:
+                                        st.info(f"Showing first 100 entries. Total: {len(filtered_schedule)}")
+                                    
+                                    if st.button("Close Schedule", key=f"close_schedule_{med['id']}"):
+                                        del st.session_state[f'show_schedule_{med["id"]}']
+                                        st.rerun()
+                                else:
+                                    st.info("No schedule found for this medication")
+                        
+                        # Delete confirmation
+                        if st.session_state.get(f'delete_confirm_{med["id"]}', False):
+                            st.error(f"⚠️ Are you sure you want to delete '{med['medication_name']}'? This action cannot be undone.")
+                            conf_col1, conf_col2 = st.columns(2)
+                            with conf_col1:
+                                if st.button("❌ Yes, Delete", key=f"confirm_delete_{med['id']}"):
+                                    if medication_reminder.delete_medication(med['id']):
+                                        st.success("Medication deleted successfully!")
+                                        del st.session_state[f'delete_confirm_{med["id"]}']
+                                        st.rerun()
+                                    else:
+                                        st.error("Failed to delete medication")
+                            with conf_col2:
+                                if st.button("Cancel", key=f"cancel_delete_{med['id']}"):
+                                    del st.session_state[f'delete_confirm_{med["id"]}']
+                                    st.rerun()
             else:
                 st.info(f"No medications found for {selected_patient}. Add medications using the 'Add Medication' tab.")
     
@@ -5148,6 +5313,13 @@ def medication_reminders_page(medication_reminder, db, user_id):
             else:
                 st.warning("⚠️ Email credentials not configured")
                 st.info("Set EMAIL_USERNAME and EMAIL_PASSWORD environment variables to enable email reminders")
+                col1, col2 = st.columns(2)
+                with col1:
+                    if st.button("🔧 Configure Email Settings"):
+                        st.session_state['show_email_config'] = True
+                        st.rerun()
+                with col2:
+                    st.markdown("**[📧 Go to Email Settings →](?page=view_patients)**")
         
         with col2:
             st.write("**Today's Due Reminders:**")
@@ -5253,6 +5425,61 @@ def medication_reminders_page(medication_reminder, db, user_id):
             
             Set these as environment variables in your Replit project.
             """)
+        
+        # Email configuration form
+        if st.session_state.get('show_email_config', False):
+            st.markdown("---")
+            st.subheader("🔧 Email Configuration Setup")
+            
+            with st.form("email_config_form"):
+                st.info("Configure your email settings for medication reminders. These will be stored as environment variables.")
+                
+                email_user = st.text_input("Email Username", placeholder="your-email@gmail.com")
+                email_pass = st.text_input("Email Password", type="password", placeholder="Your app-specific password")
+                smtp_server = st.text_input("SMTP Server", value="smtp.gmail.com")
+                smtp_port = st.number_input("SMTP Port", value=587, min_value=1, max_value=65535)
+                
+                st.markdown("**For Gmail users:**")
+                st.markdown("- Enable 2-factor authentication")
+                st.markdown("- Generate an app-specific password")
+                st.markdown("- Use the app password instead of your regular password")
+                
+                col1, col2, col3 = st.columns(3)
+                with col1:
+                    if st.form_submit_button("💾 Save Configuration", type="primary"):
+                        if email_user and email_pass:
+                            # Store as environment variables (in production, use secrets management)
+                            os.environ['EMAIL_USERNAME'] = email_user
+                            os.environ['EMAIL_PASSWORD'] = email_pass
+                            os.environ['SMTP_SERVER'] = smtp_server
+                            os.environ['SMTP_PORT'] = str(smtp_port)
+                            
+                            st.success("✅ Email configuration saved successfully!")
+                            st.session_state['show_email_config'] = False
+                            st.rerun()
+                        else:
+                            st.error("Please provide both email username and password")
+                
+                with col2:
+                    if st.form_submit_button("🧪 Test Configuration"):
+                        if email_user and email_pass:
+                            try:
+                                # Test email configuration
+                                import smtplib
+                                server = smtplib.SMTP(smtp_server, smtp_port)
+                                server.starttls()
+                                server.login(email_user, email_pass)
+                                server.quit()
+                                st.success("✅ Email configuration test successful!")
+                            except Exception as e:
+                                st.error(f"❌ Email test failed: {str(e)}")
+                        else:
+                            st.error("Please provide email credentials to test")
+                
+                with col3:
+                    if st.form_submit_button("❌ Cancel"):
+                        st.session_state['show_email_config'] = False
+                        st.rerun()
 
 if __name__ == "__main__":
     main()
