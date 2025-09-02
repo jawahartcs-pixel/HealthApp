@@ -5700,7 +5700,7 @@ def medication_reminders_page(medication_reminder, db, user_id):
         if due_reminders:
             st.subheader("📋 Medications Due Today")
             
-            for reminder in due_reminders:
+            for reminder_idx, reminder in enumerate(due_reminders):
                 with st.expander(f"💊 {reminder['patient_name']} - {reminder['medication_name']}", expanded=False):
                     col1, col2, col3 = st.columns(3)
                     
@@ -5716,13 +5716,14 @@ def medication_reminders_page(medication_reminder, db, user_id):
                     
                     with col3:
                         if reminder['email_enabled'] and reminder['patient_email'] and email_configured:
-                            if st.button(f"Send Reminder Email", key=f"send_email_{reminder['medication_id']}"):
-                                success = medication_reminder.send_email_reminder(
-                                    reminder['patient_email'],
-                                    reminder['patient_name'],
-                                    reminder['medication_name'],
-                                    reminder['dosage'],
-                                    reminder['time']
+                            if st.button(f"Send Reminder Email", key=f"send_email_due_{reminder_idx}_{reminder['medication_id']}"):
+                                success = medication_reminder.send_reminder_email(
+                                    patient_name=reminder['patient_name'],
+                                    patient_email=reminder['patient_email'],
+                                    medication_name=reminder['medication_name'],
+                                    dosage=reminder['dosage'],
+                                    reminder_time=reminder['time'],
+                                    alert_type="reminder"
                                 )
                                 
                                 if success:
