@@ -6,7 +6,7 @@ Handles medication tracking, reminders, adherence monitoring, and integration wi
 import sqlite3
 import pandas as pd
 from datetime import datetime, timedelta, date
-from typing import Dict, List, Tuple, Optional
+from typing import Dict, List, Tuple, Optional, Any
 import json
 import smtplib
 from email.mime.text import MIMEText
