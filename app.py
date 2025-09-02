@@ -5005,14 +5005,47 @@ def medication_reminders_page(medication_reminder, db, user_id):
                                 
                                 new_instructions = st.text_area("Instructions", value=med.get('instructions', ''))
                                 
-                                # Alert timing for edit
+                                # Alert timing for edit - show existing alert timings
                                 st.write("**Alert Timing Options:**")
                                 alert_options = ["5 minutes before", "1 hour before", "1 day before"]
-                                edit_alert_timing = st.selectbox("Primary alert timing", alert_options, index=1, key=f"edit_alert_{med['id']}")
-                                edit_multiple_alerts = st.checkbox("Enable multiple alerts", key=f"edit_multiple_{med['id']}")
+                                
+                                # Get existing alert timings from medication schedule
+                                existing_alerts = []
+                                if med.get('schedule'):
+                                    for sched in med['schedule']:
+                                        # Try to get alert timings from schedule (if stored)
+                                        schedule_alerts = sched.get('alert_timings', [])
+                                        if schedule_alerts:
+                                            existing_alerts.extend(schedule_alerts)
+                                
+                                # If no existing alerts found, use default
+                                if not existing_alerts:
+                                    existing_alerts = ["1 hour before"]
+                                
+                                # Set primary alert timing from existing alerts
+                                primary_alert_index = 0
+                                if existing_alerts[0] in alert_options:
+                                    primary_alert_index = alert_options.index(existing_alerts[0])
+                                
+                                edit_alert_timing = st.selectbox("Primary alert timing", 
+                                                                alert_options, 
+                                                                index=primary_alert_index, 
+                                                                key=f"edit_alert_{med['id']}")
+                                
+                                # Show checkbox for multiple alerts if there are existing multiple alerts
+                                has_multiple_existing = len(existing_alerts) > 1
+                                edit_multiple_alerts = st.checkbox("Enable multiple alerts", 
+                                                                  value=has_multiple_existing,
+                                                                  key=f"edit_multiple_{med['id']}")
+                                
                                 additional_edit_alerts = []
                                 if edit_multiple_alerts:
-                                    additional_edit_alerts = st.multiselect("Additional alerts", alert_options, default=[], key=f"edit_additional_{med['id']}")
+                                    # Pre-select existing additional alerts
+                                    existing_additional = [alert for alert in existing_alerts[1:] if alert in alert_options]
+                                    additional_edit_alerts = st.multiselect("Additional alerts", 
+                                                                           alert_options, 
+                                                                           default=existing_additional,
+                                                                           key=f"edit_additional_{med['id']}")
                                 
                                 col1, col2 = st.columns(2)
                                 with col1:
@@ -5128,7 +5161,7 @@ def medication_reminders_page(medication_reminder, db, user_id):
             custom_interval_days = None
             
             if med_frequency in ["Once daily", "Twice daily", "Three times daily", "Four times daily"]:
-                # Daily frequencies
+                # Daily frequencies - show time inputs immediately based on selection
                 freq_map = {"Once daily": 1, "Twice daily": 2, "Three times daily": 3, "Four times daily": 4}
                 num_times = freq_map[med_frequency]
                 
@@ -5137,15 +5170,46 @@ def medication_reminders_page(medication_reminder, db, user_id):
                 default_times = ["09:00", "13:00", "18:00", "22:00"]
                 time_labels = ["Morning", "Afternoon", "Evening", "Night"]
                 
-                cols = st.columns(min(num_times, 4))
+                # Create columns for time inputs
+                if num_times <= 2:
+                    cols = st.columns(num_times)
+                else:
+                    cols = st.columns(min(num_times, 4))
+                
                 for i in range(num_times):
-                    with cols[i % 4]:
+                    with cols[i % len(cols)]:
                         label = time_labels[i] if i < len(time_labels) else f"Time {i+1}"
                         default_time = default_times[i] if i < len(default_times) else "09:00"
                         time_input = st.time_input(f"{label}", 
                                                  value=datetime.strptime(default_time, "%H:%M").time(),
-                                                 key=f"add_time_{i}")
+                                                 key=f"add_time_{i}_{med_frequency}")
                         schedule_times.append(time_input.strftime('%H:%M:%S'))
+                
+                # Show alert timing for each time immediately
+                st.write(f"**Alert timing for each dose:**")
+                alert_cols = st.columns(min(num_times, 4))
+                alert_timings_per_dose = []
+                
+                for i in range(num_times):
+                    with alert_cols[i % len(alert_cols)]:
+                        dose_label = time_labels[i] if i < len(time_labels) else f"Dose {i+1}"
+                        dose_alert = st.selectbox(f"{dose_label} alert", 
+                                                alert_before_options, 
+                                                index=1,
+                                                key=f"dose_alert_{i}_{med_frequency}")
+                        alert_timings_per_dose.append(dose_alert)
+                
+                # Combine all alert timings
+                all_alert_timings = [selected_alert_timing] + alert_timings_per_dose
+                if enable_multiple_alerts:
+                    all_alert_timings.extend(additional_alerts)
+                # Remove duplicates while preserving order
+                unique_alerts = []
+                for alert in all_alert_timings:
+                    if alert not in unique_alerts:
+                        unique_alerts.append(alert)
+                selected_alert_timing = unique_alerts[0] if unique_alerts else selected_alert_timing
+                additional_alerts = unique_alerts[1:] if len(unique_alerts) > 1 else []
                 
                 # For daily medications, set all days by default
                 selected_days = [1, 2, 3, 4, 5, 6, 7]  # All days of week
@@ -5413,9 +5477,82 @@ def medication_reminders_page(medication_reminder, db, user_id):
         
         with col2:
             st.write("**Today's Due Reminders:**")
-            from datetime import date
-            due_reminders = medication_reminder.get_due_reminders(date.today())
+            from datetime import date, datetime
+            current_time = datetime.now()
+            due_reminders = medication_reminder.get_due_reminders(date.today(), current_time)
             st.metric("Reminders Due Today", len(due_reminders))
+            
+            # Show today's medications that haven't passed time yet
+            today_medications = []
+            for patient_name in patient_names:
+                patient_meds = medication_reminder.get_patient_medications(patient_name)
+                for med in patient_meds:
+                    for schedule in med.get('schedule', []):
+                        med_time = datetime.strptime(schedule['time'], '%H:%M:%S').time()
+                        days = schedule.get('days', [1,2,3,4,5,6,7])
+                        today_weekday = date.today().weekday() + 1
+                        
+                        # Check if today is in the scheduled days and time hasn't passed
+                        if today_weekday in days and current_time.time() <= med_time:
+                            today_medications.append({
+                                'patient': patient_name,
+                                'medication': med['medication_name'],
+                                'dosage': med['dosage'],
+                                'time': schedule['time']
+                            })
+            
+            if today_medications:
+                st.write("**Upcoming Today:**")
+                for med in today_medications[:3]:  # Show first 3
+                    st.write(f"• {med['patient']}: {med['medication']} at {med['time'][:5]}")
+                if len(today_medications) > 3:
+                    st.write(f"...and {len(today_medications) - 3} more")
+        
+        # Process today's reminders manually for display
+        st.markdown("---")
+        st.subheader("📋 Today's Medication Schedule")
+        
+        # Show all today's medications including future ones
+        all_today_meds = []
+        from datetime import date, datetime, time
+        today = date.today()
+        current_time = datetime.now().time()
+        
+        for patient_name in patient_names:
+            patient_meds = medication_reminder.get_patient_medications(patient_name)
+            for med in patient_meds:
+                for schedule in med.get('schedule', []):
+                    med_time_str = schedule['time']
+                    med_time = datetime.strptime(med_time_str, '%H:%M:%S').time()
+                    days = schedule.get('days', [1,2,3,4,5,6,7])
+                    today_weekday = today.weekday() + 1
+                    
+                    # Check if today is in the scheduled days
+                    if today_weekday in days:
+                        status = "⏰ Upcoming" if current_time <= med_time else "✅ Past due"
+                        alert_timings = schedule.get('alert_timings', ['1 hour before'])
+                        
+                        all_today_meds.append({
+                            'patient': patient_name,
+                            'medication': med['medication_name'],
+                            'dosage': med['dosage'],
+                            'time': med_time_str,
+                            'time_obj': med_time,
+                            'status': status,
+                            'alert_timings': alert_timings
+                        })
+        
+        # Sort by time
+        all_today_meds.sort(key=lambda x: x['time_obj'])
+        
+        if all_today_meds:
+            for med in all_today_meds:
+                with st.expander(f"{med['status']} {med['patient']}: {med['medication']} at {med['time'][:5]}", expanded=False):
+                    st.write(f"**Dosage:** {med['dosage']}")
+                    st.write(f"**Time:** {med['time'][:5]}")
+                    st.write(f"**Alert timings:** {', '.join(med['alert_timings'])}")
+        else:
+            st.info("No medications scheduled for today")
         
         # Show due reminders
         if due_reminders:
