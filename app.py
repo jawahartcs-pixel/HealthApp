@@ -5618,6 +5618,41 @@ def medication_reminders_page(medication_reminder, db, user_id):
                     sender_name = st.text_input("Sender Name", 
                                               value=smtp_config.get('sender_name', 'Medical Reminder System'))
                 
+                st.info("""
+                **SMTP Configuration Tips:**
+                - For **Gmail**: Use port 587 with STARTTLS, or port 465 with SSL
+                - For **Outlook**: Use smtp-mail.outlook.com, port 587
+                - **App Password Required**: Use app-specific passwords instead of regular passwords
+                - **Common Ports**: 587 (STARTTLS), 465 (SSL), 25 (unsecured)
+                """)
+                
+                # Test SMTP connection
+                if st.form_submit_button("🧪 Test SMTP Connection"):
+                    if smtp_server and email_username and email_password:
+                        test_config = {
+                            'smtp_server': smtp_server,
+                            'smtp_port': smtp_port,
+                            'email_username': email_username,
+                            'email_password': email_password,
+                            'use_ssl': use_ssl
+                        }
+                        
+                        try:
+                            test_results = medication_reminder.test_smtp_connection(test_config)
+                            
+                            if test_results['success']:
+                                st.success(f"✅ SMTP connection successful using {test_results['method_used']['name']}")
+                            else:
+                                st.error("❌ SMTP connection failed")
+                                with st.expander("Connection Attempts"):
+                                    for attempt in test_results['attempts']:
+                                        status = "✅" if attempt['success'] else "❌"
+                                        st.write(f"{status} {attempt['method']}: {attempt.get('error', 'Success')}")
+                        except Exception as e:
+                            st.error(f"Error testing SMTP connection: {e}")
+                    else:
+                        st.error("Please fill in SMTP server, username, and password to test")
+                
                 if st.form_submit_button("💾 Save SMTP Configuration"):
                     if smtp_server and smtp_port and email_username and email_password:
                         try:

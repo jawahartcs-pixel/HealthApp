@@ -1002,14 +1002,38 @@ Best regards,
             
             msg.attach(MIMEText(body, 'plain'))
             
-            # Send email
-            if smtp_config['use_ssl']:
-                server = smtplib.SMTP(smtp_config['smtp_server'], smtp_config['smtp_port'])
-                server.starttls()
-            else:
-                server = smtplib.SMTP(smtp_config['smtp_server'], smtp_config['smtp_port'])
+            # Send email with improved SSL/TLS handling
+            server = None
+            try:
+                # Try SMTP_SSL first (port 465)
+                if smtp_config['smtp_port'] == 465:
+                    server = smtplib.SMTP_SSL(smtp_config['smtp_server'], smtp_config['smtp_port'])
+                else:
+                    # Use SMTP with STARTTLS (port 587)
+                    server = smtplib.SMTP(smtp_config['smtp_server'], smtp_config['smtp_port'])
+                    server.starttls()
+                
+                server.login(smtp_config['email_username'], smtp_config['email_password'])
+            except smtplib.SMTPException as e:
+                # Fallback: try the opposite SSL method
+                if server:
+                    try:
+                        server.quit()
+                    except:
+                        pass
+                
+                try:
+                    if smtp_config['smtp_port'] == 465:
+                        server = smtplib.SMTP(smtp_config['smtp_server'], 587)
+                        server.starttls()
+                    else:
+                        server = smtplib.SMTP_SSL(smtp_config['smtp_server'], 465)
+                    
+                    server.login(smtp_config['email_username'], smtp_config['email_password'])
+                except Exception as fallback_e:
+                    print(f"Both SSL methods failed. Original: {e}, Fallback: {fallback_e}")
+                    return False
             
-            server.login(smtp_config['email_username'], smtp_config['email_password'])
             server.send_message(msg)
             server.quit()
             
@@ -1308,11 +1332,66 @@ Best regards,
                 'error': str(e)
             }
     
+    def test_smtp_connection(self, smtp_config: Dict) -> Dict[str, any]:
+        """Test SMTP connection with detailed debugging."""
+        results = {
+            'success': False,
+            'method_used': None,
+            'error': None,
+            'attempts': []
+        }
+        
+        # List of connection methods to try
+        connection_methods = [
+            {'name': 'SMTP_SSL_465', 'port': 465, 'ssl_method': 'SSL'},
+            {'name': 'SMTP_STARTTLS_587', 'port': 587, 'ssl_method': 'STARTTLS'},
+            {'name': 'SMTP_STARTTLS_configured', 'port': smtp_config.get('smtp_port', 587), 'ssl_method': 'STARTTLS'},
+            {'name': 'SMTP_SSL_configured', 'port': smtp_config.get('smtp_port', 587), 'ssl_method': 'SSL'}
+        ]
+        
+        for method in connection_methods:
+            attempt = {'method': method['name'], 'success': False, 'error': None}
+            
+            try:
+                server = None
+                if method['ssl_method'] == 'SSL':
+                    server = smtplib.SMTP_SSL(smtp_config['smtp_server'], method['port'], timeout=30)
+                else:  # STARTTLS
+                    server = smtplib.SMTP(smtp_config['smtp_server'], method['port'], timeout=30)
+                    server.starttls()
+                
+                server.login(smtp_config['email_username'], smtp_config['email_password'])
+                server.quit()
+                
+                attempt['success'] = True
+                results['success'] = True
+                results['method_used'] = method
+                results['attempts'].append(attempt)
+                print(f"SMTP connection successful using {method['name']}")
+                break
+                
+            except Exception as e:
+                attempt['error'] = str(e)
+                results['attempts'].append(attempt)
+                print(f"SMTP {method['name']} failed: {e}")
+                
+                if server:
+                    try:
+                        server.quit()
+                    except:
+                        pass
+        
+        if not results['success']:
+            results['error'] = "All connection methods failed"
+            
+        return results
+
     def _send_enhanced_reminder_email(self, reminder: Dict, db) -> bool:
         """Send enhanced reminder email with history logging."""
         try:
             smtp_config = db.get_smtp_config()
             if not smtp_config or not smtp_config.get('smtp_server'):
+                print("No SMTP configuration found")
                 return False
             
             # Create email content
@@ -1344,11 +1423,23 @@ Medical Reminder System
             
             msg.attach(MIMEText(body, 'plain'))
             
-            # Send email
-            if smtp_config.get('use_ssl', True):
-                server = smtplib.SMTP_SSL(smtp_config['smtp_server'], smtp_config['smtp_port'])
-            else:
-                server = smtplib.SMTP(smtp_config['smtp_server'], smtp_config['smtp_port'])
+            # Send email using connection test results
+            connection_test = self.test_smtp_connection(smtp_config)
+            
+            if not connection_test['success']:
+                print(f"SMTP connection failed: {connection_test['error']}")
+                for attempt in connection_test['attempts']:
+                    print(f"  - {attempt['method']}: {attempt.get('error', 'Success')}")
+                return False
+            
+            # Use the successful connection method
+            method = connection_test['method_used']
+            server = None
+            
+            if method['ssl_method'] == 'SSL':
+                server = smtplib.SMTP_SSL(smtp_config['smtp_server'], method['port'], timeout=30)
+            else:  # STARTTLS
+                server = smtplib.SMTP(smtp_config['smtp_server'], method['port'], timeout=30)
                 server.starttls()
             
             server.login(smtp_config['email_username'], smtp_config['email_password'])
