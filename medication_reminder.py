@@ -566,9 +566,12 @@ class MedicationReminder:
     
     def update_medication(self, medication_id: int, medication_data: Dict) -> bool:
         """Update an existing medication."""
+        print(f"CRITICAL: update_medication ENTRY POINT - ID {medication_id}")
+        print(f"CRITICAL: DB path: {self.db_path}")
         try:
             with sqlite3.connect(self.db_path) as conn:
                 cursor = conn.cursor()
+                print(f"CRITICAL: Database connection established")
                 
                 # Debug logging
                 print(f"DEBUG: update_medication called for ID {medication_id}")
@@ -643,9 +646,9 @@ class MedicationReminder:
                 return True
                 
         except Exception as e:
-            print(f"Error updating medication: {e}")
+            print(f"ERROR: Exception in update_medication: {e}")
             import traceback
-            print(f"DEBUG: Full error traceback: {traceback.format_exc()}")
+            print(f"ERROR: Full error traceback: {traceback.format_exc()}")
             return False
     
     def get_patient_medications(self, patient_name: str, active_only: bool = True) -> List[Dict]:
