@@ -358,15 +358,16 @@ class MedicationReminder:
                             # Check if current time is within the alert window (5 minute window)  
                             time_diff = abs((check_time - alert_datetime).total_seconds())
                             
-                            # Alert should trigger if current time is within 1 minute of the calculated alert time
-                            if time_diff <= 60:  # Within 1 minute of alert time
+                            # Alert should trigger if current time is at or after the alert time (and before medication time)
+                            # This allows for approximately 5 minutes before, but can be a bit earlier or later
+                            if check_time >= alert_datetime and check_time < medication_datetime:
                                 alert_due = True
                                 print(f"DEBUG: Alert due for {medication_name} at {time_of_day} - alert calculated for {alert_datetime}, current time {check_time}")
                                 break
                             
-                            # Add less verbose debug for production
-                            if time_diff <= 300:  # Only log if within 5 minutes
-                                print(f"DEBUG: Checking alert for {medication_name} at {time_of_day} - alert at {alert_datetime}, current {check_time}, diff {time_diff} seconds")
+                            # Add debug info for active alert checking
+                            if check_time >= alert_datetime - timedelta(minutes=1) and check_time <= medication_datetime:
+                                print(f"DEBUG: Alert window for {medication_name} at {time_of_day} - alert at {alert_datetime}, current {check_time}, triggered: {check_time >= alert_datetime and check_time < medication_datetime}")
                         
                         if alert_due:
                             # Get patient email
