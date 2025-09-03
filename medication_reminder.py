@@ -625,8 +625,20 @@ class MedicationReminder:
                             json.dumps(schedule.get('alert_timings', ["1 hour before"])),
                             next_reminder
                         ))
+                        
+                        # Verify insertion
+                        cursor.execute('SELECT time_of_day FROM medication_schedule WHERE medication_id = ? ORDER BY id DESC LIMIT 1', (medication_id,))
+                        inserted_time = cursor.fetchone()
+                        print(f"DEBUG: Verified insertion - time in DB: {inserted_time[0] if inserted_time else 'None'}")
                 
                 conn.commit()
+                print(f"DEBUG: Transaction committed for medication {medication_id}")
+                
+                # Verify the changes were saved
+                cursor.execute('SELECT time_of_day FROM medication_schedule WHERE medication_id = ? ORDER BY id DESC', (medication_id,))
+                saved_times = cursor.fetchall()
+                print(f"DEBUG: Times saved in database: {[t[0] for t in saved_times]}")
+                
                 print(f"DEBUG: Successfully updated medication {medication_id}")
                 return True
                 
