@@ -1241,8 +1241,8 @@ Best regards,
                     for alert_timing in alert_list:
                         offset_minutes = self._parse_alert_offset(alert_timing)
                         
-                        # Calculate reminder time
-                        scheduled_datetime = datetime.combine(current_date, scheduled_time)
+                        # Calculate reminder time (ensure timezone consistency)
+                        scheduled_datetime = tz.localize(datetime.combine(current_date, scheduled_time))
                         reminder_datetime = scheduled_datetime + timedelta(minutes=offset_minutes)
                         
                         # Check if it's time to send this reminder
@@ -1281,6 +1281,12 @@ Best regards,
     def _should_send_reminder(self, current_datetime: datetime, reminder_datetime: datetime, 
                              last_reminder_date: str = None) -> bool:
         """Check if reminder should be sent based on timing and last sent date."""
+        # Ensure both datetimes are timezone-aware for comparison
+        if current_datetime.tzinfo is None:
+            current_datetime = pytz.UTC.localize(current_datetime)
+        if reminder_datetime.tzinfo is None:
+            reminder_datetime = pytz.UTC.localize(reminder_datetime)
+            
         # Check if reminder time has passed (within 2 minutes window)
         time_diff = (current_datetime - reminder_datetime).total_seconds() / 60
         
@@ -1480,7 +1486,13 @@ Medical Reminder System
     def _update_last_reminder_date(self, medication_id: int):
         """Update the last reminder date for a medication."""
         try:
-            current_date = datetime.now().date()
+            # Get timezone from config
+            from database import Database
+            db = Database(self.db_path)
+            smtp_config = db.get_smtp_config()
+            timezone_str = smtp_config.get('timezone', 'UTC') if smtp_config else 'UTC'
+            tz = pytz.timezone(timezone_str)
+            current_date = datetime.now(tz).date()
             with sqlite3.connect(self.db_path) as conn:
                 cursor = conn.cursor()
                 cursor.execute('''
