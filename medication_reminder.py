@@ -294,11 +294,12 @@ class MedicationReminder:
             with sqlite3.connect(self.db_path) as conn:
                 cursor = conn.cursor()
                 
-                # Get medications with reminders due today
+                # Get ALL medication schedules for reminders due today (each time separately)
                 cursor.execute('''
                     SELECT m.id, m.patient_name, m.medication_name, m.dosage,
                            ms.time_of_day, ms.email_enabled, ms.interval_days,
-                           ms.next_reminder_date, ms.days_of_week, ms.alert_timings
+                           ms.next_reminder_date, ms.days_of_week, ms.alert_timings,
+                           ms.id as schedule_id
                     FROM medications m
                     JOIN medication_schedule ms ON m.id = ms.medication_id
                     JOIN patients p ON m.patient_name = p.patient_name
@@ -315,7 +316,7 @@ class MedicationReminder:
                 due_reminders = []
                 
                 for row in results:
-                    medication_id, patient_name, medication_name, dosage, time_of_day, email_enabled, interval_days, next_reminder_date, days_of_week_json, alert_timings_json = row
+                    medication_id, patient_name, medication_name, dosage, time_of_day, email_enabled, interval_days, next_reminder_date, days_of_week_json, alert_timings_json, schedule_id = row
                     
                     # Check if reminder is actually due today
                     is_due = False
@@ -349,18 +350,23 @@ class MedicationReminder:
                         except:
                             alert_timings = ["1 hour before"]
                         
-                        # Check if any alert should be triggered now (include current date if medication time hasn't passed)
+                        # Check if any alert should be triggered now with precise timing
                         alert_due = False
                         for alert_timing in alert_timings:
                             alert_datetime = self._calculate_alert_datetime(medication_datetime, alert_timing)
-                            # For current date, include if medication time hasn't passed yet
-                            if check_date == date.today():
-                                if medication_datetime.time() >= check_time.time():
-                                    alert_due = True
-                                    break
-                            elif check_time >= alert_datetime:
+                            
+                            # Check if current time is within the alert window (5 minute window)  
+                            time_diff = abs((check_time - alert_datetime).total_seconds())
+                            
+                            # Alert should trigger if current time is within 1 minute of the calculated alert time
+                            if time_diff <= 60:  # Within 1 minute of alert time
                                 alert_due = True
+                                print(f"DEBUG: Alert due for {medication_name} at {time_of_day} - alert calculated for {alert_datetime}, current time {check_time}")
                                 break
+                            
+                            # Add less verbose debug for production
+                            if time_diff <= 300:  # Only log if within 5 minutes
+                                print(f"DEBUG: Checking alert for {medication_name} at {time_of_day} - alert at {alert_datetime}, current {check_time}, diff {time_diff} seconds")
                         
                         if alert_due:
                             # Get patient email
@@ -370,6 +376,7 @@ class MedicationReminder:
                             
                             due_reminders.append({
                                 'medication_id': medication_id,
+                                'schedule_id': schedule_id,
                                 'patient_name': patient_name,
                                 'patient_email': patient_email,
                                 'medication_name': medication_name,
@@ -378,6 +385,7 @@ class MedicationReminder:
                                 'email_enabled': email_enabled,
                                 'alert_timings': alert_timings,
                                 'medication_datetime': medication_datetime,
+                                'alert_datetime': alert_datetime,
                                 'check_date': check_date.strftime('%Y-%m-%d')
                             })
                 
@@ -386,6 +394,74 @@ class MedicationReminder:
         except Exception as e:
             print(f"Error getting due reminders: {e}")
             return []
+    
+    def _already_sent_today(self, reminder: Dict) -> bool:
+        """Check if email was already sent today for this specific medication time."""
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+                
+                today = date.today().strftime('%Y-%m-%d')
+                cursor.execute('''
+                    SELECT COUNT(*) FROM email_history 
+                    WHERE patient_name = ? 
+                    AND medication_name = ? 
+                    AND reminder_time = ?
+                    AND DATE(sent_timestamp) = ?
+                ''', (reminder['patient_name'], reminder['medication_name'], 
+                      reminder['time'], today))
+                
+                count = cursor.fetchone()[0]
+                return count > 0
+                
+        except Exception as e:
+            print(f"Error checking email history: {e}")
+            return False
+    
+    def _send_enhanced_reminder_email(self, reminder: Dict) -> bool:
+        """Send enhanced reminder email using database SMTP configuration."""
+        if not reminder.get('patient_email'):
+            print(f"No email address for {reminder['patient_name']}")
+            return False
+            
+        return self.send_reminder_email(
+            patient_name=reminder['patient_name'],
+            patient_email=reminder['patient_email'],
+            medication_name=reminder['medication_name'],
+            dosage=reminder['dosage'],
+            reminder_time=reminder['time'],
+            alert_type="automated_reminder"
+        )
+    
+    def _log_email_history(self, reminder: Dict) -> bool:
+        """Log email history to database."""
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+                
+                cursor.execute('''
+                    INSERT INTO email_history 
+                    (patient_name, patient_email, medication_name, medication_dosage,
+                     reminder_time, email_subject, email_body, email_type, status)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ''', (
+                    reminder['patient_name'],
+                    reminder['patient_email'],
+                    reminder['medication_name'],
+                    reminder['dosage'],
+                    reminder['time'],
+                    f"Medication Reminder: {reminder['medication_name']}",
+                    f"Reminder for {reminder['medication_name']} ({reminder['dosage']}) at {reminder['time']}",
+                    'automated_reminder',
+                    'sent'
+                ))
+                
+                conn.commit()
+                return True
+                
+        except Exception as e:
+            print(f"Error logging email history: {e}")
+            return False
     
     def process_daily_reminders(self, send_emails: bool = True) -> Dict[str, int]:
         """Process all due reminders for today and optionally send emails."""
@@ -1308,7 +1384,10 @@ Best regards,
     def process_pending_email_reminders(self) -> Dict[str, Any]:
         """Process all pending email reminders and send emails."""
         try:
-            pending_reminders = self.get_pending_email_reminders()
+            # Use the improved get_due_reminders method
+            current_time = datetime.now()
+            pending_reminders = self.get_due_reminders(current_time.date(), current_time)
+            
             results = {
                 'total_pending': len(pending_reminders),
                 'sent_successfully': 0,
@@ -1317,25 +1396,21 @@ Best regards,
                 'failed_reminders': []
             }
             
-            from database import Database
-            db = Database(self.db_path)
-            
             for reminder in pending_reminders:
-                # Enhanced email sending with history logging
-                success = self._send_enhanced_reminder_email(
-                    reminder=reminder,
-                    db=db
-                )
-                
-                if success:
-                    results['sent_successfully'] += 1
-                    results['sent_reminders'].append(reminder)
+                # Check if email was already sent today for this specific medication time
+                if not self._already_sent_today(reminder):
+                    success = self._send_enhanced_reminder_email(reminder)
                     
-                    # Update last reminder date
-                    self._update_last_reminder_date(reminder['medication_id'])
+                    if success:
+                        results['sent_successfully'] += 1
+                        results['sent_reminders'].append(reminder)
+                        # Log email history
+                        self._log_email_history(reminder)
+                    else:
+                        results['failed'] += 1
+                        results['failed_reminders'].append(reminder)
                 else:
-                    results['failed'] += 1
-                    results['failed_reminders'].append(reminder)
+                    print(f"Email already sent today for {reminder['patient_name']} - {reminder['medication_name']} at {reminder['time']}")
             
             return results
             
