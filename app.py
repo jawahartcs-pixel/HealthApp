@@ -5133,15 +5133,47 @@ def medication_reminders_page(medication_reminder, db, user_id):
                                         
                                         # Create schedule entries for each reminder time
                                         schedule_entries = []
-                                        for reminder_time in reminder_times:
+                                        for idx, reminder_time in enumerate(reminder_times):
+                                            # Get interval and days from existing schedule if available
+                                            interval_days = None
+                                            days_of_week = [1, 2, 3, 4, 5, 6, 7]  # Default to daily
+                                            
+                                            # Try to preserve existing schedule structure
+                                            if med.get('schedule') and idx < len(med['schedule']):
+                                                existing_sched = med['schedule'][idx]
+                                                days_of_week = existing_sched.get('days', [1, 2, 3, 4, 5, 6, 7])
+                                                interval_days = existing_sched.get('interval_days')
+                                            
+                                            # For non-daily frequencies, set appropriate interval
+                                            if 'every other day' in new_frequency.lower():
+                                                interval_days = 2
+                                                days_of_week = []
+                                            elif 'weekly' in new_frequency.lower():
+                                                interval_days = 7
+                                                days_of_week = []
+                                            elif 'bi-weekly' in new_frequency.lower() or '14 days' in new_frequency.lower():
+                                                interval_days = 14
+                                                days_of_week = []
+                                            elif '21 days' in new_frequency.lower():
+                                                interval_days = 21
+                                                days_of_week = []
+                                            elif 'monthly' in new_frequency.lower():
+                                                interval_days = 30
+                                                days_of_week = []
+                                            
                                             schedule_entries.append({
                                                 'time': reminder_time.strftime('%H:%M:%S'),
-                                                'days': [1, 2, 3, 4, 5, 6, 7],
-                                                'interval_days': None,
+                                                'days': days_of_week,
+                                                'interval_days': interval_days,
                                                 'reminder_enabled': True,
                                                 'email_enabled': True,
                                                 'alert_timings': edit_alert_times
                                             })
+                                            
+                                        # Debug logging
+                                        print(f"DEBUG: Updating medication {med['id']} with {len(reminder_times)} reminder times:")
+                                        for i, rt in enumerate(reminder_times):
+                                            print(f"  Time {i}: {rt.strftime('%H:%M:%S')}")
                                         
                                         update_data = {
                                             'medication_name': new_med_name,
@@ -5151,6 +5183,7 @@ def medication_reminders_page(medication_reminder, db, user_id):
                                             'instructions': new_instructions,
                                             'indication': new_indication,
                                             'doctor_name': new_doctor,
+                                            'start_date': med.get('start_date', datetime.now().strftime('%Y-%m-%d')),
                                             'schedule': schedule_entries
                                         }
                                         
