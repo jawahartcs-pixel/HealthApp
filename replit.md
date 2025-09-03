@@ -6,6 +6,17 @@ A Streamlit-based web application designed for healthcare professionals to manag
 
 ## Recent Changes (September 2025)
 
+### Email Alert System Fixes and Enhancements (September 3, 2025)
+- **Fixed Critical Medication Editing Bug**: Removed duplicate update_medication methods that prevented schedule updates from persisting
+- **Corrected Email Alert Timing**: Fixed 6-7 minute early sending issue to precisely 5 minutes before medication time
+- **Enhanced Multiple Alert Support**: System now correctly processes separate email alerts for each medication time (e.g., 21:46 and 21:48)
+- **Improved Timing Flexibility**: Replaced strict 60-second window with flexible alert window that triggers between alert time and medication time
+- **Added Comprehensive Email History Tracking**: Implemented duplicate prevention and detailed email logging with timestamps
+- **Fixed Corrupted Alert Data**: Corrected alert_timings database entries from timestamp corruption to proper JSON format
+- **Verified Email Delivery**: Successfully tested complete email sending pipeline with SMTP configuration and background processing
+
+### Enhanced SMTP Configuration and Email Management System
+
 ### Enhanced SMTP Configuration and Email Management System  
 - Added permanent SMTP configuration storage in database with secure form interface
 - Implemented comprehensive patient email management with add/edit functionality
