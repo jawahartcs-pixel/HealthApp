@@ -570,6 +570,14 @@ class MedicationReminder:
             with sqlite3.connect(self.db_path) as conn:
                 cursor = conn.cursor()
                 
+                # Debug logging
+                print(f"DEBUG: update_medication called for ID {medication_id}")
+                print(f"DEBUG: medication_data keys: {medication_data.keys()}")
+                if 'schedule' in medication_data:
+                    print(f"DEBUG: Schedule entries: {len(medication_data['schedule'])}")
+                    for i, sched in enumerate(medication_data['schedule']):
+                        print(f"DEBUG: Schedule {i}: time={sched.get('time')}, days={sched.get('days')}, interval={sched.get('interval_days')}")
+                
                 # Update medication info
                 cursor.execute('''
                     UPDATE medications 
@@ -590,16 +598,18 @@ class MedicationReminder:
                 # Update schedule if provided
                 if 'schedule' in medication_data:
                     # Delete existing schedules
+                    print(f"DEBUG: Deleting existing schedules for medication {medication_id}")
                     cursor.execute('DELETE FROM medication_schedule WHERE medication_id = ?', (medication_id,))
                     
                     # Add new schedules
-                    for schedule in medication_data['schedule']:
+                    for i, schedule in enumerate(medication_data['schedule']):
                         next_reminder = self._calculate_next_reminder_date(
                             medication_data.get('start_date', datetime.now().strftime('%Y-%m-%d')), 
                             schedule.get('interval_days'), 
                             schedule.get('days', [])
                         )
                         
+                        print(f"DEBUG: Inserting schedule {i}: time={schedule['time']}, next_reminder={next_reminder}")
                         cursor.execute('''
                             INSERT INTO medication_schedule 
                             (medication_id, time_of_day, days_of_week, interval_days, 
@@ -617,10 +627,13 @@ class MedicationReminder:
                         ))
                 
                 conn.commit()
+                print(f"DEBUG: Successfully updated medication {medication_id}")
                 return True
                 
         except Exception as e:
             print(f"Error updating medication: {e}")
+            import traceback
+            print(f"DEBUG: Full error traceback: {traceback.format_exc()}")
             return False
     
     def get_patient_medications(self, patient_name: str, active_only: bool = True) -> List[Dict]:
