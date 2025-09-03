@@ -12,6 +12,7 @@ import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 import os
+import pytz
 
 class MedicationReminder:
     def __init__(self, db_path: str = "blood_test_results.db"):
@@ -1170,9 +1171,17 @@ Best regards,
             return {}
     
     def get_pending_email_reminders(self) -> List[Dict]:
-        """Get all medications that need email reminders sent based on current time."""
+        """Get all medications that need email reminders sent based on configured timezone."""
         try:
-            current_datetime = datetime.now()
+            # Get timezone from SMTP config
+            from database import Database
+            db = Database(self.db_path)
+            smtp_config = db.get_smtp_config()
+            timezone_str = smtp_config.get('timezone', 'UTC') if smtp_config else 'UTC'
+            
+            # Get current time in configured timezone
+            tz = pytz.timezone(timezone_str)
+            current_datetime = datetime.now(tz)
             current_date = current_datetime.date()
             current_time = current_datetime.time()
             
@@ -1483,21 +1492,3 @@ Medical Reminder System
         except Exception as e:
             print(f"Error updating last reminder date: {e}")
     
-    def add_custom_reminder_time(self, medication_id: int, custom_time: str, 
-                                custom_date: str = None, alert_offset: int = -60) -> bool:
-        """Add custom reminder time for specific medication."""
-        try:
-            from database import Database
-            db = Database(self.db_path)
-            
-            # Add to custom reminder times table
-            return db.add_custom_reminder_time(
-                medication_id=medication_id,
-                reminder_time=custom_time,
-                reminder_date=custom_date,
-                alert_offset_minutes=alert_offset
-            )
-            
-        except Exception as e:
-            print(f"Error adding custom reminder time: {e}")
-            return False

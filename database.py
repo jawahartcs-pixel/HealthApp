@@ -132,10 +132,23 @@ class Database:
                     email_password TEXT NOT NULL,
                     sender_name TEXT DEFAULT 'Medical Reminder System',
                     use_ssl BOOLEAN DEFAULT 1,
+                    check_frequency_minutes INTEGER DEFAULT 1,
+                    timezone TEXT DEFAULT 'UTC',
                     created_date DATETIME DEFAULT CURRENT_TIMESTAMP,
                     updated_date DATETIME DEFAULT CURRENT_TIMESTAMP
                 )
             ''')
+            
+            # Add new columns if they don't exist
+            try:
+                cursor.execute('ALTER TABLE smtp_config ADD COLUMN check_frequency_minutes INTEGER DEFAULT 1')
+            except sqlite3.OperationalError:
+                pass
+            
+            try:
+                cursor.execute('ALTER TABLE smtp_config ADD COLUMN timezone TEXT DEFAULT "UTC"')
+            except sqlite3.OperationalError:
+                pass
             
             # Add email history table for tracking sent emails
             cursor.execute('''
@@ -733,7 +746,8 @@ class Database:
     
     def save_smtp_config(self, smtp_server: str, smtp_port: int, email_username: str, 
                         email_password: str, sender_name: str = 'Medical Reminder System', 
-                        use_ssl: bool = True) -> bool:
+                        use_ssl: bool = True, check_frequency_minutes: int = 1,
+                        timezone: str = "UTC") -> bool:
         """Save or update SMTP configuration."""
         try:
             with sqlite3.connect(self.db_path) as conn:
@@ -749,18 +763,20 @@ class Database:
                         UPDATE smtp_config 
                         SET smtp_server = ?, smtp_port = ?, email_username = ?, 
                             email_password = ?, sender_name = ?, use_ssl = ?,
+                            check_frequency_minutes = ?, timezone = ?,
                             updated_date = CURRENT_TIMESTAMP
                         WHERE id = ?
                     ''', (smtp_server, smtp_port, email_username, email_password, 
-                          sender_name, use_ssl, existing[0]))
+                          sender_name, use_ssl, check_frequency_minutes, timezone, existing[0]))
                 else:
                     # Insert new configuration
                     cursor.execute('''
                         INSERT INTO smtp_config (smtp_server, smtp_port, email_username, 
-                                                email_password, sender_name, use_ssl)
-                        VALUES (?, ?, ?, ?, ?, ?)
+                                                email_password, sender_name, use_ssl,
+                                                check_frequency_minutes, timezone)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                     ''', (smtp_server, smtp_port, email_username, email_password, 
-                          sender_name, use_ssl))
+                          sender_name, use_ssl, check_frequency_minutes, timezone))
                 
                 conn.commit()
                 return True

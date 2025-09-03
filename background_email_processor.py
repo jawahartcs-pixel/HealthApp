@@ -39,15 +39,28 @@ def process_email_reminders():
         print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] Error processing reminders: {e}")
         return {'error': str(e)}
 
+def get_check_frequency():
+    """Get check frequency from SMTP configuration."""
+    try:
+        from database import Database
+        db = Database()
+        smtp_config = db.get_smtp_config()
+        return smtp_config.get('check_frequency_minutes', 1) * 60 if smtp_config else 60
+    except:
+        return 60  # Default 1 minute
+
 def main():
     """Main background processor loop."""
     print("Starting background email reminder processor...")
-    print("Checking for pending reminders every minute...")
     
     while True:
         try:
+            check_frequency_seconds = get_check_frequency()
+            frequency_minutes = check_frequency_seconds / 60
+            print(f"Checking for pending reminders every {frequency_minutes} minute(s)...")
+            
             process_email_reminders()
-            time.sleep(60)  # Wait 1 minute before next check
+            time.sleep(check_frequency_seconds)
         except KeyboardInterrupt:
             print("\nStopping background email processor...")
             break
