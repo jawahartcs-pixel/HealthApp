@@ -285,10 +285,20 @@ class MedicationReminder:
     
     def get_due_reminders(self, check_date: date = None, check_time: datetime = None) -> List[Dict]:
         """Get all medication reminders due for a specific date and time with alert timing consideration."""
-        if check_date is None:
-            check_date = date.today()
-        if check_time is None:
-            check_time = datetime.now()
+        # Get timezone from database configuration  
+        from database import Database
+        db = Database(self.db_path)
+        smtp_config = db.get_smtp_config()
+        timezone_str = smtp_config.get('timezone', 'UTC') if smtp_config else 'UTC'
+        tz = pytz.timezone(timezone_str)
+        
+        if check_date is None or check_time is None:
+            # Get current time in the configured timezone
+            current_tz_time = datetime.now(tz)
+            if check_date is None:
+                check_date = current_tz_time.date()
+            if check_time is None:
+                check_time = current_tz_time.replace(tzinfo=None)  # Remove timezone info for comparison
             
         try:
             with sqlite3.connect(self.db_path) as conn:
@@ -1385,9 +1395,17 @@ Best regards,
     def process_pending_email_reminders(self) -> Dict[str, Any]:
         """Process all pending email reminders and send emails."""
         try:
-            # Use the improved get_due_reminders method
-            current_time = datetime.now()
-            pending_reminders = self.get_due_reminders(current_time.date(), current_time)
+            # Get timezone-aware current time
+            from database import Database
+            db = Database(self.db_path)
+            smtp_config = db.get_smtp_config()
+            timezone_str = smtp_config.get('timezone', 'UTC') if smtp_config else 'UTC'
+            tz = pytz.timezone(timezone_str)
+            current_tz_time = datetime.now(tz)
+            current_time = current_tz_time.replace(tzinfo=None)  # Remove timezone for comparison
+            
+            # Use the improved get_due_reminders method with timezone-aware time
+            pending_reminders = self.get_due_reminders(current_tz_time.date(), current_time)
             
             results = {
                 'total_pending': len(pending_reminders),
