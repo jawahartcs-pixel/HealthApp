@@ -792,7 +792,7 @@ class Database:
                 cursor = conn.cursor()
                 cursor.execute('''
                     SELECT smtp_server, smtp_port, email_username, email_password, 
-                           sender_name, use_ssl
+                           sender_name, use_ssl, check_frequency_minutes, timezone
                     FROM smtp_config 
                     ORDER BY updated_date DESC 
                     LIMIT 1
@@ -806,7 +806,9 @@ class Database:
                         'email_username': result[2],
                         'email_password': result[3],
                         'sender_name': result[4],
-                        'use_ssl': bool(result[5])
+                        'use_ssl': bool(result[5]),
+                        'check_frequency_minutes': result[6] if result[6] else 1,
+                        'timezone': result[7] if result[7] else 'UTC'
                     }
                 return {}
                 

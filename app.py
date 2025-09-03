@@ -5040,19 +5040,36 @@ def medication_reminders_page(medication_reminder, db, user_id):
                                 for i in range(times_needed):
                                     label = time_labels[i] if i < len(time_labels) else f"Time {i+1}"
                                     
-                                    # Get existing time or default
+                                    # Get existing time or use default
                                     default_time = time(9, 0)  # Default 9:00 AM
-                                    if i < len(existing_times):
+                                    if i < len(existing_times) and existing_times[i]:
                                         try:
                                             existing_time_str = existing_times[i]
+                                            # Handle different time formats
                                             if isinstance(existing_time_str, str):
-                                                default_time = time.fromisoformat(existing_time_str.split('.')[0])
-                                            else:
+                                                # Remove microseconds if present
+                                                time_str = existing_time_str.split('.')[0]
+                                                # Parse HH:MM:SS format
+                                                if ':' in time_str:
+                                                    time_parts = time_str.split(':')
+                                                    if len(time_parts) >= 2:
+                                                        hour = int(time_parts[0])
+                                                        minute = int(time_parts[1])
+                                                        default_time = time(hour, minute)
+                                                    else:
+                                                        default_time = time.fromisoformat(time_str)
+                                                else:
+                                                    default_time = time.fromisoformat(time_str)
+                                            elif hasattr(existing_time_str, 'hour') and hasattr(existing_time_str, 'minute'):
+                                                # Already a time object
                                                 default_time = existing_time_str
-                                        except:
-                                            default_time = time(9 + i * 4, 0)  # 9 AM, 1 PM, 5 PM, 9 PM
+                                        except Exception as e:
+                                            print(f"Error parsing existing time {existing_time_str}: {e}")
+                                            # Use position-based default times
+                                            default_times = [time(8, 0), time(14, 0), time(20, 0), time(22, 0)]
+                                            default_time = default_times[i] if i < len(default_times) else time(9 + i * 4, 0)
                                     else:
-                                        # Default times for multiple doses
+                                        # Use position-based default times for new entries
                                         default_times = [time(8, 0), time(14, 0), time(20, 0), time(22, 0)]
                                         default_time = default_times[i] if i < len(default_times) else time(9 + i * 4, 0)
                                     
