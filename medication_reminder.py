@@ -1296,7 +1296,10 @@ Best regards,
             if last_reminder_date:
                 try:
                     last_date = datetime.strptime(last_reminder_date, '%Y-%m-%d').date()
-                    if last_date >= current_datetime.date():
+                    current_date_only = current_datetime.date() if hasattr(current_datetime, 'date') else current_datetime
+                    if hasattr(current_date_only, 'date'):
+                        current_date_only = current_date_only.date()
+                    if last_date >= current_date_only:
                         return False  # Already sent today
                 except:
                     pass

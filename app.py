@@ -5058,6 +5058,7 @@ def medication_reminders_page(medication_reminder, db, user_id):
                                     
                                     reminder_time = st.time_input(f"{label} reminder time", 
                                                                 value=default_time,
+                                                                step=60,  # 1-minute intervals
                                                                 key=f"edit_time_{med['id']}_{i}")
                                     reminder_times.append(reminder_time)
                                 
@@ -5312,6 +5313,7 @@ def medication_reminders_page(medication_reminder, db, user_id):
                         default_time = default_times[i] if i < len(default_times) else "09:00"
                         time_input = st.time_input(f"{label}", 
                                                  value=dt.strptime(default_time, "%H:%M").time(),
+                                                 step=60,  # 1-minute intervals
                                                  key=f"add_time_{i}_{med_frequency}")
                         schedule_times.append(time_input.strftime('%H:%M:%S'))
                 
@@ -5346,12 +5348,12 @@ def medication_reminders_page(medication_reminder, db, user_id):
                 
             elif med_frequency == "Every other day":
                 custom_interval_days = 2
-                time_input = st.time_input("Reminder time", key="interval_time")
+                time_input = st.time_input("Reminder time", step=60, key="interval_time")
                 schedule_times.append(time_input.strftime('%H:%M:%S'))
                 
             elif med_frequency == "Weekly":
                 custom_interval_days = 7
-                time_input = st.time_input("Reminder time", key="weekly_time")
+                time_input = st.time_input("Reminder time", step=60, key="weekly_time")
                 schedule_times.append(time_input.strftime('%H:%M:%S'))
                 preferred_day = st.selectbox("Preferred day of week", 
                     ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"])
@@ -5361,22 +5363,22 @@ def medication_reminders_page(medication_reminder, db, user_id):
                 
             elif med_frequency == "Bi-weekly (14 days)":
                 custom_interval_days = 14
-                time_input = st.time_input("Reminder time", key="biweekly_time")
+                time_input = st.time_input("Reminder time", step=60, key="biweekly_time")
                 schedule_times.append(time_input.strftime('%H:%M:%S'))
                 
             elif med_frequency == "Every 21 days":
                 custom_interval_days = 21
-                time_input = st.time_input("Reminder time", key="21day_time")
+                time_input = st.time_input("Reminder time", step=60, key="21day_time")
                 schedule_times.append(time_input.strftime('%H:%M:%S'))
                 
             elif med_frequency == "Monthly":
                 custom_interval_days = 30
-                time_input = st.time_input("Reminder time", key="monthly_time")
+                time_input = st.time_input("Reminder time", step=60, key="monthly_time")
                 schedule_times.append(time_input.strftime('%H:%M:%S'))
                 
             elif med_frequency == "Custom interval":
                 custom_interval_days = st.number_input("Interval (days)", min_value=1, max_value=365, value=7)
-                time_input = st.time_input("Reminder time", key="custom_time")
+                time_input = st.time_input("Reminder time", step=60, key="custom_time")
                 schedule_times.append(time_input.strftime('%H:%M:%S'))
                 
             elif med_frequency == "As needed":
@@ -5632,9 +5634,15 @@ def medication_reminders_page(medication_reminder, db, user_id):
                         'UTC', 'Asia/Kolkata', 'America/New_York', 'Europe/London', 
                         'America/Los_Angeles', 'Europe/Paris', 'Asia/Tokyo', 'Australia/Sydney'
                     ]
+                    current_timezone = smtp_config.get('timezone', 'UTC')
+                    try:
+                        timezone_index = timezone_options.index(current_timezone)
+                    except ValueError:
+                        timezone_index = 0  # Default to UTC if not found
+                    
                     timezone = st.selectbox("Timezone", 
                                           options=timezone_options,
-                                          index=timezone_options.index(smtp_config.get('timezone', 'UTC')),
+                                          index=timezone_index,
                                           help="Timezone for sending reminders")
                 
                 st.info("""
