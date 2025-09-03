@@ -5174,7 +5174,6 @@ def medication_reminders_page(medication_reminder, db, user_id):
                                         print(f"DEBUG: Updating medication {med['id']} with {len(reminder_times)} reminder times:")
                                         for i, rt in enumerate(reminder_times):
                                             print(f"  Time {i}: {rt.strftime('%H:%M:%S')}")
-                                        print(f"DEBUG: About to call update_medication with update_data: {update_data}")
                                         print(f"DEBUG: Schedule entries: {schedule_entries}")
                                         
                                         update_data = {
@@ -5189,6 +5188,7 @@ def medication_reminders_page(medication_reminder, db, user_id):
                                             'schedule': schedule_entries
                                         }
                                         
+                                        print(f"DEBUG: About to call update_medication with update_data: {update_data}")
                                         print(f"DEBUG: Calling update_medication for ID {med['id']}")
                                         result = medication_reminder.update_medication(med['id'], update_data)
                                         print(f"DEBUG: update_medication returned: {result}")
