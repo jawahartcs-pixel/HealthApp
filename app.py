@@ -5618,6 +5618,25 @@ def medication_reminders_page(medication_reminder, db, user_id):
                     sender_name = st.text_input("Sender Name", 
                                               value=smtp_config.get('sender_name', 'Medical Reminder System'))
                 
+                # Additional configurations
+                config_col3, config_col4 = st.columns(2)
+                
+                with config_col3:
+                    check_frequency = st.number_input("Check Frequency (minutes)", 
+                                                    value=smtp_config.get('check_frequency_minutes', 1),
+                                                    min_value=1, max_value=60,
+                                                    help="How often to check for pending reminders")
+                
+                with config_col4:
+                    timezone_options = [
+                        'UTC', 'Asia/Kolkata', 'America/New_York', 'Europe/London', 
+                        'America/Los_Angeles', 'Europe/Paris', 'Asia/Tokyo', 'Australia/Sydney'
+                    ]
+                    timezone = st.selectbox("Timezone", 
+                                          options=timezone_options,
+                                          index=timezone_options.index(smtp_config.get('timezone', 'UTC')),
+                                          help="Timezone for sending reminders")
+                
                 st.info("""
                 **SMTP Configuration Tips:**
                 - For **Gmail**: Use port 587 with STARTTLS, or port 465 with SSL
@@ -5662,7 +5681,9 @@ def medication_reminders_page(medication_reminder, db, user_id):
                                 email_username=email_username,
                                 email_password=email_password,
                                 sender_name=sender_name,
-                                use_ssl=use_ssl
+                                use_ssl=use_ssl,
+                                check_frequency_minutes=check_frequency,
+                                timezone=timezone
                             )
                             
                             if success:
@@ -5922,77 +5943,14 @@ def medication_reminders_page(medication_reminder, db, user_id):
                             st.write(f"**Sent:** {email['sent_timestamp']}")
                         
                         with st.expander("View Email Content"):
-                            st.text_area("Email Body", value=email['email_body'], height=200, disabled=True, key=f"email_body_{email['id']}")
+                            st.text_area("Email Body", value=email.get('email_body', 'No content available'), height=200, disabled=True, key=f"email_body_{email['id']}")
             else:
                 st.info("📭 No email history found")
                 
         except Exception as e:
             st.error(f"Error loading email history: {e}")
         
-        # Custom Reminder Times Section
-        st.markdown("---")
-        st.subheader("⏰ Custom Reminder Times")
-        
-        with st.form("add_custom_reminder"):
-            st.write("**Add Custom Reminder Time**")
-            
-            col1, col2, col3 = st.columns(3)
-            
-            with col1:
-                # Get all medications for dropdown
-                try:
-                    all_medications = medication_reminder.get_all_medications()
-                    if all_medications:
-                        med_options = [f"{med['patient_name']} - {med['medication_name']}" for med in all_medications]
-                        selected_med = st.selectbox("Select Medication", med_options)
-                        selected_med_id = None
-                        if selected_med:
-                            for med in all_medications:
-                                if f"{med['patient_name']} - {med['medication_name']}" == selected_med:
-                                    selected_med_id = med['id']
-                                    break
-                    else:
-                        st.warning("No medications found")
-                        selected_med_id = None
-                except:
-                    st.error("Error loading medications")
-                    selected_med_id = None
-            
-            with col2:
-                custom_time = st.time_input("Custom Reminder Time", value=time(9, 0))
-                custom_date = st.date_input("Specific Date (optional)", value=None)
-            
-            with col3:
-                alert_offset_options = {
-                    "5 minutes before": -5,
-                    "15 minutes before": -15,
-                    "30 minutes before": -30,
-                    "1 hour before": -60,
-                    "2 hours before": -120,
-                    "At exact time": 0
-                }
-                selected_offset = st.selectbox("Alert Timing", list(alert_offset_options.keys()), index=3)
-                offset_minutes = alert_offset_options[selected_offset]
-            
-            if st.form_submit_button("➕ Add Custom Reminder"):
-                if selected_med_id:
-                    try:
-                        success = medication_reminder.add_custom_reminder_time(
-                            medication_id=selected_med_id,
-                            custom_time=custom_time.strftime('%H:%M:%S'),
-                            custom_date=custom_date.strftime('%Y-%m-%d') if custom_date else None,
-                            alert_offset=offset_minutes
-                        )
-                        
-                        if success:
-                            st.success("✅ Custom reminder time added successfully!")
-                            st.rerun()
-                        else:
-                            st.error("❌ Failed to add custom reminder time")
-                    except Exception as e:
-                        st.error(f"Error adding custom reminder: {e}")
-                else:
-                    st.error("Please select a medication")
+
         
         # Email reminder schedule preview
         st.markdown("---")
