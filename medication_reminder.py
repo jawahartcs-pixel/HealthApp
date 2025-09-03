@@ -1109,37 +1109,7 @@ Best regards,
             print(f"Error sending automatic reminders: {e}")
             return 0
     
-    def update_medication(self, medication_id: int, updates: Dict) -> bool:
-        """Update medication information."""
-        try:
-            with sqlite3.connect(self.db_path) as conn:
-                cursor = conn.cursor()
-                
-                # Build dynamic update query
-                set_clauses = []
-                params = []
-                
-                for field, value in updates.items():
-                    if field in ['medication_name', 'dosage', 'frequency', 'start_date', 'end_date', 
-                               'instructions', 'indication', 'doctor_name', 'active']:
-                        set_clauses.append(f"{field} = ?")
-                        params.append(value)
-                
-                if not set_clauses:
-                    return False
-                
-                set_clauses.append("updated_date = CURRENT_TIMESTAMP")
-                params.append(medication_id)
-                
-                query = f"UPDATE medications SET {', '.join(set_clauses)} WHERE id = ?"
-                cursor.execute(query, params)
-                
-                conn.commit()
-                return True
-                
-        except Exception as e:
-            print(f"Error updating medication: {e}")
-            return False
+
     
     def deactivate_medication(self, medication_id: int) -> bool:
         """Deactivate a medication instead of deleting it."""
