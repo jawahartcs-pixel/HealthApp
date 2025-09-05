@@ -417,17 +417,21 @@ class PDFReportGenerator:
             
             # Create matplotlib figure
             plt.figure(figsize=(8, 4))
-            plt.plot(df['test_date'], df['test_value'], marker='o', linewidth=2, markersize=6)
+            
+            # Add reference range shading first (so it appears behind the line)
+            self._add_reference_range_to_chart(plt, df, test_type)
+            
+            plt.plot(df['test_date'], df['test_value'], marker='o', linewidth=2, markersize=6, color='#1f77b4', zorder=3)
             
             # Add value labels on each data point
             for i, (date, value) in enumerate(zip(df['test_date'], df['test_value'])):
                 plt.annotate(f'{value:.2f}', (date, value), 
-                           textcoords="offset points", xytext=(0,10), ha='center', fontsize=8)
+                           textcoords="offset points", xytext=(0,10), ha='center', fontsize=8, zorder=4)
             
             plt.title(f'{test_type} Trend Over Time', fontsize=14, fontweight='bold')
             plt.xlabel('Date', fontsize=12)
             plt.ylabel('Value', fontsize=12)
-            plt.grid(True, alpha=0.3)
+            plt.grid(True, alpha=0.3, zorder=1)
             plt.xticks(rotation=45)
             plt.tight_layout()
             
@@ -453,6 +457,54 @@ class PDFReportGenerator:
             print(f"Error creating chart for {test_type}: {e}")
             return None
     
+    def _add_reference_range_to_chart(self, plt, df: pd.DataFrame, test_type: str):
+        """Add reference range shading to matplotlib chart."""
+        try:
+            # Get reference range from the first row (should be consistent for same test type)
+            if not df.empty and pd.notna(df.iloc[0]['reference_range']):
+                ref_range = str(df.iloc[0]['reference_range'])
+                
+                # Parse reference range using regex (similar to visualization.py)
+                import re
+                numbers = re.findall(r'\d+(?:\.\d+)?', ref_range)
+                
+                if len(numbers) >= 2:
+                    # Range format (e.g., "70-100")
+                    min_val = float(numbers[0])
+                    max_val = float(numbers[1])
+                    
+                    # Add shaded area for normal range
+                    plt.axhspan(min_val, max_val, alpha=0.2, color='lightgreen', 
+                               label='Normal Range', zorder=2)
+                    
+                    # Add text annotation for the normal range
+                    y_position = min_val + (max_val - min_val) * 0.5
+                    plt.text(df['test_date'].iloc[-1], y_position, 
+                            f'Normal: {min_val}-{max_val}', 
+                            bbox=dict(boxstyle='round,pad=0.3', facecolor='lightgreen', alpha=0.7),
+                            fontsize=8, ha='right', va='center')
+                    
+                elif len(numbers) == 1 and ('<' in ref_range or '>' in ref_range):
+                    # Single boundary format (e.g., "<200" or ">40")
+                    value = float(numbers[0])
+                    if '<' in ref_range:
+                        plt.axhline(y=value, color='orange', linestyle='--', alpha=0.8, 
+                                   label=f'Upper limit: {value}', zorder=2)
+                    elif '>' in ref_range:
+                        plt.axhline(y=value, color='orange', linestyle='--', alpha=0.8, 
+                                   label=f'Lower limit: {value}', zorder=2)
+                    
+                    # Add text annotation
+                    plt.text(df['test_date'].iloc[-1], value, 
+                            f'Limit: {ref_range}', 
+                            bbox=dict(boxstyle='round,pad=0.3', facecolor='orange', alpha=0.7),
+                            fontsize=8, ha='right', va='bottom')
+                            
+        except Exception as e:
+            # If parsing fails, skip adding reference range
+            print(f"Could not add reference range for {test_type}: {e}")
+            pass
+    
     def _create_alert_summary(self, patient_name: str, user_id: int) -> List:
         """Create alert summary section."""
         elements = []
@@ -464,7 +516,7 @@ class PDFReportGenerator:
             from alert_system import AlertSystem
             alert_system = AlertSystem(self.database)
             
-            # Get patient alerts (check method signature)
+            # Get patient alerts 
             alerts = alert_system.get_patient_alerts(patient_name)
             
             if not alerts:
