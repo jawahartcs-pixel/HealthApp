@@ -81,11 +81,11 @@ class PDFReportGenerator:
             story.extend(self._create_visualization_section(patient_name, user_id))
             story.append(PageBreak())
             
+            # Test results table (moved after visualizations, before alerts)
+            story.extend(self._create_test_results_table(patient_name, user_id))
+            
             # Alert summary
             story.extend(self._create_alert_summary(patient_name, user_id))
-            
-            # Test results table (moved to bottom)
-            story.extend(self._create_test_results_table(patient_name, user_id))
             
             # Build PDF
             doc.build(story)
