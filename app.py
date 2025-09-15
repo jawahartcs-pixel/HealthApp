@@ -2494,17 +2494,39 @@ def export_data_page(db, user_id):
         patient_names = [patient[1] for patient in patients]
         selected_patient = st.selectbox("Select Patient", patient_names)
         
-        if selected_patient and st.button("Export Patient Data"):
-            patient_tests = db.get_patient_tests(selected_patient)
-            if patient_tests:
-                df = pd.DataFrame(patient_tests, columns=['Date', 'Test Type', 'Value', 'Unit', 'Reference Range'])
-                csv = df.to_csv(index=False)
-                st.download_button(
-                    label=f"Download {selected_patient}_test_results.csv",
-                    data=csv,
-                    file_name=f"{selected_patient}_test_results.csv",
-                    mime="text/csv"
-                )
+        if selected_patient:
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                if st.button("📊 Export CSV Data"):
+                    patient_tests = db.get_patient_tests(selected_patient)
+                    if patient_tests:
+                        df = pd.DataFrame(patient_tests, columns=['Date', 'Test Type', 'Value', 'Unit', 'Reference Range'])
+                        csv = df.to_csv(index=False)
+                        st.download_button(
+                            label=f"Download {selected_patient}_test_results.csv",
+                            data=csv,
+                            file_name=f"{selected_patient}_test_results.csv",
+                            mime="text/csv"
+                        )
+            
+            with col2:
+                if st.button("📄 Generate PDF Report"):
+                    try:
+                        from pdf_report_generator import PDFReportGenerator
+                        pdf_generator = PDFReportGenerator(db)
+                        pdf_bytes = pdf_generator.generate_patient_report(selected_patient, user_id)
+                        
+                        st.download_button(
+                            label="Download PDF Report",
+                            data=pdf_bytes,
+                            file_name=f"{selected_patient}_blood_test_report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf",
+                            mime="application/pdf"
+                        )
+                        st.success("✅ PDF report generated successfully!")
+                    except Exception as e:
+                        st.error(f"Error generating PDF report: {str(e)}")
+                        st.error(f"Debug info: {type(e).__name__}: {str(e)}")
     
     elif export_type == "Date Range":
         col1, col2 = st.columns(2)
