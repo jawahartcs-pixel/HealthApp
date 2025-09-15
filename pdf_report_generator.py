@@ -77,15 +77,15 @@ class PDFReportGenerator:
             # Patient summary
             story.extend(self._create_patient_summary(patient_name, user_id))
             
-            # Test results table
-            story.extend(self._create_test_results_table(patient_name, user_id))
-            story.append(PageBreak())
-            
             # Charts and visualizations
             story.extend(self._create_visualization_section(patient_name, user_id))
+            story.append(PageBreak())
             
             # Alert summary
             story.extend(self._create_alert_summary(patient_name, user_id))
+            
+            # Test results table (moved to bottom)
+            story.extend(self._create_test_results_table(patient_name, user_id))
             
             # Build PDF
             doc.build(story)
@@ -212,24 +212,7 @@ class PDFReportGenerator:
         
         return elements
         
-        # Patient name
-        patient_title = Paragraph(f"Patient: {patient_name}", self.heading_style)
-        elements.append(patient_title)
-        elements.append(Spacer(1, 0.3*inch))
-        
-        # Report date
-        report_date = Paragraph(f"Report Generated: {datetime.now().strftime('%B %d, %Y')}", self.styles['Normal'])
-        elements.append(report_date)
-        elements.append(Spacer(1, 0.5*inch))
-        
-        # Report description
-        description = Paragraph(
-            "This report contains a comprehensive analysis of blood test results, "
-            "including trends, alerts, and clinical insights based on the latest "
-            "test data available in the system.",
-            self.styles['Normal']
-        )
-        elements.append(description)
+        # Remove duplicate unreachable code (dead code after return statement)
         
         return elements
     
@@ -281,11 +264,11 @@ class PDFReportGenerator:
         return elements
     
     def _create_test_results_table(self, patient_name: str, user_id: int) -> List:
-        """Create detailed test results table."""
+        """Create detailed test results table in pivot format."""
         elements = []
         
         # Section header
-        elements.append(Paragraph("Recent Test Results", self.heading_style))
+        elements.append(Paragraph("Complete Test Results", self.heading_style))
         
         # Get patient data
         test_data = self.database.get_patient_tests(patient_name, user_id)
@@ -297,38 +280,83 @@ class PDFReportGenerator:
         # get_patient_tests returns 5 columns: test_date, test_type, test_value, unit, reference_range
         df = pd.DataFrame(test_data, columns=['test_date', 'test_type', 'test_value', 'unit', 'reference_range'])
         df['test_date'] = pd.to_datetime(df['test_date'])
+        df['test_date_str'] = df['test_date'].dt.strftime('%Y-%m-%d')
         
-        # Sort by date (most recent first) and limit to last 20 results
-        df_sorted = df.sort_values('test_date', ascending=False).head(20)
+        # Create pivot table - tests as rows, dates as columns
+        pivot_data = df.pivot_table(
+            index=['test_type', 'unit', 'reference_range'], 
+            columns='test_date_str', 
+            values='test_value', 
+            aggfunc='first'  # In case of duplicates, take first value
+        )
         
-        # Prepare table data
-        table_data = [['Date', 'Test Type', 'Value', 'Unit', 'Reference Range']]
+        if pivot_data.empty:
+            elements.append(Paragraph("No test data available for table.", self.styles['Normal']))
+            return elements
         
-        for _, row in df_sorted.iterrows():
-            table_data.append([
-                row['test_date'].strftime('%Y-%m-%d'),
-                str(row['test_type']),
-                str(row['test_value']),
-                str(row['unit']) if pd.notna(row['unit']) else '',
-                str(row['reference_range']) if pd.notna(row['reference_range']) else ''
-            ])
+        # Sort dates for display
+        date_columns = sorted(pivot_data.columns)
         
-        # Create table
-        results_table = Table(table_data, colWidths=[1.2*inch, 1.8*inch, 1*inch, 0.8*inch, 1.5*inch])
-        results_table.setStyle(TableStyle([
-            ('BACKGROUND', (0, 0), (-1, 0), colors.darkblue),
-            ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
-            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-            ('FONTSIZE', (0, 0), (-1, 0), 10),
-            ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
-            ('BACKGROUND', (0, 1), (-1, -1), colors.white),
-            ('GRID', (0, 0), (-1, -1), 1, colors.black),
-            ('FONTSIZE', (0, 1), (-1, -1), 8)
-        ]))
+        # Calculate how many dates can fit per table based on page width
+        # A4 page width is ~6.27 inches with 1-inch margins
+        available_width = 6.27 * inch  # Conservative estimate
+        static_width = 1.8*inch + 0.6*inch + 1.2*inch  # Test Type + Unit + Reference Range columns
+        date_width = 0.6*inch  # Reduced from 0.8 inch
+        max_dates_per_table = max(1, int((available_width - static_width) / date_width))
         
-        elements.append(results_table)
-        elements.append(Spacer(1, 0.3*inch))
+        date_chunks = [date_columns[i:i + max_dates_per_table] for i in range(0, len(date_columns), max_dates_per_table)]
+        
+        for chunk_idx, date_chunk in enumerate(date_chunks):
+            if len(date_chunks) > 1:
+                elements.append(Paragraph(f"Test Results Table {chunk_idx + 1}", self.subheading_style))
+            
+            # Create table data for this chunk
+            table_data = []
+            
+            # Header row: Test Type | Unit | Reference Range | Date1 | Date2 | ...
+            header = ['Test Type', 'Unit', 'Reference Range'] + date_chunk
+            table_data.append(header)
+            
+            # Data rows
+            for (test_type, unit, ref_range), row in pivot_data.iterrows():
+                data_row = [
+                    str(test_type),
+                    str(unit) if pd.notna(unit) else '',
+                    str(ref_range) if pd.notna(ref_range) else ''
+                ]
+                
+                # Add values for each date in this chunk
+                for date_col in date_chunk:
+                    value = row.get(date_col, None)
+                    if pd.notna(value):
+                        data_row.append(f"{value:.2f}" if isinstance(value, (int, float)) else str(value))
+                    else:
+                        data_row.append('-')
+                
+                table_data.append(data_row)
+            
+            # Calculate column widths dynamically to fit page
+            col_widths = [1.8*inch, 0.6*inch, 1.2*inch] + [date_width] * len(date_chunk)
+            
+            # Create table
+            results_table = Table(table_data, colWidths=col_widths)
+            results_table.setStyle(TableStyle([
+                ('BACKGROUND', (0, 0), (-1, 0), colors.darkblue),
+                ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+                ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                ('FONTSIZE', (0, 0), (-1, 0), 8),
+                ('BOTTOMPADDING', (0, 0), (-1, 0), 6),
+                ('BACKGROUND', (0, 1), (-1, -1), colors.white),
+                ('GRID', (0, 0), (-1, -1), 1, colors.black),
+                ('FONTSIZE', (0, 1), (-1, -1), 6),
+                ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+                # Alternate row colors for better readability
+                ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.lightgrey])
+            ]))
+            
+            elements.append(results_table)
+            elements.append(Spacer(1, 0.3*inch))
         
         return elements
     
@@ -526,7 +554,7 @@ class PDFReportGenerator:
             # Create alerts table
             alert_data = [['Date', 'Test Type', 'Value', 'Level', 'Message']]
             
-            for alert in alerts[:10]:  # Limit to 10 most recent alerts
+            for alert in alerts:  # Show all alerts
                 alert_data.append([
                     str(alert.get('test_date', 'N/A')),
                     str(alert.get('test_type', 'N/A')),
