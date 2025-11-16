@@ -37,9 +37,54 @@ class Visualization:
             'Potassium': '#A9CCE3'
         }
     
+    def add_event_lines(self, fig: go.Figure, events: List[Dict], x_range: tuple = None):
+        """Add vertical lines for patient events to a chart.
+        
+        Args:
+            fig: Plotly figure to add event lines to
+            events: List of event dictionaries with 'event_date' and 'event_name'
+            x_range: Optional tuple of (min_date, max_date) to filter visible events
+        """
+        if not events:
+            return
+        
+        for event in events:
+            event_date = pd.to_datetime(event['event_date'])
+            
+            # If x_range is provided, only show events within the visible range
+            if x_range:
+                min_date, max_date = x_range
+                if event_date < min_date or event_date > max_date:
+                    continue
+            
+            # Add vertical line for the event
+            fig.add_vline(
+                x=event_date,
+                line_dash="dash",
+                line_color="rgba(255, 0, 0, 0.5)",
+                line_width=2,
+                annotation_text=event['event_name'],
+                annotation_position="top",
+                annotation=dict(
+                    font=dict(size=10, color="red"),
+                    textangle=-90,
+                    bgcolor="rgba(255, 255, 255, 0.8)",
+                    bordercolor="red",
+                    borderwidth=1
+                )
+            )
+    
     def create_trend_chart(self, test_data: pd.DataFrame, test_type: str, patient_name: str, 
-                          patient_gender: Optional[str] = None) -> go.Figure:
-        """Create a trend chart for a specific test type and patient."""
+                          patient_gender: Optional[str] = None, events: List[Dict] = None) -> go.Figure:
+        """Create a trend chart for a specific test type and patient.
+        
+        Args:
+            test_data: DataFrame with test results
+            test_type: Type of test to display
+            patient_name: Name of the patient
+            patient_gender: Gender of the patient for reference ranges
+            events: List of patient events to display as vertical lines
+        """
         try:
             # Filter data for the specific test type
             filtered_data = test_data[test_data['Test Type'] == test_type].copy()
@@ -143,6 +188,10 @@ class Visualization:
                     bordercolor=color,
                     borderwidth=1
                 )
+            
+            # Add patient events as vertical lines
+            if events:
+                self.add_event_lines(fig, events, (filtered_data['Date'].min(), filtered_data['Date'].max()))
             
             return fig
             
@@ -687,8 +736,16 @@ class Visualization:
             pass
     
     def create_beautiful_2d_chart(self, test_data: pd.DataFrame, test_type: str, patient_name: str, 
-                                 patient_gender: Optional[str] = None) -> go.Figure:
-        """Create a beautiful 2D chart with enhanced styling."""
+                                 patient_gender: Optional[str] = None, events: List[Dict] = None) -> go.Figure:
+        """Create a beautiful 2D chart with enhanced styling.
+        
+        Args:
+            test_data: DataFrame with test results
+            test_type: Type of test to display
+            patient_name: Name of the patient
+            patient_gender: Gender of the patient for reference ranges
+            events: List of patient events to display as vertical lines
+        """
         try:
             # Filter data for the specific test type
             filtered_data = test_data[test_data['Test Type'] == test_type].copy()
@@ -785,6 +842,10 @@ class Visualization:
                     borderwidth=1
                 )
             
+            # Add patient events as vertical lines
+            if events:
+                self.add_event_lines(fig, events, (filtered_data['Date'].min(), filtered_data['Date'].max()))
+            
             return fig
             
         except Exception as e:
@@ -792,8 +853,17 @@ class Visualization:
             return go.Figure()
     
     def create_grouped_chart(self, category_data: pd.DataFrame, patient_name: str, test_types: list, 
-                           category: str, patient_gender: Optional[str] = None) -> go.Figure:
-        """Create a grouped comparison chart for multiple tests in a category."""
+                           category: str, patient_gender: Optional[str] = None, events: List[Dict] = None) -> go.Figure:
+        """Create a grouped comparison chart for multiple tests in a category.
+        
+        Args:
+            category_data: DataFrame with test results
+            patient_name: Name of the patient
+            test_types: List of test types to display
+            category: Category name
+            patient_gender: Gender of the patient for reference ranges
+            events: List of patient events to display as vertical lines
+        """
         try:
             fig = go.Figure()
             
@@ -876,6 +946,10 @@ class Visualization:
                     showline=True
                 )
             )
+            
+            # Add patient events as vertical lines
+            if events and not category_data.empty:
+                self.add_event_lines(fig, events, (category_data['Date'].min(), category_data['Date'].max()))
             
             return fig
             
