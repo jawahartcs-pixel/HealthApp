@@ -2291,6 +2291,10 @@ def patient_dashboard_page(db, visualization, alert_system, user_id):
         # Get patient ID and patient events for visualization
         patient_id = db.get_patient_id(selected_patient, user_id)
         patient_events = db.get_patient_events(patient_id, user_id) if patient_id else []
+        print(f"DEBUG: Patient Dashboard - Fetched {len(patient_events)} events for patient '{selected_patient}' (ID: {patient_id})")
+        if patient_events:
+            for evt in patient_events:
+                print(f"DEBUG:   - Event: '{evt['event_name']}' on {evt['event_date']}")
         
         # Convert to DataFrame for easier manipulation
         df = pd.DataFrame(patient_tests, columns=['Date', 'Test Type', 'Value', 'Unit', 'Reference Range'])
