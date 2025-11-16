@@ -28,6 +28,21 @@ class PDFReportGenerator:
         self.styles = getSampleStyleSheet()
         self._setup_custom_styles()
     
+    def _filter_data_by_dates(self, df: pd.DataFrame, date_column: str = 'test_date') -> pd.DataFrame:
+        """Filter dataframe based on session state filter dates."""
+        try:
+            import streamlit as st
+            if 'pdf_filter_dates' in st.session_state:
+                filter_dates = st.session_state['pdf_filter_dates']
+                if filter_dates:
+                    # Convert date column to date type for comparison
+                    df[date_column] = pd.to_datetime(df[date_column])
+                    filtered_df = df[df[date_column].dt.date.isin(filter_dates)].copy()
+                    return filtered_df
+        except:
+            pass
+        return df
+    
     def _setup_custom_styles(self):
         """Set up custom paragraph styles for the report."""
         self.title_style = ParagraphStyle(
@@ -234,6 +249,13 @@ class PDFReportGenerator:
         df = pd.DataFrame(test_data, columns=['test_date', 'test_type', 'test_value', 'unit', 'reference_range'])
         df['test_date'] = pd.to_datetime(df['test_date'])
         
+        # Apply date filter if present
+        df = self._filter_data_by_dates(df, 'test_date')
+        
+        if df.empty:
+            elements.append(Paragraph("No test data available for selected reports.", self.styles['Normal']))
+            return elements
+        
         # Summary statistics
         total_tests = len(df)
         test_types = df['test_type'].nunique()
@@ -280,6 +302,14 @@ class PDFReportGenerator:
         # get_patient_tests returns 5 columns: test_date, test_type, test_value, unit, reference_range
         df = pd.DataFrame(test_data, columns=['test_date', 'test_type', 'test_value', 'unit', 'reference_range'])
         df['test_date'] = pd.to_datetime(df['test_date'])
+        
+        # Apply date filter if present
+        df = self._filter_data_by_dates(df, 'test_date')
+        
+        if df.empty:
+            elements.append(Paragraph("No test data available for selected reports.", self.styles['Normal']))
+            return elements
+        
         df['test_date_str'] = df['test_date'].dt.strftime('%Y-%m-%d')
         
         # Create pivot table - tests as rows, dates as columns
@@ -378,6 +408,13 @@ class PDFReportGenerator:
         df = pd.DataFrame(test_data, columns=['test_date', 'test_type', 'test_value', 'unit', 'reference_range'])
         df['test_date'] = pd.to_datetime(df['test_date'])
         df['test_value'] = pd.to_numeric(df['test_value'], errors='coerce')
+        
+        # Apply date filter if present
+        df = self._filter_data_by_dates(df, 'test_date')
+        
+        if df.empty:
+            elements.append(Paragraph("No data available for visualization in selected reports.", self.styles['Normal']))
+            return elements
         
         # Group test types by medical category using investigation standards
         try:
@@ -547,14 +584,28 @@ class PDFReportGenerator:
             # Get patient alerts 
             alerts = alert_system.get_patient_alerts(patient_name)
             
+            # Filter alerts by date if filter is active
+            try:
+                import streamlit as st
+                if 'pdf_filter_dates' in st.session_state and st.session_state['pdf_filter_dates']:
+                    filter_dates = st.session_state['pdf_filter_dates']
+                    filtered_alerts = []
+                    for alert in alerts:
+                        alert_date = pd.to_datetime(alert['test_date']).date()
+                        if alert_date in filter_dates:
+                            filtered_alerts.append(alert)
+                    alerts = filtered_alerts
+            except:
+                pass
+            
             if not alerts:
-                elements.append(Paragraph("No active alerts for this patient.", self.styles['Normal']))
+                elements.append(Paragraph("No active alerts for selected reports.", self.styles['Normal']))
                 return elements
             
             # Create alerts table
             alert_data = [['Date', 'Test Type', 'Value', 'Level', 'Message']]
             
-            for alert in alerts:  # Show all alerts
+            for alert in alerts:  # Show filtered alerts
                 alert_data.append([
                     str(alert.get('test_date', 'N/A')),
                     str(alert.get('test_type', 'N/A')),
