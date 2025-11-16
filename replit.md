@@ -1,117 +1,9 @@
 # Blood Test Results Management System
 
 ## Overview
-
-A Streamlit-based web application designed for healthcare professionals to manage, visualize, and analyze patient blood test results. This system facilitates uploading various file formats, storing data in a structured database, and generating meaningful visualizations to track health trends over time. The project aims to provide an intuitive tool for patient health monitoring, offering comprehensive data analysis and reporting capabilities.
-
-## Recent Changes (November 2025)
-
-### Patient Events Tracking System (November 16, 2025)
-- **Event Management Interface**: Added comprehensive Patient Events page for tracking important medical events (surgeries, treatments, diagnoses)
-- **Database Schema**: New patient_events table storing event_id, patient_id, event_name, event_date, notes, and user_id
-- **Full CRUD Operations**: Complete create, read, update, and delete functionality for patient events
-- **Three-Tab UI**:
-  - View Events: Displays all events for selected patient with expandable details
-  - Add Event: Form to create new events with name, date, and optional notes
-  - Edit/Delete Events: Individual forms for modifying or removing each event
-- **Visual Event Markers**: Events automatically appear as vertical red dashed lines with labels on all patient charts
-- **Smart Date Filtering**: Events only display on charts when within the visible date range
-- **Event Correlation Analysis**: Helps healthcare professionals visualize how test results change before and after medical interventions
-- **Integration**: Seamlessly integrated with all visualization types (trend charts, beautiful 2D charts, grouped charts)
-- **Patient-Specific Events**: Events are tied to individual patients and respect user permissions
-
-### Patient Dashboard Advanced Filtering System (November 16, 2025)
-- **Dual Filter Implementation**: Added comprehensive filtering system for patient dashboard with two independent filters
-- **Report Date Filter**: Multiselect control to filter data by specific report dates (default: all reports selected)
-- **Test Type Filter**: Multiselect control to filter data by specific test types/investigations (default: all tests selected)
-- **Filtered Components**: All dashboard components respect both filters including:
-  - Summary metrics (Total Tests, Reports, Test Types, date ranges)
-  - Report Summary section with detailed breakdown
-  - Active Alerts section (filters by both date and test type)
-  - Test Trends visualizations and charts
-  - CSV data export (downloads only filtered data)
-  - PDF report generation (includes only filtered data)
-- **Smart Filter Integration**: Filters work together - data must match both selected dates AND selected test types
-- **User Experience**: Reset button to restore all selections; clear visual feedback when filters are applied
-- **Session State Management**: PDF generator receives filter parameters through session state for accurate report generation
-
-## Recent Changes (September 2025)
-
-### Email Alert System Complete Fix and Verification (September 3, 2025)
-- **✅ FULLY OPERATIONAL**: Email medication reminder system working perfectly with Asia/Kolkata timezone support
-- **Fixed Critical Medication Editing Bug**: Removed duplicate update_medication methods that prevented schedule updates from persisting
-- **Corrected Email Alert Timing**: Fixed 6-7 minute early sending issue to precisely 5 minutes before medication time
-- **Enhanced Multiple Alert Support**: System now correctly processes separate email alerts for each medication time (e.g., 21:57 and 21:59)
-- **Improved Timing Flexibility**: Replaced strict 60-second window with flexible alert window that triggers between alert time and medication time
-- **Added Comprehensive Email History Tracking**: Implemented duplicate prevention and detailed email logging with timestamps
-- **Fixed Corrupted Alert Data**: Corrected alert_timings database entries from timestamp corruption to proper JSON format
-- **Complete Timezone Integration**: Fixed timezone handling in get_due_reminders() and process_pending_email_reminders() methods
-- **Verified Real Email Delivery**: Successfully tested and confirmed email delivery at 21:56:52 Asia/Kolkata time for 21:57 and 21:59 medications
-- **Eliminated Duplicate Methods**: Removed duplicate _send_enhanced_reminder_email methods causing parameter conflicts
-
-### Enhanced SMTP Configuration and Email Management System
-
-### Enhanced SMTP Configuration and Email Management System  
-- Added permanent SMTP configuration storage in database with secure form interface
-- Implemented comprehensive patient email management with add/edit functionality
-- Enhanced medication forms to display patient email status and provide quick email editing
-- Added manual reminder sending with "Send Reminders Now" button for immediate email delivery
-- Fixed medication edit forms to pre-select correct frequency and display current schedule timing
-- Integrated database-stored SMTP configuration replacing environment variable dependencies
-- Added robust error handling for email functionality with fallback mechanisms
-
-### Enhanced Medication Reminder User Interface
-- Improved medication schedule display showing today's date and alert times with status indicators
-- Fixed edit medication form to show correct frequency defaults instead of "Daily one time"
-- Enhanced multiple daily dose selection to show time inputs immediately (Morning, Afternoon, Evening, Night)
-- Added dynamic alert timing options that appear immediately when multiple alerts are enabled
-- Improved today's medication filtering to include current day medications if time hasn't passed
-- Added comprehensive database methods for patient detail management and email updates
-
-### Advanced Email Reminder System with Background Processing
-- Implemented custom reminder times allowing users to set specific times for email alerts
-- Added background email processor running every minute to automatically check and send pending reminders
-- Comprehensive email history tracking with database storage of all sent emails and timestamps
-- Enhanced email processing with intelligent timing algorithms and duplicate prevention
-- Real-time email status monitoring with pending reminder detection and processing controls
-- Email history management with viewing, filtering, and clearing capabilities
-- Custom alert timing options (5 min, 15 min, 30 min, 1 hour, 2 hours before, or exact time)
-- Automated email logging with detailed metadata including patient info, medication details, and sending timestamps
-
-## Recent Changes (August 2025)
-
-### Enhanced Patient Profile Management
-- Added date of birth field to patient profiles with automatic age calculation
-- Database schema updated with date_of_birth column
-- Profile forms now derive age from birth date for better accuracy
-
-### Improved Alert System Terminology
-- Updated alert levels to "Minor Alert/Medium Alert/Major Alert/Critical Alert" with descriptive labels
-- Enhanced alert headers now display complete status with values and dates: "Vitamin D is low: 21.7 on 2025-05-30"
-- Moved detailed information from expandable message to header for immediate visibility
-- Alert display uses consistent descriptive labels throughout all dashboard sections
-
-### Enhanced OCR Accuracy and Patient Name Extraction
-- Improved patient name extraction with "patient" tag priority for intelligent identification
-- Added negative lookahead patterns to avoid confusing consultant/doctor names with patient names
-- Enhanced date extraction patterns to correctly identify recent years (2022-2025) over older dates
-- Updated regex patterns for better medical document parsing and accuracy
-
-### Enhanced Patient Profile Management
-- Date of birth field now supports full range from 1900 to present day
-- Age calculation hidden until date of birth is provided, then auto-calculated and displayed
-- Profile forms provide better user experience with informative messages
-
-### Enhanced Medication Reminder System with Flexible Scheduling
-- Added support for flexible scheduling intervals: 7 days, 14 days, 21 days, monthly, or custom intervals
-- Implemented email notification system for medication reminders sent to patient email addresses
-- Enhanced medication frequency options: Every other day, Weekly, Bi-weekly, Every 21 days, Monthly, Custom interval
-- Added email reminder management tab with manual processing and upcoming reminders preview
-- Intelligent interval calculation with automatic next reminder date updates
-- Fixed patient display to show names instead of IDs in medication reminder interface
+A Streamlit-based web application for healthcare professionals to manage, visualize, and analyze patient blood test results. The system supports uploading various file formats, storing data in a structured database, and generating visualizations to track health trends. It aims to be an intuitive tool for patient health monitoring, offering comprehensive data analysis, reporting, and AI-powered anomaly detection capabilities.
 
 ## User Preferences
-
 Preferred communication style: Simple, everyday language.
 User prefers beautiful 2D graph designs over 3D for better performance and readability.
 User wants proper category grouping for visualizations using the investigation standards table.
@@ -119,53 +11,49 @@ User wants proper category grouping for visualizations using the investigation s
 ## System Architecture
 
 ### Frontend Architecture
-- **Framework**: Streamlit web application framework.
-- **Design Pattern**: Multi-page application with sidebar navigation.
-- **UI Components**: Forms, data tables, interactive charts, file uploaders.
+- **Framework**: Streamlit web application.
+- **Design Pattern**: Multi-page application with sidebar navigation, forms, data tables, interactive charts, and file uploaders.
 - **Caching**: Streamlit's built-in caching for database connections and components.
 
 ### Backend Architecture
 - **Language**: Python.
 - **Architecture Pattern**: Modular, component-based design.
-- **Core Components**:
-    - Database layer for data persistence.
-    - File parser for extracting test results from diverse document formats.
-    - Data processor for validation and business logic.
-    - Visualization engine for dynamic charts and graphs.
-    - Utility functions for data validation and formatting.
+- **Core Components**: Database layer, file parser, data processor, visualization engine, and utility functions.
 
 ### Data Storage Solution
 - **Database**: SQLite for local data storage.
-- **Schema Design**: Tables for patients, test results, and patient documents with foreign key relationships and indexed fields for performance. Extended patient table includes comprehensive profile fields (age, gender, contact information, medical history, medications, allergies, emergency contacts, notes).
+- **Schema Design**: Tables for patients, test results, patient documents, and patient events, with foreign key relationships and indexed fields. Comprehensive patient profile fields include age, gender, contact information, medical history, medications, allergies, emergency contacts, and notes.
 - **Data Integrity**: Enforced through foreign key and unique constraints.
 - **Document Storage**: Physical file storage with database metadata tracking, supporting original filename preservation and multiple file formats.
 
 ### Key Features & Technical Implementations
 - **Data Management**: CRUD operations for patients and test results, automatic table creation, and schema management.
-- **File Parsing**: Supports PDF, Word, Excel, CSV, XML, and various image formats (JPEG, PNG, BMP, TIFF) with OCR. Features include regex-based extraction, tabular data handling, and intelligent reference range parsing.
-- **Data Processing**: Validates patient information, test dates, and result values; includes business logic for patient management and result aggregation.
-- **Visualization**: Utilizes Plotly for interactive 2D charts (trend, comparison, grouped) with consistent color schemes, compact layouts, and annotations. Supports category grouping based on investigation standards and gender-specific reference ranges with visual indicators.
-- **Investigation Standards Management**: Manages predefined and user-defined test standards, including reference ranges, units, and aliases. Features auto-synchronization of test results with standard changes and Excel-style editing.
-- **AI-Powered Anomaly Detection**: Integrates multiple machine learning algorithms (Isolation Forest, Statistical Outlier, DBSCAN, Temporal, Correlation-based) for comprehensive anomaly detection across patients, providing medical insights and actionable recommendations.
-- **Alert System**: Implements a four-level severity system (Critical Alert, Major Alert, Medium Alert, Minor Alert) for abnormal values based on deviation from normal ranges, with enhanced headers showing complete status and values in expandable titles, and a dedicated alert dashboard with integrated display.
-- **Enhanced Medication Management**: Advanced medication tracking with flexible scheduling intervals (daily, weekly, bi-weekly, monthly, custom intervals), automated email reminder system, adherence monitoring, and effectiveness analysis. Features comprehensive multi-tab UI with email notification management and intelligent interval-based reminder scheduling.
-- **Document Preview & Comparison**: Provides side-by-side document preview with extracted results, highlighting, search functionality, and tools for verification.
-- **Data Filtering & Sorting**: Advanced filtering and sorting capabilities for database records, including multi-column sorting, date/value range filtering, and text search.
-- **PDF Report Generation**: Generates comprehensive, shareable PDF reports with patient summaries, tables, and 2D charts.
-- **Comprehensive Patient Profile Management**: Three-tab system including patient directory with search, detailed profile management with age/gender/contact/medical information, and document upload/management with original filename preservation and file type support.
-- **Gender-Specific Reference Ranges**: Visualization system automatically applies appropriate reference ranges based on patient gender, with color-coded indicators and fallback logic for missing data.
+- **File Parsing**: Supports PDF, Word, Excel, CSV, XML, and various image formats (JPEG, PNG, BMP, TIFF) with OCR, including regex-based extraction and intelligent reference range parsing.
+- **Data Processing**: Validates patient information, test dates, and result values, incorporating business logic for patient management and result aggregation.
+- **Visualization**: Utilizes Plotly for interactive 2D charts (trend, comparison, grouped) with consistent color schemes, compact layouts, and annotations. Supports category grouping based on investigation standards and gender-specific reference ranges with visual indicators and event markers.
+- **Investigation Standards Management**: Manages predefined and user-defined test standards, including reference ranges, units, and aliases, with auto-synchronization and Excel-style editing.
+- **AI-Powered Anomaly Detection**: Integrates multiple machine learning algorithms (Isolation Forest, Statistical Outlier, DBSCAN, Temporal, Correlation-based) for comprehensive anomaly detection and medical insights.
+- **Alert System**: Implements a four-level severity system ("Minor Alert" to "Critical Alert") for abnormal values based on deviation from normal ranges, with enhanced headers and a dedicated alert dashboard.
+- **Enhanced Medication Management**: Advanced medication tracking with flexible scheduling, an automated email reminder system, adherence monitoring, and effectiveness analysis. Features a multi-tab UI with email notification management and intelligent interval-based reminder scheduling.
+- **Patient Event Tracking**: Comprehensive system for tracking medical events (surgeries, treatments, diagnoses) with full CRUD operations, integrated into visualizations as event markers, and supporting correlation analysis.
+- **Document Preview & Comparison**: Side-by-side document preview with extracted results, highlighting, search, and verification tools.
+- **Data Filtering & Sorting**: Advanced filtering and sorting for database records, including multi-column sorting, date/value range filtering, and text search.
+- **PDF Report Generation**: Generates comprehensive, shareable PDF reports with patient summaries, tables, and 2D charts, respecting applied filters.
+- **Comprehensive Patient Profile Management**: Three-tab system for patient directory, detailed profile management (age/gender/contact/medical information), and document upload/management.
+- **Gender-Specific Reference Ranges**: Visualization system automatically applies appropriate reference ranges based on patient gender, with color-coded indicators.
 
 ## External Dependencies
 
 ### Core Libraries
 - **Streamlit**: Web application framework.
 - **Pandas**: Data manipulation and analysis.
-- **SQLite3**: Database operations (built-in).
+- **SQLite3**: Database operations.
 - **Plotly**: Interactive visualization library.
 - **PDFPlumber**: PDF text extraction.
 - **ReportLab**: PDF report generation.
-- **Tesseract**: OCR processing (for image and scanned PDF support).
-- **Scikit-learn**: For anomaly detection algorithms (e.g., Isolation Forest, DBSCAN).
+- **Pillow (PIL)**: Image processing.
+- **pytesseract**: OCR processing (interface to Tesseract).
+- **Scikit-learn**: Machine learning algorithms (Isolation Forest, DBSCAN).
 
 ### File Processing
 - **Regex**: Pattern matching.
