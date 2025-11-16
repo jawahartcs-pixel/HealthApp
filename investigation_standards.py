@@ -8,6 +8,8 @@ import pandas as pd
 from typing import Dict, List, Tuple, Optional
 from difflib import SequenceMatcher
 import re
+import os
+import json
 
 class InvestigationStandards:
     def __init__(self, db_path: str = "blood_test_results.db"):
@@ -940,6 +942,146 @@ class InvestigationStandards:
                 # Split the pipe-separated causes into a list
                 causes = result[0].split('|')
                 return [cause.strip() for cause in causes if cause.strip()]
+        
+        return []
+    
+    def research_medical_causes_with_ai(self, test_name: str) -> Dict[str, List[str]]:
+        """Research medical causes using OpenAI when not in database.
+        
+        Args:
+            test_name: The standardized test name
+        
+        Returns:
+            Dictionary with 'high' and 'low' keys containing lists of medical causes
+        """
+        try:
+            # the newest OpenAI model is "gpt-5" which was released August 7, 2025.
+            # do not change this unless explicitly requested by the user
+            from openai import OpenAI
+            
+            AI_INTEGRATIONS_OPENAI_API_KEY = os.environ.get("AI_INTEGRATIONS_OPENAI_API_KEY")
+            AI_INTEGRATIONS_OPENAI_BASE_URL = os.environ.get("AI_INTEGRATIONS_OPENAI_BASE_URL")
+            
+            if not AI_INTEGRATIONS_OPENAI_API_KEY or not AI_INTEGRATIONS_OPENAI_BASE_URL:
+                print("OpenAI integration not configured. Skipping AI research.")
+                return {'high': [], 'low': []}
+            
+            openai = OpenAI(
+                api_key=AI_INTEGRATIONS_OPENAI_API_KEY,
+                base_url=AI_INTEGRATIONS_OPENAI_BASE_URL
+            )
+            
+            prompt = f"""You are a medical expert. Provide common medical causes for abnormal blood test values.
+
+Blood Test: {test_name}
+
+Please provide:
+1. 5-7 common medical causes for HIGH values
+2. 5-7 common medical causes for LOW values
+
+Format your response as a JSON object with this exact structure:
+{{
+  "high": ["cause 1", "cause 2", "cause 3", ...],
+  "low": ["cause 1", "cause 2", "cause 3", ...]
+}}
+
+Keep each cause concise (under 50 characters). Focus on the most common and clinically relevant causes."""
+
+            response = openai.chat.completions.create(
+                model="gpt-5-mini",
+                messages=[{"role": "user", "content": prompt}],
+                response_format={"type": "json_object"},
+                max_completion_tokens=2048
+            )
+            
+            content = response.choices[0].message.content or "{}"
+            causes_data = json.loads(content)
+            
+            return {
+                'high': causes_data.get('high', []),
+                'low': causes_data.get('low', [])
+            }
+            
+        except Exception as e:
+            print(f"Error researching medical causes with AI: {e}")
+            return {'high': [], 'low': []}
+    
+    def update_medical_causes(self, standard_name: str, high_causes: List[str], low_causes: List[str]) -> bool:
+        """Update medical causes in the database for a specific test.
+        
+        Args:
+            standard_name: The standardized test name
+            high_causes: List of causes for high values
+            low_causes: List of causes for low values
+        
+        Returns:
+            True if successful, False otherwise
+        """
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+                
+                # Check if causes columns exist
+                cursor.execute("PRAGMA table_info(investigation_standards)")
+                columns = [column[1] for column in cursor.fetchall()]
+                
+                if 'high_causes' not in columns or 'low_causes' not in columns:
+                    return False
+                
+                # Convert lists to pipe-separated strings
+                high_causes_str = '|'.join(high_causes) if high_causes else ''
+                low_causes_str = '|'.join(low_causes) if low_causes else ''
+                
+                # Update the database
+                cursor.execute('''
+                    UPDATE investigation_standards
+                    SET high_causes = ?, low_causes = ?
+                    WHERE standard_name = ?
+                ''', (high_causes_str, low_causes_str, standard_name))
+                
+                conn.commit()
+                return cursor.rowcount > 0
+                
+        except Exception as e:
+            print(f"Error updating medical causes in database: {e}")
+            return False
+    
+    def get_medical_causes_with_ai_fallback(self, test_name: str, status: str = 'high') -> List[str]:
+        """Get medical causes with automatic AI research fallback.
+        
+        This method first tries to get causes from the database. If not found,
+        it uses AI to research the causes and saves them for future use.
+        
+        Args:
+            test_name: The test name (will be standardized)
+            status: 'high' or 'low' to indicate which causes to retrieve
+        
+        Returns:
+            List of possible medical causes
+        """
+        # First try to get from database
+        causes = self.get_medical_causes(test_name, status)
+        
+        if causes:
+            return causes
+        
+        # If not found, standardize the test name
+        standardized_name, match_info = self.standardize_test_name(test_name)
+        
+        if not match_info:
+            return []
+        
+        # Research using AI
+        print(f"Researching medical causes for {standardized_name} using AI...")
+        causes_data = self.research_medical_causes_with_ai(standardized_name)
+        
+        if causes_data['high'] or causes_data['low']:
+            # Save to database for future use
+            self.update_medical_causes(standardized_name, causes_data['high'], causes_data['low'])
+            print(f"Medical causes for {standardized_name} saved to database")
+            
+            # Return the requested causes
+            return causes_data.get(status.lower(), [])
         
         return []
     
