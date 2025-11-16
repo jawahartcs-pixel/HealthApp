@@ -29,16 +29,27 @@ class PDFReportGenerator:
         self._setup_custom_styles()
     
     def _filter_data_by_dates(self, df: pd.DataFrame, date_column: str = 'test_date') -> pd.DataFrame:
-        """Filter dataframe based on session state filter dates."""
+        """Filter dataframe based on session state filter dates and test types."""
         try:
             import streamlit as st
+            
+            # Apply date filter
             if 'pdf_filter_dates' in st.session_state:
                 filter_dates = st.session_state['pdf_filter_dates']
                 if filter_dates:
                     # Convert date column to date type for comparison
                     df[date_column] = pd.to_datetime(df[date_column])
-                    filtered_df = df[df[date_column].dt.date.isin(filter_dates)].copy()
-                    return filtered_df
+                    df = df[df[date_column].dt.date.isin(filter_dates)].copy()
+            
+            # Apply test type filter
+            if 'pdf_filter_test_types' in st.session_state:
+                filter_test_types = st.session_state['pdf_filter_test_types']
+                if filter_test_types:
+                    # Filter by test type (assuming column name is 'test_type')
+                    if 'test_type' in df.columns:
+                        df = df[df['test_type'].isin(filter_test_types)].copy()
+            
+            return df
         except:
             pass
         return df
@@ -584,15 +595,23 @@ class PDFReportGenerator:
             # Get patient alerts 
             alerts = alert_system.get_patient_alerts(patient_name)
             
-            # Filter alerts by date if filter is active
+            # Filter alerts by date and test type if filters are active
             try:
                 import streamlit as st
-                if 'pdf_filter_dates' in st.session_state and st.session_state['pdf_filter_dates']:
-                    filter_dates = st.session_state['pdf_filter_dates']
+                filter_dates = st.session_state.get('pdf_filter_dates', None)
+                filter_test_types = st.session_state.get('pdf_filter_test_types', None)
+                
+                if filter_dates or filter_test_types:
                     filtered_alerts = []
                     for alert in alerts:
                         alert_date = pd.to_datetime(alert['test_date']).date()
-                        if alert_date in filter_dates:
+                        alert_test_type = alert['test_type']
+                        
+                        # Check if alert passes both filters
+                        date_match = True if not filter_dates else alert_date in filter_dates
+                        test_match = True if not filter_test_types else alert_test_type in filter_test_types
+                        
+                        if date_match and test_match:
                             filtered_alerts.append(alert)
                     alerts = filtered_alerts
             except:

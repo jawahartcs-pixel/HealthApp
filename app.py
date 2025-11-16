@@ -2168,17 +2168,20 @@ def patient_dashboard_page(db, visualization, alert_system, user_id):
         df['Date'] = pd.to_datetime(df['Date'])
         df['Value'] = pd.to_numeric(df['Value'], errors='coerce')
         
-        # Get unique report dates
+        # Get unique report dates and test types
         unique_dates = sorted(df['Date'].dt.date.unique(), reverse=True)
+        unique_test_types = sorted(df['Test Type'].unique())
         
         # Report filter section
-        st.subheader("🗂️ Filter Reports")
+        st.subheader("🗂️ Filter Reports and Tests")
+        
+        # Date filter
         col_filter1, col_filter2 = st.columns([3, 1])
         
         with col_filter1:
             # Multiselect for report dates (default: all selected)
             selected_dates = st.multiselect(
-                "Select Reports to Display",
+                "Select Reports to Display (by Date)",
                 options=unique_dates,
                 default=unique_dates,
                 format_func=lambda x: f"📊 Report from {x}",
@@ -2188,19 +2191,35 @@ def patient_dashboard_page(db, visualization, alert_system, user_id):
         with col_filter2:
             st.write("")
             st.write("")
-            if st.button("🔄 Reset Filter"):
+            if st.button("🔄 Reset Filters"):
                 st.rerun()
         
-        # Apply filter to dataframe
+        # Test type filter
+        selected_test_types = st.multiselect(
+            "Select Tests/Investigations to Display",
+            options=unique_test_types,
+            default=unique_test_types,
+            format_func=lambda x: f"🔬 {x}",
+            help="Select which tests to include in the dashboard. By default, all tests are shown."
+        )
+        
+        # Apply filters to dataframe
         if not selected_dates:
             st.warning("⚠️ Please select at least one report to display")
             return
         
-        # Filter dataframe based on selected dates
-        filtered_df = df[df['Date'].dt.date.isin(selected_dates)].copy()
+        if not selected_test_types:
+            st.warning("⚠️ Please select at least one test type to display")
+            return
+        
+        # Filter dataframe based on selected dates and test types
+        filtered_df = df[
+            (df['Date'].dt.date.isin(selected_dates)) & 
+            (df['Test Type'].isin(selected_test_types))
+        ].copy()
         
         if filtered_df.empty:
-            st.warning("No data available for selected reports")
+            st.warning("No data available for selected reports and tests")
             return
         
         st.divider()
@@ -2223,8 +2242,9 @@ def patient_dashboard_page(db, visualization, alert_system, user_id):
             # PDF Report download for filtered data
             if st.button("📄 Generate PDF Report (Filtered)"):
                 try:
-                    # Store filtered dates in session state for PDF generator to use
+                    # Store filtered dates and test types in session state for PDF generator to use
                     st.session_state['pdf_filter_dates'] = selected_dates
+                    st.session_state['pdf_filter_test_types'] = selected_test_types
                     st.session_state['pdf_patient_name'] = selected_patient
                     
                     pdf_generator = PDFReportGenerator(db)
@@ -2233,6 +2253,8 @@ def patient_dashboard_page(db, visualization, alert_system, user_id):
                     # Clean up session state
                     if 'pdf_filter_dates' in st.session_state:
                         del st.session_state['pdf_filter_dates']
+                    if 'pdf_filter_test_types' in st.session_state:
+                        del st.session_state['pdf_filter_test_types']
                     if 'pdf_patient_name' in st.session_state:
                         del st.session_state['pdf_patient_name']
                     
@@ -2293,16 +2315,17 @@ def patient_dashboard_page(db, visualization, alert_system, user_id):
         
         st.divider()
         
-        # Get and display patient alerts (filtered by selected report dates)
+        # Get and display patient alerts (filtered by selected report dates and test types)
         patient_alerts = alert_system.get_patient_alerts(selected_patient)
         
-        # Filter alerts to only include those from selected report dates
+        # Filter alerts to only include those from selected report dates and test types
         if patient_alerts:
             filtered_alerts = []
             for alert in patient_alerts:
                 # Parse alert test_date and compare with selected dates
                 alert_date = pd.to_datetime(alert['test_date']).date()
-                if alert_date in selected_dates:
+                alert_test_type = alert['test_type']
+                if alert_date in selected_dates and alert_test_type in selected_test_types:
                     filtered_alerts.append(alert)
             
             if filtered_alerts:
