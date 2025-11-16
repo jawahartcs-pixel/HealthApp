@@ -6,6 +6,20 @@ A Streamlit-based web application designed for healthcare professionals to manag
 
 ## Recent Changes (November 2025)
 
+### Patient Events Tracking System (November 16, 2025)
+- **Event Management Interface**: Added comprehensive Patient Events page for tracking important medical events (surgeries, treatments, diagnoses)
+- **Database Schema**: New patient_events table storing event_id, patient_id, event_name, event_date, notes, and user_id
+- **Full CRUD Operations**: Complete create, read, update, and delete functionality for patient events
+- **Three-Tab UI**:
+  - View Events: Displays all events for selected patient with expandable details
+  - Add Event: Form to create new events with name, date, and optional notes
+  - Edit/Delete Events: Individual forms for modifying or removing each event
+- **Visual Event Markers**: Events automatically appear as vertical red dashed lines with labels on all patient charts
+- **Smart Date Filtering**: Events only display on charts when within the visible date range
+- **Event Correlation Analysis**: Helps healthcare professionals visualize how test results change before and after medical interventions
+- **Integration**: Seamlessly integrated with all visualization types (trend charts, beautiful 2D charts, grouped charts)
+- **Patient-Specific Events**: Events are tied to individual patients and respect user permissions
+
 ### Patient Dashboard Advanced Filtering System (November 16, 2025)
 - **Dual Filter Implementation**: Added comprehensive filtering system for patient dashboard with two independent filters
 - **Report Date Filter**: Multiselect control to filter data by specific report dates (default: all reports selected)
