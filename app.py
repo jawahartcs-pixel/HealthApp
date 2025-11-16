@@ -72,7 +72,7 @@ def main():
     auth_ui.sidebar_user_info()
     
     # Page selection
-    pages = ["Upload Results", "View Patients", "Patient Dashboard", "Search & Filter", "Export Data", "Manage Data", "Alert Dashboard", "AI Anomaly Detection", "Medication Reminders", "Investigation Standards"]
+    pages = ["Upload Results", "View Patients", "Patient Dashboard", "Patient Events", "Search & Filter", "Export Data", "Manage Data", "Alert Dashboard", "AI Anomaly Detection", "Medication Reminders", "Investigation Standards"]
     
     # Add profile page for logged-in users
     if st.session_state.get('user_id'):
@@ -89,6 +89,8 @@ def main():
         view_patients_page(db, alert_system, current_user_id)
     elif page == "Patient Dashboard":
         patient_dashboard_page(db, visualization, alert_system, current_user_id)
+    elif page == "Patient Events":
+        patient_events_page(db, current_user_id)
     elif page == "Search & Filter":
         search_filter_page(db, visualization, current_user_id)
     elif page == "Export Data":
@@ -2163,6 +2165,10 @@ def patient_dashboard_page(db, visualization, alert_system, user_id):
             st.warning(f"No test results found for {selected_patient}")
             return
         
+        # Get patient ID and patient events for visualization
+        patient_id = db.get_patient_id(selected_patient, user_id)
+        patient_events = db.get_patient_events(patient_id, user_id) if patient_id else []
+        
         # Convert to DataFrame for easier manipulation
         df = pd.DataFrame(patient_tests, columns=['Date', 'Test Type', 'Value', 'Unit', 'Reference Range'])
         df['Date'] = pd.to_datetime(df['Date'])
@@ -2429,8 +2435,10 @@ def patient_dashboard_page(db, visualization, alert_system, user_id):
                         st.subheader(f"🔬 {category}")
                         category_data = filtered_df[filtered_df['Test Type'].isin(tests_in_category)]
                         if not category_data.empty:
+                            patient_profile = db.get_patient_profile(selected_patient, user_id)
+                            patient_gender = patient_profile.get('gender') if patient_profile else None
                             fig_grouped = visualization.create_grouped_chart(
-                                category_data, selected_patient, tests_in_category, category
+                                category_data, selected_patient, tests_in_category, category, patient_gender, patient_events
                             )
                             st.plotly_chart(fig_grouped, use_container_width=True, key=f"grouped_chart_{category.replace(' ', '_')}")
             else:
@@ -2460,9 +2468,9 @@ def patient_dashboard_page(db, visualization, alert_system, user_id):
                                             
                                             # Create chart based on selected type
                                             if chart_type == "2D Beautiful":
-                                                fig = visualization.create_beautiful_2d_chart(test_data, test_type, selected_patient, patient_gender)
+                                                fig = visualization.create_beautiful_2d_chart(test_data, test_type, selected_patient, patient_gender, patient_events)
                                             else:
-                                                fig = visualization.create_trend_chart(test_data, test_type, selected_patient, patient_gender)
+                                                fig = visualization.create_trend_chart(test_data, test_type, selected_patient, patient_gender, patient_events)
                                             
                                             st.plotly_chart(fig, use_container_width=True, key=f"chart_{category.replace(' ', '_')}_{test_type.replace(' ', '_')}_{i}_{j}")
                                             
@@ -2507,6 +2515,135 @@ def patient_dashboard_page(db, visualization, alert_system, user_id):
                 st.metric("Test Types", unique_types)
         else:
             st.info("No test results found for this patient.")
+
+def patient_events_page(db, user_id):
+    st.header("📅 Patient Events Management")
+    st.markdown("Track important medical events for patients (surgeries, treatments, diagnoses, etc.)")
+    
+    # Get all patients
+    patients = db.get_all_patients(user_id)
+    
+    if not patients:
+        st.info("No patients found. Please upload some blood test results first.")
+        return
+    
+    # Patient selection
+    patient_names = [patient[1] for patient in patients]
+    selected_patient = st.selectbox(
+        "Select Patient",
+        options=patient_names,
+        index=None,
+        placeholder="Choose a patient..."
+    )
+    
+    if not selected_patient:
+        return
+    
+    # Get patient ID
+    patient_id = db.get_patient_id(selected_patient, user_id)
+    
+    if not patient_id:
+        st.error("Error retrieving patient information")
+        return
+    
+    # Get existing events
+    patient_events = db.get_patient_events(patient_id, user_id)
+    
+    # Create tabs for different actions
+    tab1, tab2, tab3 = st.tabs(["📋 View Events", "➕ Add Event", "✏️ Edit/Delete Events"])
+    
+    with tab1:
+        st.subheader(f"Events for {selected_patient}")
+        
+        if patient_events:
+            # Display events in a nice format
+            for event in patient_events:
+                with st.expander(f"📅 {event['event_name']} - {event['event_date']}", expanded=False):
+                    col1, col2 = st.columns(2)
+                    with col1:
+                        st.markdown(f"**Event:** {event['event_name']}")
+                        st.markdown(f"**Date:** {event['event_date']}")
+                    with col2:
+                        st.markdown(f"**Created:** {event['created_at']}")
+                    
+                    if event['notes']:
+                        st.markdown("**Notes:**")
+                        st.markdown(event['notes'])
+        else:
+            st.info(f"No events recorded for {selected_patient} yet.")
+            st.markdown("Events help track how test results change before and after important medical events like surgeries, treatments, or diagnoses.")
+    
+    with tab2:
+        st.subheader("Add New Event")
+        
+        with st.form("add_event_form"):
+            event_name = st.text_input(
+                "Event Name *",
+                placeholder="e.g., Nephrectomy Surgery, Started Medication, etc.",
+                help="Enter the name of the medical event"
+            )
+            
+            event_date = st.date_input(
+                "Event Date *",
+                value=date.today(),
+                help="Date when the event occurred"
+            )
+            
+            notes = st.text_area(
+                "Notes",
+                placeholder="Optional notes about this event...",
+                help="Additional details about the event"
+            )
+            
+            submit = st.form_submit_button("Add Event")
+            
+            if submit:
+                if not event_name:
+                    st.error("Please enter an event name")
+                else:
+                    event_id = db.add_patient_event(patient_id, event_name, event_date, notes, user_id)
+                    if event_id:
+                        st.success(f"✅ Event '{event_name}' added successfully!")
+                        st.rerun()
+                    else:
+                        st.error("Error adding event")
+    
+    with tab3:
+        st.subheader("Edit or Delete Events")
+        
+        if patient_events:
+            for event in patient_events:
+                with st.expander(f"📅 {event['event_name']} - {event['event_date']}"):
+                    # Edit form
+                    with st.form(f"edit_event_{event['event_id']}"):
+                        new_name = st.text_input("Event Name", value=event['event_name'])
+                        new_date = st.date_input("Event Date", value=pd.to_datetime(event['event_date']).date())
+                        new_notes = st.text_area("Notes", value=event['notes'] or "")
+                        
+                        col1, col2 = st.columns(2)
+                        with col1:
+                            update = st.form_submit_button("Update Event")
+                        with col2:
+                            delete = st.form_submit_button("Delete Event", type="secondary")
+                        
+                        if update:
+                            if db.update_patient_event(event['event_id'], new_name, new_date, new_notes, user_id):
+                                st.success(f"✅ Event updated successfully!")
+                                st.rerun()
+                            else:
+                                st.error("Error updating event")
+                        
+                        if delete:
+                            if db.delete_patient_event(event['event_id'], user_id):
+                                st.success(f"✅ Event deleted successfully!")
+                                st.rerun()
+                            else:
+                                st.error("Error deleting event")
+        else:
+            st.info("No events to edit. Add an event first in the 'Add Event' tab.")
+    
+    st.divider()
+    st.markdown("💡 **Tip:** Events will appear as vertical lines on all patient charts in the Patient Dashboard, helping you visualize how test results change before and after important medical events.")
 
 def search_filter_page(db, visualization, user_id):
     st.header("🔍 Search & Filter Results")

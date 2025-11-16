@@ -525,6 +525,23 @@ class Database:
             print(f"Error adding test result: {e}")
             return False
     
+    def get_patient_id(self, patient_name: str, user_id: int = None) -> Optional[int]:
+        """Get patient ID by name."""
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+                if user_id:
+                    cursor.execute('SELECT patient_id FROM patients WHERE patient_name = ? AND user_id = ?', 
+                                 (patient_name, user_id))
+                else:
+                    cursor.execute('SELECT patient_id FROM patients WHERE patient_name = ? AND user_id IS NULL', 
+                                 (patient_name,))
+                result = cursor.fetchone()
+                return result[0] if result else None
+        except Exception as e:
+            print(f"Error getting patient ID: {e}")
+            return None
+    
     def get_all_patients(self, user_id: int = None) -> List[Tuple]:
         """Get all patients with summary information."""
         with sqlite3.connect(self.db_path) as conn:
