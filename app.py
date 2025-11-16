@@ -2258,6 +2258,11 @@ def patient_dashboard_page(db, visualization, alert_system, user_id):
                         st.markdown("**Recommendations:**")
                         for rec in alert['recommendations']:
                             st.markdown(f"• {rec}")
+                    
+                    if alert.get('medical_causes'):
+                        st.markdown("**🔬 Possible Medical Causes:**")
+                        for cause in alert['medical_causes']:
+                            st.markdown(f"• {cause}")
             
             st.divider()
         
