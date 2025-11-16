@@ -2193,7 +2193,7 @@ def view_patients_page(db, alert_system, user_id):
                             
                             event_date = st.date_input(
                                 "Event Date *",
-                                value=date.today(),
+                                value=pd.Timestamp('today').date(),
                                 help="Date when the event occurred"
                             )
                             
