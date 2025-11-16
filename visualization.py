@@ -620,9 +620,14 @@ class Visualization:
             from datetime import datetime
             import numpy as np
             
-            # Convert dates to numeric values for trend calculation
-            dates_numeric = [(date - data['Date'].min()).days for date in data['Date']]
+            # Convert dates to numeric values for trend calculation using pandas vectorized operations
+            dates_series = pd.to_datetime(data['Date'])
+            dates_numeric = (dates_series - dates_series.min()).dt.days
             values = data['Value'].values
+            
+            # Guard: ensure we have at least 2 valid numeric points
+            if len(dates_numeric) < 2 or dates_numeric.isna().any():
+                return
             
             # Calculate linear trend
             z = np.polyfit(dates_numeric, values, 1)
