@@ -9,10 +9,6 @@ class AlertSystem:
         """Initialize alert system with database connection."""
         self.database = database
         
-        # Initialize investigation standards for medical causes lookup (cached)
-        from investigation_standards import InvestigationStandards
-        self._standards = InvestigationStandards(database.db_path)
-        
         # Define critical value thresholds (values that require immediate attention)
         self.critical_thresholds = {
             'glucose': {'low': 40, 'high': 400},
@@ -78,10 +74,6 @@ class AlertSystem:
                 # Enhanced header with status, value and date - move from message to header
                 date_str = f" on {test_date}" if test_date else ""
                 header_text = f'{test_type} is {status.lower()}: {value}{date_str}'
-                
-                # Get medical causes from investigation standards
-                medical_causes = self._get_medical_causes(test_type, status)
-                
                 alert.update({
                     'has_alert': True,
                     'level': severity,
@@ -90,8 +82,7 @@ class AlertSystem:
                     'color': self.alert_levels[severity]['color'],
                     'icon': self.alert_levels[severity]['icon'],
                     'label': self.alert_levels[severity]['label'],
-                    'recommendations': self._get_recommendations(test_type, status, value),
-                    'medical_causes': medical_causes
+                    'recommendations': self._get_recommendations(test_type, status, value)
                 })
         
         return alert
@@ -216,20 +207,6 @@ class AlertSystem:
         recommendations.append("Schedule follow-up testing as advised")
         
         return recommendations
-    
-    def _get_medical_causes(self, test_type: str, status: str) -> List[str]:
-        """Get possible medical causes for abnormal test values.
-        
-        This method first tries to get causes from the database. If not found,
-        it automatically uses AI to research the causes and saves them for future use.
-        """
-        try:
-            # Use cached investigation standards instance with AI fallback
-            causes = self._standards.get_medical_causes_with_ai_fallback(test_type, status)
-            return causes
-        except Exception as e:
-            print(f"Error getting medical causes: {e}")
-            return []
     
     def get_patient_alerts(self, patient_name: str) -> List[Dict[str, Any]]:
         """Get all alerts for a specific patient."""

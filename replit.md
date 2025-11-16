@@ -4,19 +4,6 @@
 
 A Streamlit-based web application designed for healthcare professionals to manage, visualize, and analyze patient blood test results. This system facilitates uploading various file formats, storing data in a structured database, and generating meaningful visualizations to track health trends over time. The project aims to provide an intuitive tool for patient health monitoring, offering comprehensive data analysis and reporting capabilities.
 
-## Recent Changes (November 2025)
-
-### AI-Powered Medical Causes Feature (November 16, 2025)
-- **✅ FULLY OPERATIONAL**: Medical causes display for all alert types with AI research fallback
-- **Intelligent Medical Causes Display**: All alerts now show possible medical causes for high/low test values
-- **Database-Stored Medical Causes**: Pre-populated comprehensive medical causes for 15+ common blood tests (glucose, hemoglobin, cholesterol, liver enzymes, kidney markers, thyroid, CBC)
-- **Real-Time AI Research**: Automatic AI-powered research using OpenAI (via Replit AI Integrations) when medical causes not found in database
-- **Automatic Database Updates**: AI-researched causes are automatically saved to database for future use
-- **Smart Caching**: InvestigationStandards instance cached in AlertSystem for optimal performance
-- **No API Key Required**: Uses Replit AI Integrations (billed to credits) - no OpenAI API key needed
-- **Complete Patient Dashboard Integration**: Medical causes displayed in all alert sections (Critical, Major, Medium, Minor)
-- **Comprehensive Coverage**: System shows 5-7 medically accurate causes for both high and low abnormal values
-
 ## Recent Changes (September 2025)
 
 ### Email Alert System Complete Fix and Verification (September 3, 2025)
