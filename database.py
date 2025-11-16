@@ -206,6 +206,29 @@ class Database:
                 CREATE INDEX IF NOT EXISTS idx_patient_documents ON patient_documents(patient_id)
             ''')
             
+            # Create patient_events table for tracking medical events
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS patient_events (
+                    event_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    patient_id INTEGER NOT NULL,
+                    event_name TEXT NOT NULL,
+                    event_date DATE NOT NULL,
+                    notes TEXT,
+                    user_id INTEGER,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (patient_id) REFERENCES patients (patient_id)
+                )
+            ''')
+            
+            # Create index for patient events
+            cursor.execute('''
+                CREATE INDEX IF NOT EXISTS idx_patient_events ON patient_events(patient_id)
+            ''')
+            
+            cursor.execute('''
+                CREATE INDEX IF NOT EXISTS idx_event_date ON patient_events(event_date)
+            ''')
+            
             # Create indexes after columns are added
             cursor.execute('''
                 CREATE INDEX IF NOT EXISTS idx_user_id ON patients(user_id)
@@ -392,6 +415,98 @@ class Database:
                 return cursor.rowcount > 0
         except Exception as e:
             print(f"Error deleting patient document: {e}")
+            return False
+    
+    def add_patient_event(self, patient_id: int, event_name: str, event_date: date, 
+                         notes: str = None, user_id: int = None) -> int:
+        """Add a patient event (like surgery, treatment, etc.)."""
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+                cursor.execute('''
+                    INSERT INTO patient_events (patient_id, event_name, event_date, notes, user_id)
+                    VALUES (?, ?, ?, ?, ?)
+                ''', (patient_id, event_name, event_date, notes, user_id))
+                conn.commit()
+                return cursor.lastrowid
+        except Exception as e:
+            print(f"Error adding patient event: {e}")
+            return 0
+    
+    def get_patient_events(self, patient_id: int, user_id: int = None) -> List[Dict]:
+        """Get all events for a specific patient."""
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+                if user_id:
+                    cursor.execute('''
+                        SELECT event_id, event_name, event_date, notes, created_at
+                        FROM patient_events 
+                        WHERE patient_id = ? AND user_id = ?
+                        ORDER BY event_date DESC
+                    ''', (patient_id, user_id))
+                else:
+                    cursor.execute('''
+                        SELECT event_id, event_name, event_date, notes, created_at
+                        FROM patient_events 
+                        WHERE patient_id = ?
+                        ORDER BY event_date DESC
+                    ''', (patient_id,))
+                
+                results = cursor.fetchall()
+                events = []
+                for row in results:
+                    events.append({
+                        'event_id': row[0],
+                        'event_name': row[1],
+                        'event_date': row[2],
+                        'notes': row[3],
+                        'created_at': row[4]
+                    })
+                return events
+        except Exception as e:
+            print(f"Error getting patient events: {e}")
+            return []
+    
+    def update_patient_event(self, event_id: int, event_name: str, event_date: date, 
+                            notes: str = None, user_id: int = None) -> bool:
+        """Update an existing patient event."""
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+                if user_id:
+                    cursor.execute('''
+                        UPDATE patient_events 
+                        SET event_name = ?, event_date = ?, notes = ?
+                        WHERE event_id = ? AND user_id = ?
+                    ''', (event_name, event_date, notes, event_id, user_id))
+                else:
+                    cursor.execute('''
+                        UPDATE patient_events 
+                        SET event_name = ?, event_date = ?, notes = ?
+                        WHERE event_id = ?
+                    ''', (event_name, event_date, notes, event_id))
+                conn.commit()
+                return cursor.rowcount > 0
+        except Exception as e:
+            print(f"Error updating patient event: {e}")
+            return False
+    
+    def delete_patient_event(self, event_id: int, user_id: int = None) -> bool:
+        """Delete a patient event."""
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+                if user_id:
+                    cursor.execute('DELETE FROM patient_events WHERE event_id = ? AND user_id = ?', 
+                                 (event_id, user_id))
+                else:
+                    cursor.execute('DELETE FROM patient_events WHERE event_id = ?', 
+                                 (event_id,))
+                conn.commit()
+                return cursor.rowcount > 0
+        except Exception as e:
+            print(f"Error deleting patient event: {e}")
             return False
     
     def add_test_result(self, patient_id: int, test_date: date, test_type: str, 
