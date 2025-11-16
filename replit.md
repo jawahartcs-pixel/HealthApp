@@ -4,6 +4,23 @@
 
 A Streamlit-based web application designed for healthcare professionals to manage, visualize, and analyze patient blood test results. This system facilitates uploading various file formats, storing data in a structured database, and generating meaningful visualizations to track health trends over time. The project aims to provide an intuitive tool for patient health monitoring, offering comprehensive data analysis and reporting capabilities.
 
+## Recent Changes (November 2025)
+
+### Patient Dashboard Advanced Filtering System (November 16, 2025)
+- **Dual Filter Implementation**: Added comprehensive filtering system for patient dashboard with two independent filters
+- **Report Date Filter**: Multiselect control to filter data by specific report dates (default: all reports selected)
+- **Test Type Filter**: Multiselect control to filter data by specific test types/investigations (default: all tests selected)
+- **Filtered Components**: All dashboard components respect both filters including:
+  - Summary metrics (Total Tests, Reports, Test Types, date ranges)
+  - Report Summary section with detailed breakdown
+  - Active Alerts section (filters by both date and test type)
+  - Test Trends visualizations and charts
+  - CSV data export (downloads only filtered data)
+  - PDF report generation (includes only filtered data)
+- **Smart Filter Integration**: Filters work together - data must match both selected dates AND selected test types
+- **User Experience**: Reset button to restore all selections; clear visual feedback when filters are applied
+- **Session State Management**: PDF generator receives filter parameters through session state for accurate report generation
+
 ## Recent Changes (September 2025)
 
 ### Email Alert System Complete Fix and Verification (September 3, 2025)
