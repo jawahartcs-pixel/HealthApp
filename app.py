@@ -3524,6 +3524,12 @@ def alert_dashboard_page(alert_system, user_id):
                 with st.expander("View Recommendations"):
                     for rec in alert['recommendations']:
                         st.markdown(f"• {rec}")
+            
+            if alert.get('medical_causes'):
+                with st.expander("🔬 Possible Medical Causes"):
+                    st.markdown("**Possible causes for this abnormal value:**")
+                    for cause in alert['medical_causes']:
+                        st.markdown(f"• {cause}")
     
     # Display Major Alerts
     if high_alerts:
@@ -3540,6 +3546,11 @@ def alert_dashboard_page(alert_system, user_id):
                     st.markdown("**Recommendations:**")
                     for rec in alert['recommendations']:
                         st.markdown(f"• {rec}")
+                
+                if alert.get('medical_causes'):
+                    st.markdown("**🔬 Possible Medical Causes:**")
+                    for cause in alert['medical_causes']:
+                        st.markdown(f"• {cause}")
     
     # Display Medium and Minor Priority Alerts
     if medium_alerts or minor_alerts:
@@ -3559,6 +3570,11 @@ def alert_dashboard_page(alert_system, user_id):
                     st.markdown("**Recommendations:**")
                     for rec in alert['recommendations']:
                         st.markdown(f"• {rec}")
+                
+                if alert.get('medical_causes'):
+                    st.markdown("**🔬 Possible Medical Causes:**")
+                    for cause in alert['medical_causes']:
+                        st.markdown(f"• {cause}")
     
     # Recent Alerts Section
     st.subheader("📅 Recent Alerts (Last 7 Days)")

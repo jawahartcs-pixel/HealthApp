@@ -49,6 +49,22 @@ class InvestigationStandards:
             except sqlite3.OperationalError:
                 # Column already exists
                 pass
+            
+            # Add high_causes column if it doesn't exist (migration for medical causes)
+            try:
+                cursor.execute('ALTER TABLE investigation_standards ADD COLUMN high_causes TEXT')
+                conn.commit()
+            except sqlite3.OperationalError:
+                # Column already exists
+                pass
+            
+            # Add low_causes column if it doesn't exist (migration for medical causes)
+            try:
+                cursor.execute('ALTER TABLE investigation_standards ADD COLUMN low_causes TEXT')
+                conn.commit()
+            except sqlite3.OperationalError:
+                # Column already exists
+                pass
     
     def populate_default_standards(self):
         """Populate table with common blood test standards."""
@@ -60,7 +76,9 @@ class InvestigationStandards:
                 'female_range_min': 70, 'female_range_max': 99, 'female_unit': 'mg/dL',
                 'common_unit': 'mg/dL',
                 'description': 'Fasting blood glucose level',
-                'category': 'Diabetes'
+                'category': 'Diabetes',
+                'high_causes': 'Diabetes or prediabetes|Stress or illness|Certain medications (steroids, diuretics)|Pancreatitis|Hormonal disorders (Cushing syndrome, acromegaly)',
+                'low_causes': 'Excessive insulin or diabetes medication|Prolonged fasting or malnutrition|Excessive alcohol consumption|Liver disease|Adrenal or pituitary gland disorders'
             },
             {
                 'standard_name': 'Hemoglobin',
@@ -69,7 +87,9 @@ class InvestigationStandards:
                 'female_range_min': 12.1, 'female_range_max': 15.1, 'female_unit': 'g/dL',
                 'common_unit': 'g/dL',
                 'description': 'Oxygen-carrying protein in red blood cells',
-                'category': 'Complete Blood Count'
+                'category': 'Complete Blood Count',
+                'high_causes': 'Polycythemia vera|Dehydration|Living at high altitude|Lung disease (COPD)|Heart disease|Smoking',
+                'low_causes': 'Anemia (iron deficiency, vitamin B12 deficiency, folate deficiency)|Blood loss|Chronic kidney disease|Bone marrow disorders|Hemolytic conditions'
             },
             {
                 'standard_name': 'Total Cholesterol',
@@ -78,7 +98,9 @@ class InvestigationStandards:
                 'female_range_min': 125, 'female_range_max': 200, 'female_unit': 'mg/dL',
                 'common_unit': 'mg/dL',
                 'description': 'Total cholesterol in blood',
-                'category': 'Lipid Profile'
+                'category': 'Lipid Profile',
+                'high_causes': 'Unhealthy diet high in saturated and trans fats|Lack of physical activity|Obesity|Genetic factors (familial hypercholesterolemia)|Hypothyroidism|Diabetes',
+                'low_causes': 'Malnutrition or malabsorption|Hyperthyroidism|Liver disease|Chronic infections|Certain medications (statins)'
             },
             {
                 'standard_name': 'HDL Cholesterol',
@@ -86,7 +108,9 @@ class InvestigationStandards:
                 'male_range_min': 40, 'male_range_max': 60, 'male_unit': 'mg/dL',
                 'female_range_min': 50, 'female_range_max': 60, 'female_unit': 'mg/dL',
                 'description': 'High-density lipoprotein cholesterol',
-                'category': 'Lipid Profile'
+                'category': 'Lipid Profile',
+                'high_causes': 'Regular physical activity|Moderate alcohol consumption|Healthy diet rich in omega-3 fatty acids|Genetic factors|Weight loss',
+                'low_causes': 'Sedentary lifestyle|Smoking|Obesity|Type 2 diabetes|Metabolic syndrome|Genetic factors'
             },
             {
                 'standard_name': 'LDL Cholesterol',
@@ -94,7 +118,9 @@ class InvestigationStandards:
                 'male_range_min': 0, 'male_range_max': 100, 'male_unit': 'mg/dL',
                 'female_range_min': 0, 'female_range_max': 100, 'female_unit': 'mg/dL',
                 'description': 'Low-density lipoprotein cholesterol',
-                'category': 'Lipid Profile'
+                'category': 'Lipid Profile',
+                'high_causes': 'Diet high in saturated and trans fats|Lack of exercise|Obesity|Smoking|Genetic factors (familial hypercholesterolemia)|Diabetes',
+                'low_causes': 'Malnutrition|Hyperthyroidism|Liver disease|Malabsorption syndromes|Statin medications'
             },
             {
                 'standard_name': 'Triglycerides',
@@ -102,7 +128,9 @@ class InvestigationStandards:
                 'male_range_min': 0, 'male_range_max': 150, 'male_unit': 'mg/dL',
                 'female_range_min': 0, 'female_range_max': 150, 'female_unit': 'mg/dL',
                 'description': 'Fat molecules in blood',
-                'category': 'Lipid Profile'
+                'category': 'Lipid Profile',
+                'high_causes': 'Obesity|Uncontrolled diabetes|Excessive alcohol consumption|High carbohydrate diet|Sedentary lifestyle|Hypothyroidism|Kidney disease',
+                'low_causes': 'Malnutrition|Malabsorption|Hyperthyroidism|Low-fat diet|Certain medications'
             },
             {
                 'standard_name': 'Creatinine',
@@ -110,7 +138,9 @@ class InvestigationStandards:
                 'male_range_min': 0.74, 'male_range_max': 1.35, 'male_unit': 'mg/dL',
                 'female_range_min': 0.59, 'female_range_max': 1.04, 'female_unit': 'mg/dL',
                 'description': 'Kidney function marker',
-                'category': 'Kidney Function'
+                'category': 'Kidney Function',
+                'high_causes': 'Chronic kidney disease|Acute kidney injury|Dehydration|High protein diet|Urinary tract obstruction|Muscle disorders (rhabdomyolysis)',
+                'low_causes': 'Low muscle mass|Malnutrition|Pregnancy|Chronic illness|Liver disease'
             },
             {
                 'standard_name': 'Blood Urea Nitrogen (BUN)',
@@ -118,7 +148,9 @@ class InvestigationStandards:
                 'male_range_min': 6, 'male_range_max': 24, 'male_unit': 'mg/dL',
                 'female_range_min': 6, 'female_range_max': 21, 'female_unit': 'mg/dL',
                 'description': 'Kidney function and protein metabolism marker',
-                'category': 'Kidney Function'
+                'category': 'Kidney Function',
+                'high_causes': 'Kidney disease or failure|Dehydration|Heart failure|High protein diet|GI bleeding|Urinary tract obstruction',
+                'low_causes': 'Liver disease|Malnutrition|Overhydration|Pregnancy|Low protein diet'
             },
             {
                 'standard_name': 'ALT (Alanine Aminotransferase)',
@@ -126,7 +158,9 @@ class InvestigationStandards:
                 'male_range_min': 10, 'male_range_max': 40, 'male_unit': 'U/L',
                 'female_range_min': 7, 'female_range_max': 35, 'female_unit': 'U/L',
                 'description': 'Liver enzyme',
-                'category': 'Liver Function'
+                'category': 'Liver Function',
+                'high_causes': 'Fatty liver disease (NAFLD)|Hepatitis (viral, alcoholic, autoimmune)|Liver cirrhosis|Certain medications|Muscle injury|Hemochromatosis',
+                'low_causes': 'Vitamin B6 deficiency|Chronic kidney disease|Usually not clinically significant when low'
             },
             {
                 'standard_name': 'AST (Aspartate Aminotransferase)',
@@ -134,7 +168,9 @@ class InvestigationStandards:
                 'male_range_min': 10, 'male_range_max': 40, 'male_unit': 'U/L',
                 'female_range_min': 10, 'female_range_max': 35, 'female_unit': 'U/L',
                 'description': 'Liver enzyme',
-                'category': 'Liver Function'
+                'category': 'Liver Function',
+                'high_causes': 'Liver disease (hepatitis, cirrhosis, fatty liver)|Heart attack|Muscle injury or disorders|Pancreatitis|Certain medications|Hemolysis',
+                'low_causes': 'Vitamin B6 deficiency|Usually not clinically significant when low|Azotemia'
             },
             {
                 'standard_name': 'TSH (Thyroid Stimulating Hormone)',
@@ -142,7 +178,9 @@ class InvestigationStandards:
                 'male_range_min': 0.27, 'male_range_max': 4.2, 'male_unit': 'mIU/L',
                 'female_range_min': 0.27, 'female_range_max': 4.2, 'female_unit': 'mIU/L',
                 'description': 'Thyroid function hormone',
-                'category': 'Thyroid Function'
+                'category': 'Thyroid Function',
+                'high_causes': 'Hypothyroidism (underactive thyroid)|Hashimoto thyroiditis|Iodine deficiency|Pituitary tumor|Thyroid hormone resistance',
+                'low_causes': 'Hyperthyroidism (overactive thyroid)|Graves disease|Thyroid nodules|Excessive thyroid medication|Pituitary gland dysfunction'
             },
             {
                 'standard_name': 'White Blood Cell Count (WBC)',
@@ -150,7 +188,9 @@ class InvestigationStandards:
                 'male_range_min': 3.4, 'male_range_max': 10.8, 'male_unit': '10³/μL',
                 'female_range_min': 3.4, 'female_range_max': 10.8, 'female_unit': '10³/μL',
                 'description': 'White blood cell count',
-                'category': 'Complete Blood Count'
+                'category': 'Complete Blood Count',
+                'high_causes': 'Infection (bacterial, viral, fungal)|Inflammation|Leukemia|Stress|Smoking|Allergic reactions|Certain medications (corticosteroids)',
+                'low_causes': 'Bone marrow disorders|Autoimmune diseases|Severe infections|Chemotherapy or radiation|Vitamin deficiencies (B12, folate)|HIV/AIDS'
             },
             {
                 'standard_name': 'Red Blood Cell Count (RBC)',
@@ -158,7 +198,9 @@ class InvestigationStandards:
                 'male_range_min': 4.7, 'male_range_max': 6.1, 'male_unit': '10⁶/μL',
                 'female_range_min': 4.2, 'female_range_max': 5.4, 'female_unit': '10⁶/μL',
                 'description': 'Red blood cell count',
-                'category': 'Complete Blood Count'
+                'category': 'Complete Blood Count',
+                'high_causes': 'Dehydration|Polycythemia vera|Lung disease (COPD)|Smoking|Living at high altitude|Heart disease',
+                'low_causes': 'Anemia (iron, B12, or folate deficiency)|Blood loss|Bone marrow disorders|Chronic kidney disease|Hemolysis|Pregnancy'
             },
             {
                 'standard_name': 'Platelet Count',
@@ -166,7 +208,9 @@ class InvestigationStandards:
                 'male_range_min': 150, 'male_range_max': 450, 'male_unit': '10³/μL',
                 'female_range_min': 150, 'female_range_max': 450, 'female_unit': '10³/μL',
                 'description': 'Blood clotting cells',
-                'category': 'Complete Blood Count'
+                'category': 'Complete Blood Count',
+                'high_causes': 'Essential thrombocythemia|Polycythemia vera|Iron deficiency|Inflammation|Cancer|Recent surgery|Splenectomy',
+                'low_causes': 'Immune thrombocytopenia (ITP)|Bone marrow disorders|Viral infections|Chemotherapy|Excessive alcohol|Enlarged spleen|Certain medications'
             },
             {
                 'standard_name': 'Hematocrit',
@@ -174,7 +218,9 @@ class InvestigationStandards:
                 'male_range_min': 41.0, 'male_range_max': 50.0, 'male_unit': '%',
                 'female_range_min': 36.0, 'female_range_max': 46.0, 'female_unit': '%',
                 'description': 'Percentage of blood volume occupied by red blood cells',
-                'category': 'Complete Blood Count'
+                'category': 'Complete Blood Count',
+                'high_causes': 'Dehydration|Polycythemia vera|Lung disease (COPD)|Smoking|Living at high altitude|Heart disease',
+                'low_causes': 'Anemia (iron, B12, or folate deficiency)|Blood loss|Bone marrow disorders|Chronic kidney disease|Overhydration|Pregnancy'
             }
         ]
         
@@ -182,18 +228,53 @@ class InvestigationStandards:
         with sqlite3.connect(self.db_path) as conn:
             cursor = conn.cursor()
             for standard in default_standards:
-                cursor.execute('''
-                    INSERT OR IGNORE INTO investigation_standards 
-                    (standard_name, aliases, male_range_min, male_range_max, male_unit,
-                     female_range_min, female_range_max, female_unit, description, category)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                ''', (
-                    standard['standard_name'], standard['aliases'],
-                    standard['male_range_min'], standard['male_range_max'], standard['male_unit'],
-                    standard['female_range_min'], standard['female_range_max'], standard['female_unit'],
-                    standard['description'], standard['category']
-                ))
+                # Check if high_causes and low_causes columns exist
+                cursor.execute("PRAGMA table_info(investigation_standards)")
+                columns = [column[1] for column in cursor.fetchall()]
+                
+                if 'high_causes' in columns and 'low_causes' in columns:
+                    cursor.execute('''
+                        INSERT OR IGNORE INTO investigation_standards 
+                        (standard_name, aliases, male_range_min, male_range_max, male_unit,
+                         female_range_min, female_range_max, female_unit, description, category,
+                         high_causes, low_causes)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ''', (
+                        standard['standard_name'], standard['aliases'],
+                        standard['male_range_min'], standard['male_range_max'], standard['male_unit'],
+                        standard['female_range_min'], standard['female_range_max'], standard['female_unit'],
+                        standard['description'], standard['category'],
+                        standard.get('high_causes', ''), standard.get('low_causes', '')
+                    ))
+                else:
+                    # Fallback to old schema without causes
+                    cursor.execute('''
+                        INSERT OR IGNORE INTO investigation_standards 
+                        (standard_name, aliases, male_range_min, male_range_max, male_unit,
+                         female_range_min, female_range_max, female_unit, description, category)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ''', (
+                        standard['standard_name'], standard['aliases'],
+                        standard['male_range_min'], standard['male_range_max'], standard['male_unit'],
+                        standard['female_range_min'], standard['female_range_max'], standard['female_unit'],
+                        standard['description'], standard['category']
+                    ))
             conn.commit()
+            
+            # Update existing records with medical causes if they don't have them
+            if 'high_causes' in [col[1] for col in cursor.execute("PRAGMA table_info(investigation_standards)").fetchall()]:
+                for standard in default_standards:
+                    if 'high_causes' in standard and 'low_causes' in standard:
+                        cursor.execute('''
+                            UPDATE investigation_standards
+                            SET high_causes = ?, low_causes = ?
+                            WHERE standard_name = ? AND (high_causes IS NULL OR high_causes = '')
+                        ''', (
+                            standard.get('high_causes', ''),
+                            standard.get('low_causes', ''),
+                            standard['standard_name']
+                        ))
+                conn.commit()
     
     def get_all_standards(self) -> List[Dict]:
         """Get all investigation standards."""
@@ -818,6 +899,49 @@ class InvestigationStandards:
                     female_range = f"F: {standard['female_range_min']}-{standard['female_range_max']} {standard['female_unit']}"
                     return f"{male_range}, {female_range}"
         return None
+    
+    def get_medical_causes(self, test_name: str, status: str = 'high') -> List[str]:
+        """Get medical causes for abnormal test values.
+        
+        Args:
+            test_name: The test name (will be standardized)
+            status: 'high' or 'low' to indicate which causes to retrieve
+        
+        Returns:
+            List of possible medical causes
+        """
+        # Standardize the test name to match against standards
+        standardized_name, match_info = self.standardize_test_name(test_name)
+        
+        if not match_info:
+            return []
+        
+        # Get the causes from the database
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.cursor()
+            
+            # Check if causes columns exist
+            cursor.execute("PRAGMA table_info(investigation_standards)")
+            columns = [column[1] for column in cursor.fetchall()]
+            
+            if 'high_causes' not in columns or 'low_causes' not in columns:
+                return []
+            
+            # Retrieve causes based on status
+            column = 'high_causes' if status.lower() == 'high' else 'low_causes'
+            cursor.execute(f'''
+                SELECT {column}
+                FROM investigation_standards
+                WHERE standard_name = ?
+            ''', (standardized_name,))
+            
+            result = cursor.fetchone()
+            if result and result[0]:
+                # Split the pipe-separated causes into a list
+                causes = result[0].split('|')
+                return [cause.strip() for cause in causes if cause.strip()]
+        
+        return []
     
     def fuzzy_match(self, text1: str, text2: str, threshold: float = 0.6) -> bool:
         """Check if two texts match using fuzzy logic."""
