@@ -53,7 +53,10 @@ class Visualization:
             
             # If x_range is provided, only show events within the visible range
             if x_range:
-                min_date, max_date = x_range
+                # Convert both to pandas Timestamp for compatible comparison
+                min_date = pd.Timestamp(x_range[0])
+                max_date = pd.Timestamp(x_range[1])
+                # Use timestamp comparison to avoid deprecated integer arithmetic
                 if event_date < min_date or event_date > max_date:
                     continue
             
