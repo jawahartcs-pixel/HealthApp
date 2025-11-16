@@ -218,10 +218,14 @@ class AlertSystem:
         return recommendations
     
     def _get_medical_causes(self, test_type: str, status: str) -> List[str]:
-        """Get possible medical causes for abnormal test values."""
+        """Get possible medical causes for abnormal test values.
+        
+        This method first tries to get causes from the database. If not found,
+        it automatically uses AI to research the causes and saves them for future use.
+        """
         try:
-            # Use cached investigation standards instance for better performance
-            causes = self._standards.get_medical_causes(test_type, status)
+            # Use cached investigation standards instance with AI fallback
+            causes = self._standards.get_medical_causes_with_ai_fallback(test_type, status)
             return causes
         except Exception as e:
             print(f"Error getting medical causes: {e}")
