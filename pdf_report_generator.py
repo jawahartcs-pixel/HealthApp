@@ -427,6 +427,10 @@ class PDFReportGenerator:
             elements.append(Paragraph("No data available for visualization in selected reports.", self.styles['Normal']))
             return elements
         
+        # Get patient events for visualization
+        patient_id = self.database.get_patient_id(patient_name, user_id)
+        patient_events = self.database.get_patient_events(patient_id, user_id) if patient_id else []
+        
         # Group test types by medical category using investigation standards
         try:
             from investigation_standards import InvestigationStandards
@@ -454,7 +458,7 @@ class PDFReportGenerator:
                     test_df = df[df['test_type'] == test_type].sort_values('test_date')
                     
                     if len(test_df) >= 1:  # Show charts even for single data points
-                        chart_image = self._create_trend_chart(test_df, test_type)
+                        chart_image = self._create_trend_chart(test_df, test_type, patient_events)
                         if chart_image:
                             elements.append(Paragraph(f"{test_type} Trend", 
                                 ParagraphStyle('TestTitle', parent=self.styles['Normal'], 
@@ -474,7 +478,7 @@ class PDFReportGenerator:
                 test_df = df[df['test_type'] == test_type].sort_values('test_date')
                 
                 if len(test_df) >= 1:
-                    chart_image = self._create_trend_chart(test_df, test_type)
+                    chart_image = self._create_trend_chart(test_df, test_type, patient_events)
                     if chart_image:
                         elements.append(Paragraph(f"{test_type} Trend", self.subheading_style))
                         elements.append(chart_image)
@@ -482,8 +486,8 @@ class PDFReportGenerator:
         
         return elements
     
-    def _create_trend_chart(self, df: pd.DataFrame, test_type: str) -> Optional[Image]:
-        """Create trend chart for a specific test type."""
+    def _create_trend_chart(self, df: pd.DataFrame, test_type: str, events: List = None) -> Optional[Image]:
+        """Create trend chart for a specific test type with event markers."""
         try:
             # Ensure matplotlib uses non-interactive backend
             import matplotlib
@@ -503,6 +507,23 @@ class PDFReportGenerator:
             for i, (date, value) in enumerate(zip(df['test_date'], df['test_value'])):
                 plt.annotate(f'{value:.2f}', (date, value), 
                            textcoords="offset points", xytext=(0,10), ha='center', fontsize=8, zorder=4)
+            
+            # Add patient events as vertical lines
+            if events:
+                min_date = pd.Timestamp(df['test_date'].min())
+                max_date = pd.Timestamp(df['test_date'].max())
+                
+                for event in events:
+                    event_date = pd.to_datetime(event['event_date'])
+                    
+                    # Only show events within the visible range
+                    if min_date <= event_date <= max_date:
+                        plt.axvline(x=event_date, color='red', linestyle='--', linewidth=2, alpha=0.5, zorder=2)
+                        # Add event label
+                        plt.text(event_date, plt.ylim()[1] * 0.95, event['event_name'], 
+                               rotation=90, verticalalignment='top', horizontalalignment='right',
+                               fontsize=8, color='red', bbox=dict(boxstyle='round,pad=0.3', 
+                               facecolor='white', edgecolor='red', alpha=0.8))
             
             plt.title(f'{test_type} Trend Over Time', fontsize=14, fontweight='bold')
             plt.xlabel('Date', fontsize=12)
