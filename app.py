@@ -2153,24 +2153,7 @@ def patient_dashboard_page(db, visualization, alert_system, user_id):
         chart_type = st.selectbox("Chart Type", ["2D Standard", "2D Beautiful", "2D Grouped"])
     
     with col3:
-        # PDF Report download
-        if st.button("📄 Generate PDF Report"):
-            if selected_patient:
-                try:
-                    pdf_generator = PDFReportGenerator(db)
-                    pdf_bytes = pdf_generator.generate_patient_report(selected_patient, user_id)
-                    
-                    st.download_button(
-                        label="Download PDF Report",
-                        data=pdf_bytes,
-                        file_name=f"{selected_patient}_blood_test_report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf",
-                        mime="application/pdf"
-                    )
-                    st.success("✅ PDF report generated successfully!")
-                except Exception as e:
-                    st.error(f"Error generating PDF report: {str(e)}")
-            else:
-                st.warning("Please select a patient first")
+        st.write("")
     
     if selected_patient:
         # Get patient data
@@ -2185,32 +2168,112 @@ def patient_dashboard_page(db, visualization, alert_system, user_id):
         df['Date'] = pd.to_datetime(df['Date'])
         df['Value'] = pd.to_numeric(df['Value'], errors='coerce')
         
-        # Patient summary
+        # Get unique report dates
+        unique_dates = sorted(df['Date'].dt.date.unique(), reverse=True)
+        
+        # Report filter section
+        st.subheader("🗂️ Filter Reports")
+        col_filter1, col_filter2 = st.columns([3, 1])
+        
+        with col_filter1:
+            # Multiselect for report dates (default: all selected)
+            selected_dates = st.multiselect(
+                "Select Reports to Display",
+                options=unique_dates,
+                default=unique_dates,
+                format_func=lambda x: f"📊 Report from {x}",
+                help="Select which reports to include in the dashboard. By default, all reports are shown."
+            )
+        
+        with col_filter2:
+            st.write("")
+            st.write("")
+            if st.button("🔄 Reset Filter"):
+                st.rerun()
+        
+        # Apply filter to dataframe
+        if not selected_dates:
+            st.warning("⚠️ Please select at least one report to display")
+            return
+        
+        # Filter dataframe based on selected dates
+        filtered_df = df[df['Date'].dt.date.isin(selected_dates)].copy()
+        
+        if filtered_df.empty:
+            st.warning("No data available for selected reports")
+            return
+        
+        st.divider()
+        
+        # Show download options for filtered data
+        col_download1, col_download2 = st.columns(2)
+        
+        with col_download1:
+            # CSV download for filtered data
+            csv_data = filtered_df.to_csv(index=False)
+            st.download_button(
+                label="📊 Download Filtered Data (CSV)",
+                data=csv_data,
+                file_name=f"{selected_patient}_filtered_results_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
+                mime="text/csv",
+                help="Download CSV file with data from selected reports only"
+            )
+        
+        with col_download2:
+            # PDF Report download for filtered data
+            if st.button("📄 Generate PDF Report (Filtered)"):
+                try:
+                    # Store filtered dates in session state for PDF generator to use
+                    st.session_state['pdf_filter_dates'] = selected_dates
+                    st.session_state['pdf_patient_name'] = selected_patient
+                    
+                    pdf_generator = PDFReportGenerator(db)
+                    pdf_bytes = pdf_generator.generate_patient_report(selected_patient, user_id)
+                    
+                    # Clean up session state
+                    if 'pdf_filter_dates' in st.session_state:
+                        del st.session_state['pdf_filter_dates']
+                    if 'pdf_patient_name' in st.session_state:
+                        del st.session_state['pdf_patient_name']
+                    
+                    st.download_button(
+                        label="Download PDF Report",
+                        data=pdf_bytes,
+                        file_name=f"{selected_patient}_filtered_report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf",
+                        mime="application/pdf"
+                    )
+                    st.success("✅ PDF report generated successfully!")
+                except Exception as e:
+                    st.error(f"Error generating PDF report: {str(e)}")
+        
+        st.divider()
+        
+        # Patient summary (based on filtered data)
         col1, col2, col3, col4, col5 = st.columns(5)
         
         with col1:
-            st.metric("Total Tests", len(df))
+            st.metric("Total Tests", len(filtered_df))
         
         with col2:
-            unique_reports = df['Date'].dt.date.nunique()
+            unique_reports = filtered_df['Date'].dt.date.nunique()
             st.metric("Reports", unique_reports)
         
         with col3:
-            st.metric("Test Types", df['Test Type'].nunique())
+            st.metric("Test Types", filtered_df['Test Type'].nunique())
         
         with col4:
-            first_test = df['Date'].min().strftime('%Y-%m-%d')
+            first_test = filtered_df['Date'].min().strftime('%Y-%m-%d')
             st.metric("First Test", first_test)
         
         with col5:
-            last_test = df['Date'].max().strftime('%Y-%m-%d')
+            last_test = filtered_df['Date'].max().strftime('%Y-%m-%d')
             st.metric("Last Test", last_test)
         
         # Show detailed report breakdown
         st.subheader("📋 Report Summary")
         
-        # Create a detailed summary by date
-        date_groups = df.groupby(df['Date'].dt.date).agg({
+        # Create a detailed summary by date (only for selected dates)
+        date_groups = filtered_df.groupby(filtered_df['Date'].dt.date).agg({
             'Test Type': ['count', lambda x: ', '.join(sorted(x.unique()))]
         }).reset_index()
         date_groups.columns = ['Report Date', 'Test Count', 'Test Types']
@@ -2222,7 +2285,7 @@ def patient_dashboard_page(db, visualization, alert_system, user_id):
                 cols = st.columns(min(3, len(test_types_list)))
                 for i, test_type in enumerate(test_types_list):
                     with cols[i % 3]:
-                        test_values = df[(df['Date'].dt.date == row['Report Date']) & (df['Test Type'] == test_type)]
+                        test_values = filtered_df[(filtered_df['Date'].dt.date == row['Report Date']) & (filtered_df['Test Type'] == test_type)]
                         if len(test_values) > 0:
                             value = test_values.iloc[0]['Value']
                             unit = test_values.iloc[0]['Unit'] or ''
@@ -2230,42 +2293,53 @@ def patient_dashboard_page(db, visualization, alert_system, user_id):
         
         st.divider()
         
-        # Get and display patient alerts
+        # Get and display patient alerts (filtered by selected report dates)
         patient_alerts = alert_system.get_patient_alerts(selected_patient)
+        
+        # Filter alerts to only include those from selected report dates
         if patient_alerts:
-            st.subheader("🚨 Active Alerts")
-            critical_alerts = [a for a in patient_alerts if a['level'] == 'CRITICAL']
-            high_alerts = [a for a in patient_alerts if a['level'] == 'HIGH']
-            
-            col1, col2, col3 = st.columns(3)
-            with col1:
-                st.metric("Critical Alerts", len(critical_alerts))
-            with col2:
-                st.metric("Major Alerts", len(high_alerts))
-            with col3:
-                st.metric("Total Alerts", len(patient_alerts))
-            
-            # Show alerts with expandable details using enhanced headers
+            filtered_alerts = []
             for alert in patient_alerts:
-                # Use enhanced header if available, otherwise fallback to message with test type
-                alert_header = alert.get('header', f"{alert['test_type']} - {alert['message']}")
-                alert_label = alert.get('label', alert['level'])
-                with st.expander(f"{alert['icon']} {alert_label} - {alert_header}", expanded=alert['level'] == 'CRITICAL'):
-                    st.markdown(f"**Value:** {alert['value']} {alert['unit']}")
-                    st.markdown(f"**Reference Range:** {alert['reference_range']}")
-                    
-                    if alert['recommendations']:
-                        st.markdown("**Recommendations:**")
-                        for rec in alert['recommendations']:
-                            st.markdown(f"• {rec}")
+                # Parse alert test_date and compare with selected dates
+                alert_date = pd.to_datetime(alert['test_date']).date()
+                if alert_date in selected_dates:
+                    filtered_alerts.append(alert)
             
-            st.divider()
+            if filtered_alerts:
+                st.subheader("🚨 Active Alerts (Filtered Reports)")
+                critical_alerts = [a for a in filtered_alerts if a['level'] == 'CRITICAL']
+                high_alerts = [a for a in filtered_alerts if a['level'] == 'HIGH']
+                
+                col1, col2, col3 = st.columns(3)
+                with col1:
+                    st.metric("Critical Alerts", len(critical_alerts))
+                with col2:
+                    st.metric("Major Alerts", len(high_alerts))
+                with col3:
+                    st.metric("Total Alerts", len(filtered_alerts))
+                
+                # Show alerts with expandable details using enhanced headers
+                for alert in filtered_alerts:
+                    # Use enhanced header if available, otherwise fallback to message with test type
+                    alert_header = alert.get('header', f"{alert['test_type']} - {alert['message']}")
+                    alert_label = alert.get('label', alert['level'])
+                    with st.expander(f"{alert['icon']} {alert_label} - {alert_header}", expanded=alert['level'] == 'CRITICAL'):
+                        st.markdown(f"**Value:** {alert['value']} {alert['unit']}")
+                        st.markdown(f"**Reference Range:** {alert['reference_range']}")
+                        st.markdown(f"**Date:** {alert['test_date']}")
+                        
+                        if alert['recommendations']:
+                            st.markdown("**Recommendations:**")
+                            for rec in alert['recommendations']:
+                                st.markdown(f"• {rec}")
+                
+                st.divider()
         
         # Visualizations by Test Categories
-        st.subheader("📈 Test Trends by Medical Category")
+        st.subheader("📈 Test Trends by Medical Category (Filtered Reports)")
         
-        # Get unique test types from database
-        test_types = df['Test Type'].unique().tolist()
+        # Get unique test types from filtered data
+        test_types = filtered_df['Test Type'].unique().tolist()
         
         if test_types:
             # Categorize test types
@@ -2330,7 +2404,7 @@ def patient_dashboard_page(db, visualization, alert_system, user_id):
                 for category, tests_in_category in proper_categorized_tests.items():
                     if len(tests_in_category) >= 1:
                         st.subheader(f"🔬 {category}")
-                        category_data = df[df['Test Type'].isin(tests_in_category)]
+                        category_data = filtered_df[filtered_df['Test Type'].isin(tests_in_category)]
                         if not category_data.empty:
                             fig_grouped = visualization.create_grouped_chart(
                                 category_data, selected_patient, tests_in_category, category
@@ -2350,7 +2424,7 @@ def patient_dashboard_page(db, visualization, alert_system, user_id):
                             for j in range(num_cols):
                                 if i + j < len(tests_in_category):
                                     test_type = tests_in_category[i + j]
-                                    test_data = df[df['Test Type'] == test_type].copy()
+                                    test_data = filtered_df[filtered_df['Test Type'] == test_type].copy()
                                     
                                     if not test_data.empty:
                                         # Sort by date for proper trend visualization
