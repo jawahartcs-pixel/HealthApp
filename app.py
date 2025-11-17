@@ -2290,7 +2290,8 @@ def patient_dashboard_page(db, visualization, alert_system, user_id):
         
         # Get patient ID and patient events for visualization
         patient_id = db.get_patient_id(selected_patient, user_id)
-        patient_events = db.get_patient_events(patient_id, user_id) if patient_id else []
+        patient_events_all = db.get_patient_events(patient_id, user_id) if patient_id else []
+        patient_events = patient_events_all  # Will be filtered later based on user selection
         
         # Convert to DataFrame for easier manipulation
         df = pd.DataFrame(patient_tests, columns=['Date', 'Test Type', 'Value', 'Unit', 'Reference Range'])
@@ -2331,6 +2332,26 @@ def patient_dashboard_page(db, visualization, alert_system, user_id):
             format_func=lambda x: f"🔬 {x}",
             help="Select which tests to include in the dashboard. By default, all tests are shown."
         )
+        
+        # Event filter (if events exist for this patient)
+        selected_events = []
+        filtered_patient_events = []
+        if patient_events_all:
+            event_options = [f"{event['event_name']} ({pd.to_datetime(event['event_date']).strftime('%Y-%m-%d')})" for event in patient_events_all]
+            selected_events = st.multiselect(
+                "Select Events to Display on Charts",
+                options=event_options,
+                default=event_options,
+                format_func=lambda x: f"📌 {x}",
+                help="Select which patient events to display as markers on charts. By default, all events are shown."
+            )
+            
+            # Filter events based on selection
+            if selected_events:
+                for event in patient_events_all:
+                    event_label = f"{event['event_name']} ({pd.to_datetime(event['event_date']).strftime('%Y-%m-%d')})"
+                    if event_label in selected_events:
+                        filtered_patient_events.append(event)
         
         # Apply filters to dataframe
         if not selected_dates:
@@ -2443,6 +2464,35 @@ def patient_dashboard_page(db, visualization, alert_system, user_id):
                             st.metric(test_type, f"{value} {unit}")
         
         st.divider()
+        
+        # Show patient events (filtered by date range)
+        if patient_events_all:
+            # Filter events to only show those within selected date range
+            date_range_start = min(selected_dates)
+            date_range_end = max(selected_dates)
+            
+            filtered_events_display = []
+            for event in patient_events_all:
+                event_date = pd.to_datetime(event['event_date']).date()
+                if date_range_start <= event_date <= date_range_end:
+                    filtered_events_display.append(event)
+            
+            if filtered_events_display:
+                st.subheader("📅 Patient Events (Within Selected Date Range)")
+                
+                # Sort events by date (most recent first)
+                sorted_events = sorted(filtered_events_display, key=lambda x: x['event_date'], reverse=True)
+                
+                # Display events in a compact format
+                for event in sorted_events:
+                    event_date = pd.to_datetime(event['event_date']).strftime('%Y-%m-%d')
+                    with st.expander(f"📌 {event['event_name']} - {event_date}"):
+                        if event['notes']:
+                            st.markdown(f"**Notes:** {event['notes']}")
+                        else:
+                            st.markdown("*No additional notes*")
+                
+                st.divider()
         
         # Get and display patient alerts (filtered by selected report dates and test types)
         patient_alerts = alert_system.get_patient_alerts(selected_patient)
@@ -2561,7 +2611,7 @@ def patient_dashboard_page(db, visualization, alert_system, user_id):
                             patient_profile = db.get_patient_profile(selected_patient, user_id)
                             patient_gender = patient_profile.get('gender') if patient_profile else None
                             fig_grouped = visualization.create_grouped_chart(
-                                category_data, selected_patient, tests_in_category, category, patient_gender, patient_events
+                                category_data, selected_patient, tests_in_category, category, patient_gender, filtered_patient_events
                             )
                             st.plotly_chart(fig_grouped, use_container_width=True, key=f"grouped_chart_{category.replace(' ', '_')}")
             else:
@@ -2591,9 +2641,9 @@ def patient_dashboard_page(db, visualization, alert_system, user_id):
                                             
                                             # Create chart based on selected type
                                             if chart_type == "2D Beautiful":
-                                                fig = visualization.create_beautiful_2d_chart(test_data, test_type, selected_patient, patient_gender, patient_events)
+                                                fig = visualization.create_beautiful_2d_chart(test_data, test_type, selected_patient, patient_gender, filtered_patient_events)
                                             else:
-                                                fig = visualization.create_trend_chart(test_data, test_type, selected_patient, patient_gender, patient_events)
+                                                fig = visualization.create_trend_chart(test_data, test_type, selected_patient, patient_gender, filtered_patient_events)
                                             
                                             st.plotly_chart(fig, use_container_width=True, key=f"chart_{category.replace(' ', '_')}_{test_type.replace(' ', '_')}_{i}_{j}")
                                             
