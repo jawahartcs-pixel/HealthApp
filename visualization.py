@@ -61,8 +61,9 @@ class Visualization:
                     continue
             
             # Add vertical line for the event
+            # Convert pandas Timestamp to Python datetime to avoid arithmetic errors in Plotly
             fig.add_vline(
-                x=event_date,
+                x=event_date.to_pydatetime() if hasattr(event_date, 'to_pydatetime') else event_date,
                 line_dash="dash",
                 line_color="rgba(255, 0, 0, 0.5)",
                 line_width=2,
