@@ -60,22 +60,37 @@ class Visualization:
                 if event_date < min_date or event_date > max_date:
                     continue
             
-            # Add vertical line for the event
-            # Convert pandas Timestamp to Python datetime to avoid arithmetic errors in Plotly
-            fig.add_vline(
-                x=event_date.to_pydatetime() if hasattr(event_date, 'to_pydatetime') else event_date,
-                line_dash="dash",
-                line_color="rgba(255, 0, 0, 0.5)",
-                line_width=2,
-                annotation_text=event['event_name'],
-                annotation_position="top",
-                annotation=dict(
-                    font=dict(size=10, color="red"),
-                    textangle=-90,
-                    bgcolor="rgba(255, 255, 255, 0.8)",
-                    bordercolor="red",
-                    borderwidth=1
+            # Add vertical line for the event using shapes instead of add_vline to avoid datetime issues
+            # Convert to string format for Plotly
+            x_value = event_date.strftime('%Y-%m-%d') if hasattr(event_date, 'strftime') else str(event_date)
+            
+            fig.add_shape(
+                type="line",
+                x0=x_value,
+                x1=x_value,
+                y0=0,
+                y1=1,
+                yref="paper",
+                line=dict(
+                    color="rgba(255, 0, 0, 0.5)",
+                    width=2,
+                    dash="dash"
                 )
+            )
+            
+            # Add annotation for event name
+            fig.add_annotation(
+                x=x_value,
+                y=1,
+                yref="paper",
+                text=event['event_name'],
+                showarrow=False,
+                textangle=-90,
+                font=dict(size=10, color="red"),
+                bgcolor="rgba(255, 255, 255, 0.8)",
+                bordercolor="red",
+                borderwidth=1,
+                yshift=10
             )
     
     def create_trend_chart(self, test_data: pd.DataFrame, test_type: str, patient_name: str, 
