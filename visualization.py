@@ -48,7 +48,23 @@ class Visualization:
         if not events:
             return
         
-        for event in events:
+        # Define a palette of dark, distinguishable colors for event markers
+        event_colors = [
+            '#8B0000',  # Dark Red
+            '#00008B',  # Dark Blue
+            '#006400',  # Dark Green
+            '#8B008B',  # Dark Magenta
+            '#FF8C00',  # Dark Orange
+            '#4B0082',  # Indigo
+            '#2F4F4F',  # Dark Slate Gray
+            '#8B4513',  # Saddle Brown
+            '#191970',  # Midnight Blue
+            '#556B2F',  # Dark Olive Green
+            '#8B0A50',  # Deep Pink (dark)
+            '#483D8B',  # Dark Slate Blue
+        ]
+        
+        for idx, event in enumerate(events):
             event_date = pd.to_datetime(event['event_date'])
             
             # If x_range is provided, only show events within the visible range
@@ -59,6 +75,11 @@ class Visualization:
                 # Use timestamp comparison to avoid deprecated integer arithmetic
                 if event_date < min_date or event_date > max_date:
                     continue
+            
+            # Assign a unique color to each event (cycle through palette if more events than colors)
+            color = event_colors[idx % len(event_colors)]
+            # Create a semi-transparent version for the line
+            color_rgba = f"rgba({int(color[1:3], 16)}, {int(color[3:5], 16)}, {int(color[5:7], 16)}, 0.6)"
             
             # Add vertical line for the event using shapes instead of add_vline to avoid datetime issues
             # Convert to string format for Plotly
@@ -72,13 +93,13 @@ class Visualization:
                 y1=1,
                 yref="paper",
                 line=dict(
-                    color="rgba(255, 0, 0, 0.5)",
+                    color=color_rgba,
                     width=2,
                     dash="dash"
                 )
             )
             
-            # Add annotation for event name
+            # Add annotation for event name with matching color
             fig.add_annotation(
                 x=x_value,
                 y=1,
@@ -86,10 +107,10 @@ class Visualization:
                 text=event['event_name'],
                 showarrow=False,
                 textangle=-90,
-                font=dict(size=10, color="red"),
-                bgcolor="rgba(255, 255, 255, 0.8)",
-                bordercolor="red",
-                borderwidth=1,
+                font=dict(size=10, color=color),
+                bgcolor="rgba(255, 255, 255, 0.9)",
+                bordercolor=color,
+                borderwidth=2,
                 yshift=10
             )
     
