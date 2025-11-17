@@ -2392,9 +2392,10 @@ def patient_dashboard_page(db, visualization, alert_system, user_id):
             # PDF Report download for filtered data
             if st.button("📄 Generate PDF Report (Filtered)"):
                 try:
-                    # Store filtered dates and test types in session state for PDF generator to use
+                    # Store filtered dates, test types, and events in session state for PDF generator to use
                     st.session_state['pdf_filter_dates'] = selected_dates
                     st.session_state['pdf_filter_test_types'] = selected_test_types
+                    st.session_state['pdf_filter_events'] = filtered_patient_events
                     st.session_state['pdf_patient_name'] = selected_patient
                     
                     pdf_generator = PDFReportGenerator(db)
@@ -2405,6 +2406,8 @@ def patient_dashboard_page(db, visualization, alert_system, user_id):
                         del st.session_state['pdf_filter_dates']
                     if 'pdf_filter_test_types' in st.session_state:
                         del st.session_state['pdf_filter_test_types']
+                    if 'pdf_filter_events' in st.session_state:
+                        del st.session_state['pdf_filter_events']
                     if 'pdf_patient_name' in st.session_state:
                         del st.session_state['pdf_patient_name']
                     
