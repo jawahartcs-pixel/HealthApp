@@ -81,14 +81,12 @@ class Visualization:
             # Create a semi-transparent version for the line
             color_rgba = f"rgba({int(color[1:3], 16)}, {int(color[3:5], 16)}, {int(color[5:7], 16)}, 0.6)"
             
-            # Add vertical line for the event using shapes instead of add_vline to avoid datetime issues
-            # Convert to string format for Plotly
-            x_value = event_date.strftime('%Y-%m-%d') if hasattr(event_date, 'strftime') else str(event_date)
-            
+            # Add vertical line for the event using shapes
+            # Keep as datetime object for proper Plotly rendering
             fig.add_shape(
                 type="line",
-                x0=x_value,
-                x1=x_value,
+                x0=event_date,
+                x1=event_date,
                 y0=0,
                 y1=1,
                 yref="paper",
@@ -101,7 +99,7 @@ class Visualization:
             
             # Add annotation for event name with matching color
             fig.add_annotation(
-                x=x_value,
+                x=event_date,
                 y=1,
                 yref="paper",
                 text=event['event_name'],
