@@ -37,13 +37,14 @@ class Visualization:
             'Potassium': '#A9CCE3'
         }
     
-    def add_event_lines(self, fig: go.Figure, events: List[Dict], x_range: tuple = None):
-        """Add vertical lines for patient events to a chart.
+    def add_event_lines(self, fig: go.Figure, events: List[Dict], x_range: tuple = None, y_range: tuple = None):
+        """Add vertical lines for patient events to a chart with hover tooltips.
         
         Args:
             fig: Plotly figure to add event lines to
             events: List of event dictionaries with 'event_date' and 'event_name'
             x_range: Optional tuple of (min_date, max_date) to filter visible events
+            y_range: Optional tuple of (min_y, max_y) for positioning hover traces
         """
         if not events:
             return
@@ -96,6 +97,23 @@ class Visualization:
                     dash="dash"
                 )
             )
+            
+            # Add invisible scatter trace for hover tooltip
+            # Use the full height of the chart
+            event_date_str = event_date.strftime('%Y-%m-%d')
+            hover_text = f"<b>{event['event_name']}</b><br>Date: {event_date_str}"
+            if event.get('notes'):
+                hover_text += f"<br>Notes: {event['notes']}"
+            
+            fig.add_trace(go.Scatter(
+                x=[event_date, event_date],
+                y=[0, 1],
+                mode='lines',
+                line=dict(color='rgba(0,0,0,0)', width=20),  # Invisible but wide for easy hover
+                hovertemplate=hover_text + '<extra></extra>',
+                showlegend=False,
+                yaxis='y'
+            ))
             
             # Add annotation for event name with matching color
             fig.add_annotation(
