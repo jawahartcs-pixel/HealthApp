@@ -428,8 +428,13 @@ class PDFReportGenerator:
             return elements
         
         # Get patient events for visualization
-        patient_id = self.database.get_patient_id(patient_name, user_id)
-        patient_events = self.database.get_patient_events(patient_id, user_id) if patient_id else []
+        # Check if filtered events are in session state (from Patient Dashboard filter)
+        import streamlit as st
+        if 'pdf_filter_events' in st.session_state:
+            patient_events = st.session_state['pdf_filter_events']
+        else:
+            patient_id = self.database.get_patient_id(patient_name, user_id)
+            patient_events = self.database.get_patient_events(patient_id, user_id) if patient_id else []
         
         # Group test types by medical category using investigation standards
         try:
@@ -508,22 +513,41 @@ class PDFReportGenerator:
                 plt.annotate(f'{value:.2f}', (date, value), 
                            textcoords="offset points", xytext=(0,10), ha='center', fontsize=8, zorder=4)
             
-            # Add patient events as vertical lines
+            # Add patient events as vertical lines with different colors
             if events:
+                # Define color palette matching visualization.py
+                event_colors = [
+                    '#8B0000',  # Dark Red
+                    '#00008B',  # Dark Blue
+                    '#006400',  # Dark Green
+                    '#8B008B',  # Dark Magenta
+                    '#FF8C00',  # Dark Orange
+                    '#4B0082',  # Indigo
+                    '#2F4F4F',  # Dark Slate Gray
+                    '#8B4513',  # Saddle Brown
+                    '#191970',  # Midnight Blue
+                    '#556B2F',  # Dark Olive Green
+                    '#8B0A50',  # Deep Pink (dark)
+                    '#483D8B',  # Dark Slate Blue
+                ]
+                
                 min_date = pd.Timestamp(df['test_date'].min())
                 max_date = pd.Timestamp(df['test_date'].max())
                 
-                for event in events:
+                for idx, event in enumerate(events):
                     event_date = pd.to_datetime(event['event_date'])
                     
                     # Only show events within the visible range
                     if min_date <= event_date <= max_date:
-                        plt.axvline(x=event_date, color='red', linestyle='--', linewidth=2, alpha=0.5, zorder=2)
-                        # Add event label
+                        # Assign unique color to each event
+                        color = event_colors[idx % len(event_colors)]
+                        
+                        plt.axvline(x=event_date, color=color, linestyle='--', linewidth=2, alpha=0.6, zorder=2)
+                        # Add event label with matching color
                         plt.text(event_date, plt.ylim()[1] * 0.95, event['event_name'], 
                                rotation=90, verticalalignment='top', horizontalalignment='right',
-                               fontsize=8, color='red', bbox=dict(boxstyle='round,pad=0.3', 
-                               facecolor='white', edgecolor='red', alpha=0.8))
+                               fontsize=8, color=color, bbox=dict(boxstyle='round,pad=0.3', 
+                               facecolor='white', edgecolor=color, alpha=0.9, linewidth=2))
             
             plt.title(f'{test_type} Trend Over Time', fontsize=14, fontweight='bold')
             plt.xlabel('Date', fontsize=12)
