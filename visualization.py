@@ -199,6 +199,9 @@ class Visualization:
             return fig
             
         except Exception as e:
+            import traceback
+            error_details = traceback.format_exc()
+            print(f"FULL ERROR TRACEBACK:\n{error_details}")
             st.error(f"Error creating trend chart: {str(e)}")
             return go.Figure()
     
