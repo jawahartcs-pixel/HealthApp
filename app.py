@@ -2444,8 +2444,8 @@ def patient_dashboard_page(db, visualization, alert_system, user_id):
             last_test = filtered_df['Date'].max().strftime('%Y-%m-%d')
             st.metric("Last Test", last_test)
         
-        # Show detailed report breakdown
-        st.subheader("📋 Report Summary")
+        # Show detailed report breakdown with events chronologically interspersed
+        st.subheader("📋 Report Summary & Events Timeline")
         
         # Create a detailed summary by date (only for selected dates)
         date_groups = filtered_df.groupby(filtered_df['Date'].dt.date).agg({
@@ -2453,49 +2453,63 @@ def patient_dashboard_page(db, visualization, alert_system, user_id):
         }).reset_index()
         date_groups.columns = ['Report Date', 'Test Count', 'Test Types']
         
-        # Display in a nice format
-        for _, row in date_groups.iterrows():
-            with st.expander(f"📊 Report from {row['Report Date']} - {row['Test Count']} tests"):
-                test_types_list = row['Test Types'].split(', ')
-                cols = st.columns(min(3, len(test_types_list)))
-                for i, test_type in enumerate(test_types_list):
-                    with cols[i % 3]:
-                        test_values = filtered_df[(filtered_df['Date'].dt.date == row['Report Date']) & (filtered_df['Test Type'] == test_type)]
-                        if len(test_values) > 0:
-                            value = test_values.iloc[0]['Value']
-                            unit = test_values.iloc[0]['Unit'] or ''
-                            st.metric(test_type, f"{value} {unit}")
+        # Get events within selected date range
+        date_range_start = min(selected_dates)
+        date_range_end = max(selected_dates)
         
-        st.divider()
-        
-        # Show patient events (filtered by date range)
+        filtered_events_display = []
         if patient_events_all:
-            # Filter events to only show those within selected date range
-            date_range_start = min(selected_dates)
-            date_range_end = max(selected_dates)
-            
-            filtered_events_display = []
             for event in patient_events_all:
                 event_date = pd.to_datetime(event['event_date']).date()
                 if date_range_start <= event_date <= date_range_end:
                     filtered_events_display.append(event)
-            
-            if filtered_events_display:
-                st.subheader("📅 Patient Events (Within Selected Date Range)")
-                
-                # Sort events by date (most recent first)
-                sorted_events = sorted(filtered_events_display, key=lambda x: x['event_date'], reverse=True)
-                
-                # Display events in a compact format
-                for event in sorted_events:
-                    event_date = pd.to_datetime(event['event_date']).strftime('%Y-%m-%d')
-                    with st.expander(f"📌 {event['event_name']} - {event_date}"):
-                        if event['notes']:
-                            st.markdown(f"**Notes:** {event['notes']}")
-                        else:
-                            st.markdown("*No additional notes*")
-                
-                st.divider()
+        
+        # Create a combined list of reports and events with dates
+        timeline_items = []
+        
+        # Add reports
+        for _, row in date_groups.iterrows():
+            timeline_items.append({
+                'type': 'report',
+                'date': row['Report Date'],
+                'data': row
+            })
+        
+        # Add events
+        for event in filtered_events_display:
+            timeline_items.append({
+                'type': 'event',
+                'date': pd.to_datetime(event['event_date']).date(),
+                'data': event
+            })
+        
+        # Sort chronologically (most recent first)
+        timeline_items.sort(key=lambda x: x['date'], reverse=True)
+        
+        # Display timeline in chronological order
+        for item in timeline_items:
+            if item['type'] == 'report':
+                row = item['data']
+                with st.expander(f"📊 Report from {row['Report Date']} - {row['Test Count']} tests"):
+                    test_types_list = row['Test Types'].split(', ')
+                    cols = st.columns(min(3, len(test_types_list)))
+                    for i, test_type in enumerate(test_types_list):
+                        with cols[i % 3]:
+                            test_values = filtered_df[(filtered_df['Date'].dt.date == row['Report Date']) & (filtered_df['Test Type'] == test_type)]
+                            if len(test_values) > 0:
+                                value = test_values.iloc[0]['Value']
+                                unit = test_values.iloc[0]['Unit'] or ''
+                                st.metric(test_type, f"{value} {unit}")
+            else:  # event
+                event = item['data']
+                event_date = pd.to_datetime(event['event_date']).strftime('%Y-%m-%d')
+                with st.expander(f"📌 **EVENT:** {event['event_name']} - {event_date}"):
+                    if event['notes']:
+                        st.markdown(f"**Notes:** {event['notes']}")
+                    else:
+                        st.markdown("*No additional notes*")
+        
+        st.divider()
         
         # Get and display patient alerts (filtered by selected report dates and test types)
         patient_alerts = alert_system.get_patient_alerts(selected_patient)
