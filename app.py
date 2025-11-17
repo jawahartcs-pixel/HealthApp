@@ -2525,32 +2525,88 @@ def patient_dashboard_page(db, visualization, alert_system, user_id):
                     filtered_alerts.append(alert)
             
             if filtered_alerts:
-                st.subheader("🚨 Active Alerts (Filtered Reports)")
+                st.subheader("🚨 Active Alerts & Events Timeline (Filtered Reports)")
+                
+                # Group alerts by severity
                 critical_alerts = [a for a in filtered_alerts if a['level'] == 'CRITICAL']
                 high_alerts = [a for a in filtered_alerts if a['level'] == 'HIGH']
+                medium_alerts = [a for a in filtered_alerts if a['level'] == 'MEDIUM']
+                low_alerts = [a for a in filtered_alerts if a['level'] == 'LOW']
                 
-                col1, col2, col3 = st.columns(3)
+                col1, col2, col3, col4 = st.columns(4)
                 with col1:
-                    st.metric("Critical Alerts", len(critical_alerts))
+                    st.metric("Critical", len(critical_alerts))
                 with col2:
-                    st.metric("Major Alerts", len(high_alerts))
+                    st.metric("Major", len(high_alerts))
                 with col3:
-                    st.metric("Total Alerts", len(filtered_alerts))
+                    st.metric("Medium", len(medium_alerts))
+                with col4:
+                    st.metric("Low", len(low_alerts))
                 
-                # Show alerts with expandable details using enhanced headers
-                for alert in filtered_alerts:
-                    # Use enhanced header if available, otherwise fallback to message with test type
-                    alert_header = alert.get('header', f"{alert['test_type']} - {alert['message']}")
-                    alert_label = alert.get('label', alert['level'])
-                    with st.expander(f"{alert['icon']} {alert_label} - {alert_header}", expanded=alert['level'] == 'CRITICAL'):
-                        st.markdown(f"**Value:** {alert['value']} {alert['unit']}")
-                        st.markdown(f"**Reference Range:** {alert['reference_range']}")
-                        st.markdown(f"**Date:** {alert['test_date']}")
+                # Function to display alerts and events chronologically for a severity level
+                def display_alerts_with_events(alerts, severity_label, severity_icon, severity_color):
+                    if alerts:
+                        st.markdown(f"### {severity_icon} {severity_label} Alerts")
                         
-                        if alert['recommendations']:
-                            st.markdown("**Recommendations:**")
-                            for rec in alert['recommendations']:
-                                st.markdown(f"• {rec}")
+                        # Create timeline items for alerts and events
+                        timeline = []
+                        
+                        # Add alerts
+                        for alert in alerts:
+                            timeline.append({
+                                'type': 'alert',
+                                'date': pd.to_datetime(alert['test_date']).date(),
+                                'data': alert
+                            })
+                        
+                        # Add events that fall within the date range of alerts
+                        if filtered_events_display:
+                            alert_dates = [pd.to_datetime(a['test_date']).date() for a in alerts]
+                            min_alert_date = min(alert_dates)
+                            max_alert_date = max(alert_dates)
+                            
+                            for event in filtered_events_display:
+                                event_date = pd.to_datetime(event['event_date']).date()
+                                if min_alert_date <= event_date <= max_alert_date:
+                                    timeline.append({
+                                        'type': 'event',
+                                        'date': event_date,
+                                        'data': event
+                                    })
+                        
+                        # Sort chronologically (most recent first)
+                        timeline.sort(key=lambda x: x['date'], reverse=True)
+                        
+                        # Display timeline
+                        for item in timeline:
+                            if item['type'] == 'alert':
+                                alert = item['data']
+                                alert_header = alert.get('header', f"{alert['test_type']} - {alert['message']}")
+                                alert_label = alert.get('label', alert['level'])
+                                with st.expander(f"{alert['icon']} {alert_label} - {alert_header}", expanded=alert['level'] == 'CRITICAL'):
+                                    st.markdown(f"**Value:** {alert['value']} {alert['unit']}")
+                                    st.markdown(f"**Reference Range:** {alert['reference_range']}")
+                                    st.markdown(f"**Date:** {alert['test_date']}")
+                                    
+                                    if alert['recommendations']:
+                                        st.markdown("**Recommendations:**")
+                                        for rec in alert['recommendations']:
+                                            st.markdown(f"• {rec}")
+                            else:  # event
+                                event = item['data']
+                                event_date = pd.to_datetime(event['event_date']).strftime('%Y-%m-%d')
+                                with st.expander(f"📌 **EVENT:** {event['event_name']} - {event_date}"):
+                                    st.info(f"💡 This event occurred on {event_date}, which may be related to the {severity_label.lower()} alerts in this timeframe.")
+                                    if event['notes']:
+                                        st.markdown(f"**Notes:** {event['notes']}")
+                                    else:
+                                        st.markdown("*No additional notes*")
+                
+                # Display each severity group with events
+                display_alerts_with_events(critical_alerts, "Critical", "🔴", "red")
+                display_alerts_with_events(high_alerts, "Major", "🟠", "orange")
+                display_alerts_with_events(medium_alerts, "Medium", "🟡", "yellow")
+                display_alerts_with_events(low_alerts, "Minor", "🟢", "green")
                 
                 st.divider()
         
