@@ -46,29 +46,21 @@ class Visualization:
             x_range: Optional tuple of (min_date, max_date) to filter visible events
         """
         if not events:
-            print(f"DEBUG: No events provided to add_event_lines")
             return
-        
-        print(f"DEBUG: add_event_lines called with {len(events)} events, x_range: {x_range}")
         
         for event in events:
             event_date = pd.to_datetime(event['event_date'])
-            print(f"DEBUG: Processing event '{event['event_name']}' with date {event_date}")
             
             # If x_range is provided, only show events within the visible range
             if x_range:
                 # Convert both to pandas Timestamp for compatible comparison
                 min_date = pd.Timestamp(x_range[0])
                 max_date = pd.Timestamp(x_range[1])
-                print(f"DEBUG: Checking if event {event_date} is within range {min_date} to {max_date}")
                 # Use timestamp comparison to avoid deprecated integer arithmetic
                 if event_date < min_date or event_date > max_date:
-                    print(f"DEBUG: Event {event['event_name']} FILTERED OUT - outside date range")
                     continue
-                print(f"DEBUG: Event {event['event_name']} is within range - adding marker")
             
             # Add vertical line for the event
-            print(f"DEBUG: Adding vline for event '{event['event_name']}' at x={event_date}")
             fig.add_vline(
                 x=event_date,
                 line_dash="dash",
