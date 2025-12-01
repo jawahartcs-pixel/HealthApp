@@ -2465,10 +2465,32 @@ def patient_dashboard_page(db, visualization, alert_system, user_id):
             st.warning("⚠️ Please select at least one test type to display")
             return
         
-        # Filter dataframe based on selected dates and test types
+        # Apply threshold filter if enabled (overrides other filters)
+        if threshold_filter_enabled and threshold_test_types:
+            # When threshold filter is on, use only the two compared dates and threshold test types
+            active_dates = [threshold_report_1_date, threshold_report_2_date]
+            active_test_types = threshold_test_types
+            
+            # Filter events to only those within the date range of the two compared reports
+            min_date = min(active_dates)
+            max_date = max(active_dates)
+            threshold_filtered_events = []
+            for event in filtered_patient_events:
+                event_date = pd.to_datetime(event['event_date']).date()
+                if min_date <= event_date <= max_date:
+                    threshold_filtered_events.append(event)
+            filtered_patient_events = threshold_filtered_events
+            
+            st.info(f"📊 **Threshold filter active:** Showing {len(active_test_types)} tests with ≥{threshold_percentage}% change between {threshold_report_1_date} and {threshold_report_2_date}")
+        else:
+            # Use the user's original selections
+            active_dates = selected_dates
+            active_test_types = selected_test_types
+        
+        # Filter dataframe based on active dates and test types
         filtered_df = df[
-            (df['Date'].dt.date.isin(selected_dates)) & 
-            (df['Test Type'].isin(selected_test_types))
+            (df['Date'].dt.date.isin(active_dates)) & 
+            (df['Test Type'].isin(active_test_types))
         ].copy()
         
         if filtered_df.empty:
@@ -2483,8 +2505,9 @@ def patient_dashboard_page(db, visualization, alert_system, user_id):
         with col_download1:
             # CSV download for filtered data
             csv_data = filtered_df.to_csv(index=False)
+            download_label = "📊 Download Threshold-Filtered Data (CSV)" if threshold_filter_enabled else "📊 Download Filtered Data (CSV)"
             st.download_button(
-                label="📊 Download Filtered Data (CSV)",
+                label=download_label,
                 data=csv_data,
                 file_name=f"{selected_patient}_filtered_results_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
                 mime="text/csv",
@@ -2493,13 +2516,24 @@ def patient_dashboard_page(db, visualization, alert_system, user_id):
         
         with col_download2:
             # PDF Report download for filtered data
-            if st.button("📄 Generate PDF Report (Filtered)"):
+            pdf_button_label = "📄 Generate PDF Report (Threshold-Filtered)" if threshold_filter_enabled else "📄 Generate PDF Report (Filtered)"
+            if st.button(pdf_button_label):
                 try:
                     # Store filtered dates, test types, and events in session state for PDF generator to use
-                    st.session_state['pdf_filter_dates'] = selected_dates
-                    st.session_state['pdf_filter_test_types'] = selected_test_types
+                    st.session_state['pdf_filter_dates'] = active_dates
+                    st.session_state['pdf_filter_test_types'] = active_test_types
                     st.session_state['pdf_filter_events'] = filtered_patient_events
                     st.session_state['pdf_patient_name'] = selected_patient
+                    # Store threshold filter info for PDF header
+                    if threshold_filter_enabled:
+                        st.session_state['pdf_threshold_filter'] = {
+                            'enabled': True,
+                            'report_1_date': threshold_report_1_date,
+                            'report_2_date': threshold_report_2_date,
+                            'threshold_percentage': threshold_percentage
+                        }
+                    else:
+                        st.session_state['pdf_threshold_filter'] = None
                     
                     pdf_generator = PDFReportGenerator(db)
                     pdf_bytes = pdf_generator.generate_patient_report(selected_patient, user_id)
@@ -2513,6 +2547,8 @@ def patient_dashboard_page(db, visualization, alert_system, user_id):
                         del st.session_state['pdf_filter_events']
                     if 'pdf_patient_name' in st.session_state:
                         del st.session_state['pdf_patient_name']
+                    if 'pdf_threshold_filter' in st.session_state:
+                        del st.session_state['pdf_threshold_filter']
                     
                     st.download_button(
                         label="Download PDF Report",
@@ -2556,9 +2592,9 @@ def patient_dashboard_page(db, visualization, alert_system, user_id):
         }).reset_index()
         date_groups.columns = ['Report Date', 'Test Count', 'Test Types']
         
-        # Get events within selected date range
-        date_range_start = min(selected_dates)
-        date_range_end = max(selected_dates)
+        # Get events within active date range (respects threshold filter)
+        date_range_start = min(active_dates)
+        date_range_end = max(active_dates)
         
         filtered_events_display = []
         if patient_events_all:
@@ -2614,17 +2650,17 @@ def patient_dashboard_page(db, visualization, alert_system, user_id):
         
         st.divider()
         
-        # Get and display patient alerts (filtered by selected report dates and test types)
+        # Get and display patient alerts (filtered by active report dates and test types)
         patient_alerts = alert_system.get_patient_alerts(selected_patient)
         
-        # Filter alerts to only include those from selected report dates and test types
+        # Filter alerts to only include those from active report dates and test types (respects threshold filter)
         if patient_alerts:
             filtered_alerts = []
             for alert in patient_alerts:
-                # Parse alert test_date and compare with selected dates
+                # Parse alert test_date and compare with active dates/test types
                 alert_date = pd.to_datetime(alert['test_date']).date()
                 alert_test_type = alert['test_type']
-                if alert_date in selected_dates and alert_test_type in selected_test_types:
+                if alert_date in active_dates and alert_test_type in active_test_types:
                     filtered_alerts.append(alert)
             
             if filtered_alerts:
