@@ -38,6 +38,7 @@ User wants proper category grouping for visualizations using the investigation s
 - **Patient Event Tracking**: Comprehensive system for tracking medical events (surgeries, treatments, diagnoses) with full CRUD operations, integrated into visualizations as event markers, and supporting correlation analysis.
 - **Document Preview & Comparison**: Side-by-side document preview with extracted results, highlighting, search, and verification tools.
 - **Data Filtering & Sorting**: Advanced filtering and sorting for database records, including multi-column sorting, date/value range filtering, and text search.
+- **Threshold Comparison Filter**: Optional filter comparing two selected reports to show only tests with values that changed above a specified percentage threshold (1-100%, default 20%). When enabled, filters reports, events, alerts, visualizations, and downloads to focus on significant changes.
 - **PDF Report Generation**: Generates comprehensive, shareable PDF reports with patient summaries, tables, and 2D charts, respecting applied filters.
 - **Comprehensive Patient Profile Management**: Three-tab system for patient directory, detailed profile management (age/gender/contact/medical information), and document upload/management.
 - **Gender-Specific Reference Ranges**: Visualization system automatically applies appropriate reference ranges based on patient gender, with color-coded indicators.
