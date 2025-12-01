@@ -2305,46 +2305,105 @@ def patient_dashboard_page(db, visualization, alert_system, user_id):
         # Report filter section
         st.subheader("🗂️ Filter Reports and Tests")
         
-        # Date filter
+        # Initialize session state for filters if not present
+        filter_key_prefix = f"filter_{selected_patient}"
+        if f'{filter_key_prefix}_dates' not in st.session_state:
+            st.session_state[f'{filter_key_prefix}_dates'] = list(unique_dates)
+        if f'{filter_key_prefix}_tests' not in st.session_state:
+            st.session_state[f'{filter_key_prefix}_tests'] = list(unique_test_types)
+        
+        # Date filter with Clear All / Select All buttons
+        st.markdown("**Select Reports to Display (by Date)**")
+        col_date_btns1, col_date_btns2, col_date_btns3 = st.columns([1, 1, 4])
+        with col_date_btns1:
+            if st.button("✅ Select All", key="select_all_dates"):
+                st.session_state[f'{filter_key_prefix}_dates'] = list(unique_dates)
+                st.rerun()
+        with col_date_btns2:
+            if st.button("❌ Clear All", key="clear_all_dates"):
+                st.session_state[f'{filter_key_prefix}_dates'] = []
+                st.rerun()
+        
         col_filter1, col_filter2 = st.columns([3, 1])
         
         with col_filter1:
-            # Multiselect for report dates (default: all selected)
+            # Multiselect for report dates
             selected_dates = st.multiselect(
-                "Select Reports to Display (by Date)",
+                "Reports",
                 options=unique_dates,
-                default=unique_dates,
+                default=st.session_state[f'{filter_key_prefix}_dates'],
                 format_func=lambda x: f"📊 Report from {x}",
-                help="Select which reports to include in the dashboard. By default, all reports are shown."
+                help="Select which reports to include in the dashboard.",
+                label_visibility="collapsed"
             )
+            # Update session state
+            st.session_state[f'{filter_key_prefix}_dates'] = selected_dates
         
         with col_filter2:
             st.write("")
-            st.write("")
-            if st.button("🔄 Reset Filters"):
+            if st.button("🔄 Reset All Filters"):
+                # Clear all filter session states
+                st.session_state[f'{filter_key_prefix}_dates'] = list(unique_dates)
+                st.session_state[f'{filter_key_prefix}_tests'] = list(unique_test_types)
+                if f'{filter_key_prefix}_events' in st.session_state:
+                    del st.session_state[f'{filter_key_prefix}_events']
                 st.rerun()
         
-        # Test type filter
+        # Test type filter with Clear All / Select All buttons
+        st.markdown("**Select Tests/Investigations to Display**")
+        col_test_btns1, col_test_btns2, col_test_btns3 = st.columns([1, 1, 4])
+        with col_test_btns1:
+            if st.button("✅ Select All", key="select_all_tests"):
+                st.session_state[f'{filter_key_prefix}_tests'] = list(unique_test_types)
+                st.rerun()
+        with col_test_btns2:
+            if st.button("❌ Clear All", key="clear_all_tests"):
+                st.session_state[f'{filter_key_prefix}_tests'] = []
+                st.rerun()
+        
         selected_test_types = st.multiselect(
-            "Select Tests/Investigations to Display",
+            "Tests",
             options=unique_test_types,
-            default=unique_test_types,
+            default=st.session_state[f'{filter_key_prefix}_tests'],
             format_func=lambda x: f"🔬 {x}",
-            help="Select which tests to include in the dashboard. By default, all tests are shown."
+            help="Select which tests to include in the dashboard.",
+            label_visibility="collapsed"
         )
+        # Update session state
+        st.session_state[f'{filter_key_prefix}_tests'] = selected_test_types
         
         # Event filter (if events exist for this patient)
         selected_events = []
         filtered_patient_events = []
         if patient_events_all:
             event_options = [f"{event['event_name']} ({pd.to_datetime(event['event_date']).strftime('%Y-%m-%d')})" for event in patient_events_all]
+            
+            # Initialize event session state if not present
+            if f'{filter_key_prefix}_events' not in st.session_state:
+                st.session_state[f'{filter_key_prefix}_events'] = list(event_options)
+            
+            # Event filter with Clear All / Select All buttons
+            st.markdown("**Select Events to Display on Charts**")
+            col_event_btns1, col_event_btns2, col_event_btns3 = st.columns([1, 1, 4])
+            with col_event_btns1:
+                if st.button("✅ Select All", key="select_all_events"):
+                    st.session_state[f'{filter_key_prefix}_events'] = list(event_options)
+                    st.rerun()
+            with col_event_btns2:
+                if st.button("❌ Clear All", key="clear_all_events"):
+                    st.session_state[f'{filter_key_prefix}_events'] = []
+                    st.rerun()
+            
             selected_events = st.multiselect(
-                "Select Events to Display on Charts",
+                "Events",
                 options=event_options,
-                default=event_options,
+                default=st.session_state[f'{filter_key_prefix}_events'],
                 format_func=lambda x: f"📌 {x}",
-                help="Select which patient events to display as markers on charts. By default, all events are shown."
+                help="Select which patient events to display as markers on charts.",
+                label_visibility="collapsed"
             )
+            # Update session state
+            st.session_state[f'{filter_key_prefix}_events'] = selected_events
             
             # Filter events based on selection
             if selected_events:
@@ -2452,6 +2511,12 @@ def patient_dashboard_page(db, visualization, alert_system, user_id):
                         with st.expander("📊 Preview of significant changes", expanded=False):
                             for detail in sorted(change_details, key=lambda x: x['pct_change'], reverse=True):
                                 st.markdown(f"**{detail['test_type']}**: {detail['value_1']} → {detail['value_2']} ({detail['direction']}{detail['pct_change']:.1f}%)")
+                        
+                        # Button to apply threshold results to the test filter
+                        if st.button("📋 Apply These Tests to Test Filter", help="Copy these threshold-selected tests to the 'Select Tests/Investigations to Display' filter above"):
+                            st.session_state[f'{filter_key_prefix}_tests'] = list(threshold_test_types)
+                            st.success(f"✅ Applied {len(threshold_test_types)} tests to the Test Filter. The threshold filter will now be disabled.")
+                            st.rerun()
                     else:
                         st.warning(f"⚠️ No tests found with changes ≥{threshold_percentage}% between the selected reports.")
                         threshold_filter_enabled = False
