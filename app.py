@@ -2353,6 +2353,109 @@ def patient_dashboard_page(db, visualization, alert_system, user_id):
                     if event_label in selected_events:
                         filtered_patient_events.append(event)
         
+        st.divider()
+        
+        # Threshold comparison filter (optional, disabled by default)
+        threshold_filter_enabled = st.toggle(
+            "📊 Show values above threshold between reports",
+            value=False,
+            help="Enable this filter to compare two reports and show only test results with changes above a specified threshold percentage."
+        )
+        
+        # Store threshold filter settings
+        threshold_test_types = None
+        threshold_report_1_date = None
+        threshold_report_2_date = None
+        threshold_percentage = 20
+        
+        if threshold_filter_enabled:
+            st.info("🔍 **Threshold Comparison Filter:** Compare two reports and show only tests with significant changes.")
+            
+            # Check if we have at least 2 reports
+            if len(unique_dates) < 2:
+                st.warning("⚠️ Need at least 2 reports to use threshold comparison. This filter has been disabled.")
+                threshold_filter_enabled = False
+            else:
+                col_th1, col_th2, col_th3 = st.columns([2, 2, 1])
+                
+                with col_th1:
+                    # Report 1 (older/baseline report) - default to second most recent
+                    threshold_report_1_date = st.selectbox(
+                        "📋 Report 1 (Baseline)",
+                        options=unique_dates,
+                        index=1 if len(unique_dates) > 1 else 0,  # Default to second most recent (previous)
+                        format_func=lambda x: f"📊 {x}",
+                        help="Select the baseline report to compare from (older report)"
+                    )
+                
+                with col_th2:
+                    # Report 2 (newer/comparison report) - default to most recent
+                    threshold_report_2_date = st.selectbox(
+                        "📋 Report 2 (Compare to)",
+                        options=unique_dates,
+                        index=0,  # Default to most recent
+                        format_func=lambda x: f"📊 {x}",
+                        help="Select the report to compare against the baseline (newer report)"
+                    )
+                
+                with col_th3:
+                    # Percentage threshold slider
+                    threshold_percentage = st.slider(
+                        "Change % Threshold",
+                        min_value=1,
+                        max_value=100,
+                        value=20,
+                        step=1,
+                        help="Show only tests with value changes above or below this percentage"
+                    )
+                
+                # Validate that Report 1 and Report 2 are different
+                if threshold_report_1_date == threshold_report_2_date:
+                    st.warning("⚠️ Please select two different reports to compare.")
+                    threshold_filter_enabled = False
+                else:
+                    # Calculate which test types have changes above threshold
+                    report_1_data = df[df['Date'].dt.date == threshold_report_1_date]
+                    report_2_data = df[df['Date'].dt.date == threshold_report_2_date]
+                    
+                    # Find common test types
+                    common_test_types = set(report_1_data['Test Type'].unique()) & set(report_2_data['Test Type'].unique())
+                    
+                    threshold_test_types = []
+                    change_details = []
+                    
+                    for test_type in common_test_types:
+                        value_1 = report_1_data[report_1_data['Test Type'] == test_type]['Value'].iloc[0]
+                        value_2 = report_2_data[report_2_data['Test Type'] == test_type]['Value'].iloc[0]
+                        
+                        # Calculate percentage change (avoid division by zero)
+                        if value_1 != 0:
+                            pct_change = abs((value_2 - value_1) / value_1) * 100
+                        else:
+                            pct_change = 100 if value_2 != 0 else 0
+                        
+                        if pct_change >= threshold_percentage:
+                            threshold_test_types.append(test_type)
+                            direction = "📈 +" if value_2 > value_1 else "📉 -"
+                            change_details.append({
+                                'test_type': test_type,
+                                'value_1': value_1,
+                                'value_2': value_2,
+                                'pct_change': pct_change,
+                                'direction': direction
+                            })
+                    
+                    if threshold_test_types:
+                        st.success(f"✅ Found **{len(threshold_test_types)}** tests with changes ≥{threshold_percentage}%")
+                        
+                        # Show preview of changes
+                        with st.expander("📊 Preview of significant changes", expanded=False):
+                            for detail in sorted(change_details, key=lambda x: x['pct_change'], reverse=True):
+                                st.markdown(f"**{detail['test_type']}**: {detail['value_1']} → {detail['value_2']} ({detail['direction']}{detail['pct_change']:.1f}%)")
+                    else:
+                        st.warning(f"⚠️ No tests found with changes ≥{threshold_percentage}% between the selected reports.")
+                        threshold_filter_enabled = False
+        
         # Apply filters to dataframe
         if not selected_dates:
             st.warning("⚠️ Please select at least one report to display")
