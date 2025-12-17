@@ -1200,11 +1200,35 @@ Best regards,
     
     def deactivate_medication(self, medication_id: int) -> bool:
         """Deactivate a medication instead of deleting it."""
-        return self.update_medication(medication_id, {'active': False})
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+                cursor.execute('''
+                    UPDATE medications 
+                    SET active = 0, updated_date = CURRENT_TIMESTAMP
+                    WHERE id = ?
+                ''', (medication_id,))
+                conn.commit()
+                return cursor.rowcount > 0
+        except Exception as e:
+            print(f"Error deactivating medication: {e}")
+            return False
     
     def activate_medication(self, medication_id: int) -> bool:
         """Activate a previously deactivated medication."""
-        return self.update_medication(medication_id, {'active': True})
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+                cursor.execute('''
+                    UPDATE medications 
+                    SET active = 1, updated_date = CURRENT_TIMESTAMP
+                    WHERE id = ?
+                ''', (medication_id,))
+                conn.commit()
+                return cursor.rowcount > 0
+        except Exception as e:
+            print(f"Error activating medication: {e}")
+            return False
     
     def get_missed_medications_summary(self, patient_name: str = None, days: int = 7) -> Dict:
         """Get summary of missed medications for alerts."""
