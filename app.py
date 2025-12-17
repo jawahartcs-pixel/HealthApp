@@ -5498,10 +5498,16 @@ def medication_reminders_page(medication_reminder, db, user_id):
                                 st.rerun()
                         
                         with col6:
-                            if st.button(f"⏸️ Deactivate", key=f"deactivate_{med['id']}"):
-                                if medication_reminder.deactivate_medication(med['id']):
-                                    st.success("Medication deactivated successfully!")
-                                    st.rerun()
+                            if med['active']:
+                                if st.button(f"⏸️ Deactivate", key=f"deactivate_{med['id']}"):
+                                    if medication_reminder.deactivate_medication(med['id']):
+                                        st.success("Medication deactivated successfully!")
+                                        st.rerun()
+                            else:
+                                if st.button(f"▶️ Activate", key=f"activate_{med['id']}"):
+                                    if medication_reminder.activate_medication(med['id']):
+                                        st.success("Medication activated successfully!")
+                                        st.rerun()
                         
                         # Show year schedule
                         if st.session_state.get(f'show_schedule_{med["id"]}', False):

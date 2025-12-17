@@ -1202,6 +1202,10 @@ Best regards,
         """Deactivate a medication instead of deleting it."""
         return self.update_medication(medication_id, {'active': False})
     
+    def activate_medication(self, medication_id: int) -> bool:
+        """Activate a previously deactivated medication."""
+        return self.update_medication(medication_id, {'active': True})
+    
     def get_missed_medications_summary(self, patient_name: str = None, days: int = 7) -> Dict:
         """Get summary of missed medications for alerts."""
         try:
