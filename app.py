@@ -2522,7 +2522,8 @@ def patient_dashboard_page(db, visualization, alert_system, user_id):
                         # Button to apply threshold results to the test filter
                         if st.button("📋 Apply These Tests to Test Filter", help="Copy these threshold-selected tests to the 'Select Tests/Investigations to Display' filter above"):
                             st.session_state[f'{filter_key_prefix}_tests'] = list(threshold_test_types)
-                            # Disable the threshold toggle
+                            # Disable the threshold toggle (set both the widget key and the tracking key)
+                            st.session_state[f'{filter_key_prefix}_threshold_toggle'] = False
                             st.session_state[f'{filter_key_prefix}_threshold_enabled'] = False
                             st.success(f"✅ Applied {len(threshold_test_types)} tests to the Test Filter. The threshold filter has been disabled.")
                             st.rerun()
