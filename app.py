@@ -5452,10 +5452,17 @@ def medication_reminders_page(medication_reminder, db, user_id):
         )
         
         if selected_patient:
-            medications = medication_reminder.get_patient_medications(selected_patient)
+            # Get active medications
+            active_medications = medication_reminder.get_patient_medications(selected_patient, active_only=True)
+            # Get all medications to find deactivated ones
+            all_medications = medication_reminder.get_patient_medications(selected_patient, active_only=False)
+            deactivated_medications = [m for m in all_medications if not m['active']]
             
-            if medications:
-                for med in medications:
+            # Show active medications section
+            st.markdown("### ✅ Active Medications")
+            
+            if active_medications:
+                for med in active_medications:
                     with st.expander(f"💊 {med['medication_name']} - {med['dosage']}", expanded=False):
                         col1, col2 = st.columns(2)
                         
@@ -5804,7 +5811,60 @@ def medication_reminders_page(medication_reminder, db, user_id):
                                     del st.session_state[f'delete_confirm_{med["id"]}']
                                     st.rerun()
             else:
-                st.info(f"No medications found for {selected_patient}. Add medications using the 'Add Medication' tab.")
+                st.info(f"No active medications found for {selected_patient}.")
+            
+            # Show deactivated medications section
+            st.divider()
+            st.markdown("### ⏸️ Deactivated Medications")
+            
+            if deactivated_medications:
+                for med in deactivated_medications:
+                    with st.expander(f"💊 {med['medication_name']} - {med['dosage']} (Inactive)", expanded=False):
+                        col1, col2 = st.columns(2)
+                        
+                        with col1:
+                            st.write(f"**Frequency:** {med['frequency']}")
+                            st.write(f"**Start Date:** {med['start_date']}")
+                            if med['end_date']:
+                                st.write(f"**End Date:** {med['end_date']}")
+                            st.write(f"**Indication:** {med.get('indication', 'Not specified')}")
+                        
+                        with col2:
+                            st.write(f"**Doctor:** {med.get('doctor_name', 'Not specified')}")
+                            st.write(f"**Status:** Inactive")
+                            if med['instructions']:
+                                st.write(f"**Instructions:** {med['instructions']}")
+                        
+                        # Action buttons for deactivated medications
+                        col3, col4 = st.columns(2)
+                        with col3:
+                            if st.button(f"▶️ Activate", key=f"activate_deactivated_{med['id']}"):
+                                if medication_reminder.activate_medication(med['id']):
+                                    st.success("Medication activated successfully!")
+                                    st.rerun()
+                        with col4:
+                            if st.button(f"❌ Delete Permanently", key=f"delete_deactivated_{med['id']}"):
+                                st.session_state[f'delete_confirm_deactivated_{med["id"]}'] = True
+                                st.rerun()
+                        
+                        # Delete confirmation for deactivated medications
+                        if st.session_state.get(f'delete_confirm_deactivated_{med["id"]}', False):
+                            st.error(f"⚠️ Are you sure you want to permanently delete '{med['medication_name']}'? This action cannot be undone.")
+                            conf_col1, conf_col2 = st.columns(2)
+                            with conf_col1:
+                                if st.button("❌ Yes, Delete", key=f"confirm_delete_deactivated_{med['id']}"):
+                                    if medication_reminder.delete_medication(med['id']):
+                                        st.success("Medication deleted successfully!")
+                                        del st.session_state[f'delete_confirm_deactivated_{med["id"]}']
+                                        st.rerun()
+                                    else:
+                                        st.error("Failed to delete medication")
+                            with conf_col2:
+                                if st.button("Cancel", key=f"cancel_delete_deactivated_{med['id']}"):
+                                    del st.session_state[f'delete_confirm_deactivated_{med["id"]}']
+                                    st.rerun()
+            else:
+                st.info("No deactivated medications.")
     
     with tab2:
         st.subheader("Add New Medication")
