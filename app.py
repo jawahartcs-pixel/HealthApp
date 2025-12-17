@@ -2419,10 +2419,12 @@ def patient_dashboard_page(db, visualization, alert_system, user_id):
         if f'{filter_key_prefix}_threshold_enabled' not in st.session_state:
             st.session_state[f'{filter_key_prefix}_threshold_enabled'] = False
         
+        # Get the current value for the toggle (checking if it should be disabled)
+        threshold_default_value = st.session_state[f'{filter_key_prefix}_threshold_enabled']
+        
         threshold_filter_enabled = st.toggle(
             "📊 Show values above threshold between reports",
-            value=st.session_state[f'{filter_key_prefix}_threshold_enabled'],
-            key=f'{filter_key_prefix}_threshold_toggle',
+            value=threshold_default_value,
             help="Enable this filter to compare two reports and show only test results with changes above a specified threshold percentage."
         )
         # Update session state
@@ -2522,8 +2524,7 @@ def patient_dashboard_page(db, visualization, alert_system, user_id):
                         # Button to apply threshold results to the test filter
                         if st.button("📋 Apply These Tests to Test Filter", help="Copy these threshold-selected tests to the 'Select Tests/Investigations to Display' filter above"):
                             st.session_state[f'{filter_key_prefix}_tests'] = list(threshold_test_types)
-                            # Disable the threshold toggle (set both the widget key and the tracking key)
-                            st.session_state[f'{filter_key_prefix}_threshold_toggle'] = False
+                            # Disable the threshold toggle
                             st.session_state[f'{filter_key_prefix}_threshold_enabled'] = False
                             st.success(f"✅ Applied {len(threshold_test_types)} tests to the Test Filter. The threshold filter has been disabled.")
                             st.rerun()
