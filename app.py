@@ -6409,11 +6409,32 @@ def medication_reminders_page(medication_reminder, db, user_id):
                 for med in patient_meds:
                     for schedule in med.get('schedule', []):
                         med_time = dt.strptime(schedule['time'], '%H:%M:%S').time()
-                        days = schedule.get('days', [1,2,3,4,5,6,7])
+                        days = schedule.get('days', [])
+                        interval_days = schedule.get('interval_days')
                         today_weekday = date.today().weekday() + 1
                         
-                        # Check if today is in the scheduled days and time hasn't passed
-                        if today_weekday in days and current_time.time() <= med_time:
+                        # Check if today is a valid day for this medication
+                        is_due_today = False
+                        if interval_days and interval_days > 1:
+                            # Interval-based medication (e.g., every other day)
+                            try:
+                                start_date_str = med.get('start_date')
+                                if start_date_str:
+                                    start_date = dt.strptime(start_date_str, '%Y-%m-%d').date()
+                                    days_passed = (date.today() - start_date).days
+                                    if days_passed >= 0 and days_passed % interval_days == 0:
+                                        is_due_today = True
+                            except:
+                                pass
+                        elif days and len(days) > 0:
+                            # Days of week based medication
+                            if today_weekday in days:
+                                is_due_today = True
+                        else:
+                            # Daily medication
+                            is_due_today = True
+                        
+                        if is_due_today and current_time.time() <= med_time:
                             today_medications.append({
                                 'patient': patient_name,
                                 'medication': med['medication_name'],
@@ -6443,11 +6464,32 @@ def medication_reminders_page(medication_reminder, db, user_id):
                 for schedule in med.get('schedule', []):
                     med_time_str = schedule['time']
                     med_time = dt.strptime(med_time_str, '%H:%M:%S').time()
-                    days = schedule.get('days', [1,2,3,4,5,6,7])
+                    days = schedule.get('days', [])
+                    interval_days = schedule.get('interval_days')
                     today_weekday = today.weekday() + 1
                     
-                    # Check if today is in the scheduled days
-                    if today_weekday in days:
+                    # Check if today is a valid day for this medication
+                    is_due_today = False
+                    if interval_days and interval_days > 1:
+                        # Interval-based medication (e.g., every other day)
+                        try:
+                            start_date_str = med.get('start_date')
+                            if start_date_str:
+                                start_date = dt.strptime(start_date_str, '%Y-%m-%d').date()
+                                days_passed = (today - start_date).days
+                                if days_passed >= 0 and days_passed % interval_days == 0:
+                                    is_due_today = True
+                        except:
+                            pass
+                    elif days and len(days) > 0:
+                        # Days of week based medication
+                        if today_weekday in days:
+                            is_due_today = True
+                    else:
+                        # Daily medication
+                        is_due_today = True
+                    
+                    if is_due_today:
                         status = "⏰ Upcoming" if current_time <= med_time else "✅ Past due"
                         alert_timings = schedule.get('alert_timings', ['1 hour before'])
                         

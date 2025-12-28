@@ -823,7 +823,7 @@ class MedicationReminder:
             with sqlite3.connect(self.db_path) as conn:
                 cursor = conn.cursor()
                 cursor.execute('''
-                    SELECT id, time_of_day, days_of_week, reminder_enabled, alert_timings
+                    SELECT id, time_of_day, days_of_week, reminder_enabled, alert_timings, interval_days
                     FROM medication_schedule
                     WHERE medication_id = ?
                     ORDER BY time_of_day
@@ -846,9 +846,10 @@ class MedicationReminder:
                     schedule.append({
                         'id': row[0],
                         'time': row[1],
-                        'days': json.loads(row[2]) if row[2] else [1,2,3,4,5,6,7],
+                        'days': json.loads(row[2]) if row[2] else [],
                         'reminder_enabled': row[3],
-                        'alert_timings': alert_timings
+                        'alert_timings': alert_timings,
+                        'interval_days': row[5] if len(row) > 5 else None
                     })
                 
                 return schedule
@@ -862,13 +863,16 @@ class MedicationReminder:
         if date is None:
             date = datetime.now()
         
+        check_date = date.date() if hasattr(date, 'date') else date
+        
         try:
             with sqlite3.connect(self.db_path) as conn:
                 cursor = conn.cursor()
                 
                 query = '''
                     SELECT m.id, m.patient_name, m.medication_name, m.dosage, m.frequency,
-                           ms.time_of_day, ms.days_of_week, ms.reminder_enabled
+                           ms.time_of_day, ms.days_of_week, ms.reminder_enabled,
+                           ms.interval_days, m.start_date
                     FROM medications m
                     JOIN medication_schedule ms ON m.id = ms.medication_id
                     WHERE m.active = 1 AND ms.reminder_enabled = 1
@@ -881,26 +885,47 @@ class MedicationReminder:
                 
                 # Check if medication is within active date range
                 query += ' AND m.start_date <= ? AND (m.end_date IS NULL OR m.end_date >= ?)'
-                params.extend([date.strftime('%Y-%m-%d'), date.strftime('%Y-%m-%d')])
+                params.extend([check_date.strftime('%Y-%m-%d'), check_date.strftime('%Y-%m-%d')])
                 
                 cursor.execute(query, params)
                 results = cursor.fetchall()
                 
                 due_medications = []
-                current_weekday = date.weekday() + 1  # Monday = 1
+                current_weekday = check_date.weekday() + 1  # Monday = 1
                 
                 for row in results:
-                    days_of_week = json.loads(row[6]) if row[6] else [1,2,3,4,5,6,7]
+                    med_id, patient, med_name, dosage, frequency, time_of_day, days_of_week_json, reminder_enabled, interval_days, start_date_str = row
                     
-                    if current_weekday in days_of_week:
+                    is_due = False
+                    
+                    # Check interval-based medications first
+                    if interval_days and interval_days > 1:
+                        try:
+                            start_date = datetime.strptime(start_date_str, '%Y-%m-%d').date()
+                            days_passed = (check_date - start_date).days
+                            if days_passed >= 0 and days_passed % interval_days == 0:
+                                is_due = True
+                        except:
+                            pass
+                    else:
+                        # Check days of week
+                        days_of_week = json.loads(days_of_week_json) if days_of_week_json else []
+                        if days_of_week and len(days_of_week) > 0:
+                            if current_weekday in days_of_week:
+                                is_due = True
+                        else:
+                            # Empty days list or no interval = daily medication
+                            is_due = True
+                    
+                    if is_due:
                         due_medications.append({
-                            'medication_id': row[0],
-                            'patient_name': row[1],
-                            'medication_name': row[2],
-                            'dosage': row[3],
-                            'frequency': row[4],
-                            'time': row[5],
-                            'reminder_enabled': row[7]
+                            'medication_id': med_id,
+                            'patient_name': patient,
+                            'medication_name': med_name,
+                            'dosage': dosage,
+                            'frequency': frequency,
+                            'time': time_of_day,
+                            'reminder_enabled': reminder_enabled
                         })
                 
                 return due_medications
