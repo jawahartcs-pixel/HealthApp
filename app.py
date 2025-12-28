@@ -5581,25 +5581,31 @@ def medication_reminders_page(medication_reminder, db, user_id):
                             st.markdown("---")
                             st.subheader(f"Edit {med['medication_name']}")
                             
+                            # Frequency selector OUTSIDE the form for immediate refresh
+                            frequency_options = [
+                                "Once daily", "Twice daily", "Three times daily", "Four times daily",
+                                "Every other day", "Weekly", "Bi-weekly (14 days)", "Every 21 days", 
+                                "Monthly", "Custom interval", "As needed"
+                            ]
+                            current_freq = med.get('frequency', 'Once daily')
+                            
+                            # Initialize session state for edit frequency if not set
+                            if f'edit_freq_{med["id"]}' not in st.session_state:
+                                st.session_state[f'edit_freq_{med["id"]}'] = current_freq
+                            
+                            freq_index = 0
+                            if st.session_state[f'edit_freq_{med["id"]}'] in frequency_options:
+                                freq_index = frequency_options.index(st.session_state[f'edit_freq_{med["id"]}'])
+                            
+                            new_frequency = st.selectbox("Frequency", frequency_options, index=freq_index, key=f"edit_freq_select_{med['id']}")
+                            st.session_state[f'edit_freq_{med["id"]}'] = new_frequency
+                            
                             with st.form(f"edit_medication_{med['id']}"):
                                 edit_col1, edit_col2 = st.columns(2)
                                 
                                 with edit_col1:
                                     new_med_name = st.text_input("Medication Name", value=med['medication_name'])
                                     new_dosage = st.text_input("Dosage", value=med['dosage'])
-                                    
-                                    # Get current frequency and set correct default
-                                    frequency_options = [
-                                        "Once daily", "Twice daily", "Three times daily", "Four times daily",
-                                        "Every other day", "Weekly", "Bi-weekly (14 days)", "Every 21 days", 
-                                        "Monthly", "Custom interval", "As needed"
-                                    ]
-                                    current_freq = med.get('frequency', 'Once daily')
-                                    freq_index = 0
-                                    if current_freq in frequency_options:
-                                        freq_index = frequency_options.index(current_freq)
-                                    
-                                    new_frequency = st.selectbox("Frequency", frequency_options, index=freq_index)
                                 
                                 with edit_col2:
                                     current_end_date = None
@@ -5625,60 +5631,55 @@ def medication_reminders_page(medication_reminder, db, user_id):
                                         if sched.get('time'):
                                             existing_times.append(sched['time'])
                                 
-                                # Determine number of times needed based on frequency
+                                # Determine number of times needed and labels based on frequency
                                 times_needed = 1
                                 if 'twice' in new_frequency.lower():
                                     times_needed = 2
+                                    time_labels = ["Morning", "Night"]
+                                    default_time_values = [time(9, 0), time(21, 0)]
                                 elif 'three times' in new_frequency.lower():
                                     times_needed = 3
+                                    time_labels = ["Morning", "Afternoon", "Night"]
+                                    default_time_values = [time(9, 0), time(13, 0), time(21, 0)]
                                 elif 'four times' in new_frequency.lower():
                                     times_needed = 4
+                                    time_labels = ["Morning", "Afternoon", "Evening", "Night"]
+                                    default_time_values = [time(9, 0), time(13, 0), time(16, 0), time(21, 0)]
+                                else:
+                                    time_labels = ["Morning"]
+                                    default_time_values = [time(9, 0)]
                                 
                                 # Display time inputs
                                 reminder_times = []
-                                time_labels = ["Morning", "Afternoon", "Evening", "Night"]
+                                time_cols = st.columns(times_needed)
                                 
                                 for i in range(times_needed):
-                                    label = time_labels[i] if i < len(time_labels) else f"Time {i+1}"
-                                    
-                                    # Get existing time or use default
-                                    default_time = time(9, 0)  # Default 9:00 AM
-                                    if i < len(existing_times) and existing_times[i]:
-                                        try:
-                                            existing_time_str = existing_times[i]
-                                            # Handle different time formats
-                                            if isinstance(existing_time_str, str):
-                                                # Remove microseconds if present
-                                                time_str = existing_time_str.split('.')[0]
-                                                # Parse HH:MM:SS format
-                                                if ':' in time_str:
-                                                    time_parts = time_str.split(':')
-                                                    if len(time_parts) >= 2:
-                                                        hour = int(time_parts[0])
-                                                        minute = int(time_parts[1])
-                                                        default_time = time(hour, minute)
-                                                    else:
-                                                        default_time = time.fromisoformat(time_str)
-                                                else:
-                                                    default_time = time.fromisoformat(time_str)
-                                            elif hasattr(existing_time_str, 'hour') and hasattr(existing_time_str, 'minute'):
-                                                # Already a time object
-                                                default_time = existing_time_str
-                                        except Exception as e:
-                                            print(f"Error parsing existing time {existing_time_str}: {e}")
-                                            # Use position-based default times
-                                            default_times = [time(8, 0), time(14, 0), time(20, 0), time(22, 0)]
-                                            default_time = default_times[i] if i < len(default_times) else time(9 + i * 4, 0)
-                                    else:
-                                        # Use position-based default times for new entries
-                                        default_times = [time(8, 0), time(14, 0), time(20, 0), time(22, 0)]
-                                        default_time = default_times[i] if i < len(default_times) else time(9 + i * 4, 0)
-                                    
-                                    reminder_time = st.time_input(f"{label} reminder time", 
-                                                                value=default_time,
-                                                                step=60,  # 1-minute intervals
-                                                                key=f"edit_time_{med['id']}_{i}")
-                                    reminder_times.append(reminder_time)
+                                    with time_cols[i]:
+                                        label = time_labels[i]
+                                        
+                                        # Get existing time or use default
+                                        default_time = default_time_values[i]
+                                        if i < len(existing_times) and existing_times[i]:
+                                            try:
+                                                existing_time_str = existing_times[i]
+                                                if isinstance(existing_time_str, str):
+                                                    time_str = existing_time_str.split('.')[0]
+                                                    if ':' in time_str:
+                                                        time_parts = time_str.split(':')
+                                                        if len(time_parts) >= 2:
+                                                            hour = int(time_parts[0])
+                                                            minute = int(time_parts[1])
+                                                            default_time = time(hour, minute)
+                                                elif hasattr(existing_time_str, 'hour') and hasattr(existing_time_str, 'minute'):
+                                                    default_time = existing_time_str
+                                            except Exception as e:
+                                                print(f"Error parsing existing time {existing_time_str}: {e}")
+                                        
+                                        reminder_time = st.time_input(f"{label}", 
+                                                                    value=default_time,
+                                                                    step=60,
+                                                                    key=f"edit_time_{med['id']}_{i}_{new_frequency}")
+                                        reminder_times.append(reminder_time)
                                 
                                 # Alert timing for edit - single setting for all doses
                                 st.write("**Alert Timing:**")
