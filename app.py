@@ -5680,57 +5680,35 @@ def medication_reminders_page(medication_reminder, db, user_id):
                                                                 key=f"edit_time_{med['id']}_{i}")
                                     reminder_times.append(reminder_time)
                                 
-                                # Alert timing for edit - show existing alert timings
-                                st.write("**Alert Timing Options:**")
-                                alert_options = ["5 minutes before", "1 hour before", "1 day before"]
+                                # Alert timing for edit - single setting for all doses
+                                st.write("**Alert Timing:**")
+                                alert_options = ["5 minutes before", "15 minutes before", "30 minutes before", "1 hour before", "2 hours before", "1 day before"]
                                 
-                                # Get existing alert timings from medication schedule
-                                existing_alerts = []
+                                # Get existing alert timing from medication schedule
+                                existing_alert = "1 hour before"  # Default
                                 if med.get('schedule'):
                                     for sched in med['schedule']:
-                                        # Try to get alert timings from schedule (if stored)
                                         schedule_alerts = sched.get('alert_timings', [])
                                         if schedule_alerts:
-                                            existing_alerts.extend(schedule_alerts)
+                                            existing_alert = schedule_alerts[0]
+                                            break
                                 
-                                # If no existing alerts found, use default
-                                if not existing_alerts:
-                                    existing_alerts = ["1 hour before"]
+                                # Set alert timing index
+                                alert_index = 3  # Default to "1 hour before"
+                                if existing_alert in alert_options:
+                                    alert_index = alert_options.index(existing_alert)
                                 
-                                # Set primary alert timing from existing alerts
-                                primary_alert_index = 0
-                                if existing_alerts[0] in alert_options:
-                                    primary_alert_index = alert_options.index(existing_alerts[0])
-                                
-                                edit_alert_timing = st.selectbox("Primary alert timing", 
+                                edit_alert_timing = st.selectbox("Send alert before each dose", 
                                                                 alert_options, 
-                                                                index=primary_alert_index, 
-                                                                key=f"edit_alert_{med['id']}")
-                                
-                                # Show checkbox for multiple alerts if there are existing multiple alerts
-                                has_multiple_existing = len(existing_alerts) > 1
-                                edit_multiple_alerts = st.checkbox("Enable multiple alerts", 
-                                                                  value=has_multiple_existing,
-                                                                  key=f"edit_multiple_{med['id']}")
-                                
-                                additional_edit_alerts = []
-                                if edit_multiple_alerts:
-                                    # Pre-select existing additional alerts
-                                    existing_additional = [alert for alert in existing_alerts[1:] if alert in alert_options]
-                                    additional_edit_alerts = st.multiselect("Additional alerts", 
-                                                                           alert_options, 
-                                                                           default=existing_additional,
-                                                                           key=f"edit_additional_{med['id']}")
+                                                                index=alert_index, 
+                                                                key=f"edit_alert_{med['id']}",
+                                                                help="This alert timing will apply to all doses")
                                 
                                 col1, col2 = st.columns(2)
                                 with col1:
                                     if st.form_submit_button("💾 Save Changes", type="primary"):
-                                        # Prepare alert timings
+                                        # Use single alert timing for all doses
                                         edit_alert_times = [edit_alert_timing]
-                                        if edit_multiple_alerts:
-                                            for alert in additional_edit_alerts:
-                                                if alert not in edit_alert_times:
-                                                    edit_alert_times.append(alert)
                                         
                                         # Create schedule entries for each reminder time
                                         schedule_entries = []
@@ -5979,21 +5957,10 @@ def medication_reminders_page(medication_reminder, db, user_id):
             if enable_email_reminders:
                 st.info("📧 Email reminders will be sent to the patient's registered email address")
             
-            # Alert timing settings - show multiple options immediately
-            st.write("**Alert Timing Options:**")
-            alert_timing_col1, alert_timing_col2 = st.columns(2)
-            
-            with alert_timing_col1:
-                alert_before_options = ["5 minutes before", "1 hour before", "1 day before"]
-                selected_alert_timing = st.selectbox("Primary alert timing", alert_before_options, index=1)
-            
-            with alert_timing_col2:
-                enable_multiple_alerts = st.checkbox("Enable multiple alert times", value=False)
-            
-            # Show additional alerts immediately when checkbox is checked
-            additional_alerts = []
-            if enable_multiple_alerts:
-                additional_alerts = st.multiselect("Additional alerts", alert_before_options, default=[])
+            # Alert timing settings - single setting for all doses
+            st.write("**Alert Timing:**")
+            alert_before_options = ["5 minutes before", "15 minutes before", "30 minutes before", "1 hour before", "2 hours before", "1 day before"]
+            selected_alert_timing = st.selectbox("Send alert before each dose", alert_before_options, index=3, help="This alert timing will apply to all doses")
             
             # Schedule configuration based on frequency
             schedule_times = []
@@ -6025,32 +5992,6 @@ def medication_reminders_page(medication_reminder, db, user_id):
                                                  step=60,  # 1-minute intervals
                                                  key=f"add_time_{i}_{med_frequency}")
                         schedule_times.append(time_input.strftime('%H:%M:%S'))
-                
-                # Show alert timing for each time immediately
-                st.write(f"**Alert timing for each dose:**")
-                alert_cols = st.columns(min(num_times, 4))
-                alert_timings_per_dose = []
-                
-                for i in range(num_times):
-                    with alert_cols[i % len(alert_cols)]:
-                        dose_label = time_labels[i] if i < len(time_labels) else f"Dose {i+1}"
-                        dose_alert = st.selectbox(f"{dose_label} alert", 
-                                                alert_before_options, 
-                                                index=1,
-                                                key=f"dose_alert_{i}_{med_frequency}")
-                        alert_timings_per_dose.append(dose_alert)
-                
-                # Combine all alert timings
-                all_alert_timings = [selected_alert_timing] + alert_timings_per_dose
-                if enable_multiple_alerts:
-                    all_alert_timings.extend(additional_alerts)
-                # Remove duplicates while preserving order
-                unique_alerts = []
-                for alert in all_alert_timings:
-                    if alert not in unique_alerts:
-                        unique_alerts.append(alert)
-                selected_alert_timing = unique_alerts[0] if unique_alerts else selected_alert_timing
-                additional_alerts = unique_alerts[1:] if len(unique_alerts) > 1 else []
                 
                 # For daily medications, set all days by default
                 selected_days = [1, 2, 3, 4, 5, 6, 7]  # All days of week
@@ -6098,12 +6039,8 @@ def medication_reminders_page(medication_reminder, db, user_id):
             submitted = st.form_submit_button("Add Medication")
             
             if submitted and med_patient and med_name and med_dosage:
-                # Prepare alert timing data
+                # Use single alert timing for all doses
                 alert_times = [selected_alert_timing]
-                if enable_multiple_alerts:
-                    for alert in additional_alerts:
-                        if alert not in alert_times:
-                            alert_times.append(alert)
                 
                 # Prepare schedule data with enhanced interval support and alert timing
                 schedule_data = []
