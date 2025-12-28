@@ -127,6 +127,12 @@ class MedicationReminder:
                 # Column already exists
                 pass
             
+            try:
+                cursor.execute("ALTER TABLE medications ADD COLUMN food_timing TEXT DEFAULT 'After food'")
+            except sqlite3.OperationalError:
+                # Column already exists
+                pass
+            
             conn.commit()
     
     def add_medication(self, medication_data: Dict) -> bool:
@@ -137,8 +143,8 @@ class MedicationReminder:
                 cursor.execute('''
                     INSERT INTO medications 
                     (patient_name, medication_name, dosage, frequency, start_date, end_date, 
-                     instructions, indication, doctor_name, active)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                     instructions, indication, doctor_name, active, food_timing)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ''', (
                     medication_data['patient_name'],
                     medication_data['medication_name'],
@@ -149,7 +155,8 @@ class MedicationReminder:
                     medication_data.get('instructions', ''),
                     medication_data.get('indication', ''),
                     medication_data.get('doctor_name', ''),
-                    medication_data.get('active', True)
+                    medication_data.get('active', True),
+                    medication_data.get('food_timing', 'After food')
                 ))
                 
                 medication_id = cursor.lastrowid
@@ -672,7 +679,7 @@ class MedicationReminder:
                 cursor.execute('''
                     UPDATE medications 
                     SET medication_name = ?, dosage = ?, frequency = ?, end_date = ?,
-                        instructions = ?, indication = ?, doctor_name = ?, updated_date = CURRENT_TIMESTAMP
+                        instructions = ?, indication = ?, doctor_name = ?, food_timing = ?, updated_date = CURRENT_TIMESTAMP
                     WHERE id = ?
                 ''', (
                     medication_data['medication_name'],
@@ -682,6 +689,7 @@ class MedicationReminder:
                     medication_data.get('instructions', ''),
                     medication_data.get('indication', ''),
                     medication_data.get('doctor_name', ''),
+                    medication_data.get('food_timing', 'After food'),
                     medication_id
                 ))
                 
@@ -746,7 +754,7 @@ class MedicationReminder:
                 
                 query = '''
                     SELECT m.id, m.medication_name, m.dosage, m.frequency, m.start_date, m.end_date,
-                           m.instructions, m.indication, m.doctor_name, m.active, m.created_date
+                           m.instructions, m.indication, m.doctor_name, m.active, m.created_date, m.food_timing
                     FROM medications m
                     WHERE m.patient_name = ?
                 '''
@@ -774,6 +782,7 @@ class MedicationReminder:
                         'doctor_name': row[8],
                         'active': row[9],
                         'created_date': row[10],
+                        'food_timing': row[11] if len(row) > 11 and row[11] else 'After food',
                         'schedule': self.get_medication_schedule(row[0])
                     }
                     medications.append(med_data)

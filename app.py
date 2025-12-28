@@ -5486,6 +5486,7 @@ def medication_reminders_page(medication_reminder, db, user_id):
                         
                         with col2:
                             st.write(f"**Doctor:** {med.get('doctor_name', 'Not specified')}")
+                            st.write(f"**Food Timing:** {med.get('food_timing', 'After food')}")
                             st.write(f"**Status:** {'Active' if med['active'] else 'Inactive'}")
                             if med['instructions']:
                                 st.write(f"**Instructions:** {med['instructions']}")
@@ -5620,6 +5621,18 @@ def medication_reminders_page(medication_reminder, db, user_id):
                                     new_indication = st.text_input("Indication", value=med.get('indication', ''))
                                 
                                 new_instructions = st.text_area("Instructions", value=med.get('instructions', ''))
+                                
+                                # Food timing option
+                                food_timing_options = ["After food", "Before food", "With food", "Empty stomach"]
+                                current_food_timing = med.get('food_timing', 'After food')
+                                food_timing_index = 0
+                                if current_food_timing in food_timing_options:
+                                    food_timing_index = food_timing_options.index(current_food_timing)
+                                new_food_timing = st.selectbox("Before or After Food", 
+                                                              food_timing_options,
+                                                              index=food_timing_index,
+                                                              key=f"edit_food_timing_{med['id']}",
+                                                              help="When should this medication be taken relative to meals?")
                                 
                                 # Show reminder times based on frequency
                                 st.write("**Reminder Times:**")
@@ -5764,6 +5777,7 @@ def medication_reminders_page(medication_reminder, db, user_id):
                                             'instructions': new_instructions,
                                             'indication': new_indication,
                                             'doctor_name': new_doctor,
+                                            'food_timing': new_food_timing,
                                             'start_date': med.get('start_date', datetime.now().strftime('%Y-%m-%d')),
                                             'schedule': schedule_entries
                                         }
@@ -5951,6 +5965,12 @@ def medication_reminders_page(medication_reminder, db, user_id):
                 doctor_name = st.text_input("Doctor Name (optional)")
                 indication = st.text_input("Indication", placeholder="What is this medication for?")
             
+            # Food timing option
+            food_timing = st.selectbox("Before or After Food", 
+                                       ["After food", "Before food", "With food", "Empty stomach"],
+                                       index=0,
+                                       help="When should this medication be taken relative to meals?")
+            
             instructions = st.text_area("Instructions", placeholder="Special instructions for taking this medication")
             
             # Enhanced Schedule section with flexible intervals and timing alerts
@@ -6076,6 +6096,7 @@ def medication_reminders_page(medication_reminder, db, user_id):
                     'instructions': instructions,
                     'indication': indication,
                     'doctor_name': doctor_name,
+                    'food_timing': food_timing,
                     'schedule': schedule_data
                 }
                 
