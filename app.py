@@ -5927,6 +5927,14 @@ def medication_reminders_page(medication_reminder, db, user_id):
                         del st.session_state['show_email_edit']
                         st.rerun()
 
+        # Frequency selector OUTSIDE the form so it triggers immediate refresh
+        st.write("**Select Medication Frequency:**")
+        med_frequency = st.selectbox("Frequency", [
+            "Once daily", "Twice daily", "Three times daily", "Four times daily",
+            "Every other day", "Weekly", "Bi-weekly (14 days)", "Every 21 days", 
+            "Monthly", "Custom interval", "As needed"
+        ], key="add_med_frequency_selector")
+        
         with st.form("add_medication_form"):
             col1, col2 = st.columns(2)
             
@@ -5935,11 +5943,6 @@ def medication_reminders_page(medication_reminder, db, user_id):
                 med_patient = st.selectbox("Patient", patient_names, key="add_med_patient", index=patient_names.index(patient_selector) if patient_selector in patient_names else 0)
                 med_name = st.text_input("Medication Name", placeholder="e.g., Metformin")
                 med_dosage = st.text_input("Dosage", placeholder="e.g., 500mg")
-                med_frequency = st.selectbox("Frequency", [
-                    "Once daily", "Twice daily", "Three times daily", "Four times daily",
-                    "Every other day", "Weekly", "Bi-weekly (14 days)", "Every 21 days", 
-                    "Monthly", "Custom interval", "As needed"
-                ])
             
             with col2:
                 start_date = st.date_input("Start Date", value=dt.now().date())
@@ -5968,25 +5971,33 @@ def medication_reminders_page(medication_reminder, db, user_id):
             custom_interval_days = None
             
             if med_frequency in ["Once daily", "Twice daily", "Three times daily", "Four times daily"]:
-                # Daily frequencies - show time inputs immediately based on selection
+                # Daily frequencies - show time inputs based on selection
                 freq_map = {"Once daily": 1, "Twice daily": 2, "Three times daily": 3, "Four times daily": 4}
                 num_times = freq_map[med_frequency]
                 
                 st.write(f"**{med_frequency}** - Set reminder times:")
-                # Show all times immediately based on frequency
-                default_times = ["09:00", "13:00", "18:00", "22:00"]
-                time_labels = ["Morning", "Afternoon", "Evening", "Night"]
+                
+                # Define time labels and defaults based on frequency
+                if med_frequency == "Once daily":
+                    time_labels = ["Morning"]
+                    default_times = ["09:00"]
+                elif med_frequency == "Twice daily":
+                    time_labels = ["Morning", "Night"]
+                    default_times = ["09:00", "21:00"]
+                elif med_frequency == "Three times daily":
+                    time_labels = ["Morning", "Evening", "Night"]
+                    default_times = ["09:00", "18:00", "22:00"]
+                else:  # Four times daily
+                    time_labels = ["Morning", "Afternoon", "Evening", "Night"]
+                    default_times = ["09:00", "13:00", "18:00", "22:00"]
                 
                 # Create columns for time inputs
-                if num_times <= 2:
-                    cols = st.columns(num_times)
-                else:
-                    cols = st.columns(min(num_times, 4))
+                cols = st.columns(num_times)
                 
                 for i in range(num_times):
-                    with cols[i % len(cols)]:
-                        label = time_labels[i] if i < len(time_labels) else f"Time {i+1}"
-                        default_time = default_times[i] if i < len(default_times) else "09:00"
+                    with cols[i]:
+                        label = time_labels[i]
+                        default_time = default_times[i]
                         time_input = st.time_input(f"{label}", 
                                                  value=dt.strptime(default_time, "%H:%M").time(),
                                                  step=60,  # 1-minute intervals
