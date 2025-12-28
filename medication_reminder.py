@@ -316,42 +316,59 @@ class MedicationReminder:
                     SELECT m.id, m.patient_name, m.medication_name, m.dosage,
                            ms.time_of_day, ms.email_enabled, ms.interval_days,
                            ms.next_reminder_date, ms.days_of_week, ms.alert_timings,
-                           ms.id as schedule_id
+                           ms.id as schedule_id, m.start_date
                     FROM medications m
                     JOIN medication_schedule ms ON m.id = ms.medication_id
                     JOIN patients p ON m.patient_name = p.patient_name
                     WHERE m.active = 1 
                     AND ms.reminder_enabled = 1
-                    AND (
-                        (ms.interval_days IS NOT NULL AND ms.next_reminder_date <= ?)
-                        OR 
-                        (ms.interval_days IS NULL AND ms.days_of_week IS NOT NULL)
-                    )
+                    AND (m.end_date IS NULL OR m.end_date >= ?)
                 ''', (check_date.strftime('%Y-%m-%d'),))
                 
                 results = cursor.fetchall()
                 due_reminders = []
                 
                 for row in results:
-                    medication_id, patient_name, medication_name, dosage, time_of_day, email_enabled, interval_days, next_reminder_date, days_of_week_json, alert_timings_json, schedule_id = row
+                    medication_id, patient_name, medication_name, dosage, time_of_day, email_enabled, interval_days, next_reminder_date, days_of_week_json, alert_timings_json, schedule_id, start_date_str = row
                     
                     # Check if reminder is actually due today
                     is_due = False
                     medication_datetime = None
                     
-                    if interval_days:
-                        # Interval-based medication
-                        if next_reminder_date and next_reminder_date <= check_date.strftime('%Y-%m-%d'):
-                            is_due = True
-                            medication_datetime = datetime.combine(
-                                datetime.strptime(next_reminder_date, '%Y-%m-%d').date(),
-                                datetime.strptime(time_of_day, '%H:%M:%S').time()
-                            )
-                    else:
+                    if interval_days and interval_days > 1:
+                        # Interval-based medication (e.g., every other day)
+                        # Calculate based on start_date, not next_reminder_date
+                        try:
+                            start_date = datetime.strptime(start_date_str, '%Y-%m-%d').date()
+                            days_passed = (check_date - start_date).days
+                            
+                            if days_passed >= 0 and days_passed % interval_days == 0:
+                                # Today is a valid interval day
+                                is_due = True
+                                medication_datetime = datetime.combine(
+                                    check_date,
+                                    datetime.strptime(time_of_day, '%H:%M:%S').time()
+                                )
+                                print(f"DEBUG: {medication_name} IS due today (interval: {interval_days}, days passed: {days_passed})")
+                            else:
+                                print(f"DEBUG: Skipping {medication_name} - not due today (interval: {interval_days}, days passed: {days_passed})")
+                        except Exception as e:
+                            print(f"DEBUG: Error checking interval for {medication_name}: {e}")
+                    elif days_of_week_json:
                         # Weekly medication - check if today is in the allowed days
                         try:
                             days_of_week = json.loads(days_of_week_json) if days_of_week_json else []
-                            if check_date.weekday() + 1 in days_of_week:
+                            if days_of_week and len(days_of_week) > 0:
+                                if check_date.weekday() + 1 in days_of_week:
+                                    is_due = True
+                                    medication_datetime = datetime.combine(
+                                        check_date,
+                                        datetime.strptime(time_of_day, '%H:%M:%S').time()
+                                    )
+                                else:
+                                    print(f"DEBUG: Skipping {medication_name} - not scheduled for today (weekday: {check_date.weekday() + 1}, scheduled: {days_of_week})")
+                            else:
+                                # Empty days list means daily medication
                                 is_due = True
                                 medication_datetime = datetime.combine(
                                     check_date,
@@ -359,6 +376,13 @@ class MedicationReminder:
                                 )
                         except:
                             pass
+                    else:
+                        # Daily medication (no interval, no specific days)
+                        is_due = True
+                        medication_datetime = datetime.combine(
+                            check_date,
+                            datetime.strptime(time_of_day, '%H:%M:%S').time()
+                        )
                     
                     if is_due and medication_datetime:
                         # Parse alert timings
