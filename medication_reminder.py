@@ -1322,7 +1322,11 @@ Best regards,
                         ms.email_enabled,
                         ms.last_reminder_date,
                         p.patient_id,
-                        p.email as patient_email
+                        p.email as patient_email,
+                        ms.interval_days,
+                        ms.next_reminder_date,
+                        ms.days_of_week,
+                        m.start_date
                     FROM medications m
                     JOIN medication_schedule ms ON m.id = ms.medication_id
                     LEFT JOIN patients p ON m.patient_name = p.patient_name
@@ -1339,7 +1343,43 @@ Best regards,
                 
                 for row in results:
                     medication_id, patient_name, medication_name, dosage, time_of_day, \
-                    alert_timings, email_enabled, last_reminder_date, patient_id, patient_email = row
+                    alert_timings, email_enabled, last_reminder_date, patient_id, patient_email, \
+                    interval_days, next_reminder_date, days_of_week_str, start_date_str = row
+                    
+                    # Check if today is a valid reminder day for interval-based medications
+                    if interval_days and interval_days > 1:
+                        # For interval-based medications (e.g., every other day)
+                        try:
+                            start_date = datetime.strptime(start_date_str, '%Y-%m-%d').date()
+                            days_passed = (current_date - start_date).days
+                            
+                            # Check if today falls on a valid interval day
+                            if days_passed < 0:
+                                # Medication hasn't started yet
+                                print(f"DEBUG: Skipping {medication_name} - hasn't started yet (start: {start_date_str})")
+                                continue
+                            
+                            if days_passed % interval_days != 0:
+                                # Today is not a valid reminder day
+                                print(f"DEBUG: Skipping {medication_name} - not due today (interval: {interval_days}, days passed: {days_passed})")
+                                continue
+                            else:
+                                print(f"DEBUG: {medication_name} IS due today (interval: {interval_days}, days passed: {days_passed})")
+                        except Exception as e:
+                            print(f"DEBUG: Error checking interval for {medication_name}: {e}")
+                            continue
+                    
+                    # Check days of week if specified
+                    if days_of_week_str:
+                        try:
+                            days_of_week = json.loads(days_of_week_str) if days_of_week_str else []
+                            if days_of_week and len(days_of_week) > 0:
+                                current_weekday = current_date.weekday() + 1  # 1=Monday, 7=Sunday
+                                if current_weekday not in days_of_week:
+                                    print(f"DEBUG: Skipping {medication_name} - not scheduled for today (weekday: {current_weekday}, scheduled: {days_of_week})")
+                                    continue
+                        except:
+                            pass
                     
                     # Parse alert timings
                     if alert_timings:
