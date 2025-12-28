@@ -5985,11 +5985,11 @@ def medication_reminders_page(medication_reminder, db, user_id):
                     time_labels = ["Morning", "Night"]
                     default_times = ["09:00", "21:00"]
                 elif med_frequency == "Three times daily":
-                    time_labels = ["Morning", "Evening", "Night"]
-                    default_times = ["09:00", "18:00", "22:00"]
+                    time_labels = ["Morning", "Afternoon", "Night"]
+                    default_times = ["09:00", "13:00", "21:00"]
                 else:  # Four times daily
                     time_labels = ["Morning", "Afternoon", "Evening", "Night"]
-                    default_times = ["09:00", "13:00", "18:00", "22:00"]
+                    default_times = ["09:00", "13:00", "16:00", "21:00"]
                 
                 # Create columns for time inputs
                 cols = st.columns(num_times)
