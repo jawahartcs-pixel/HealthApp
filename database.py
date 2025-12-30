@@ -509,6 +509,46 @@ class Database:
             print(f"Error deleting patient event: {e}")
             return False
     
+    def check_duplicate_test_results(self, patient_name: str, test_date: str, test_results: list, user_id: int = None) -> list:
+        """Check for duplicate test results (same patient, date, test type, and value)."""
+        duplicates = []
+        try:
+            patient_id = self.get_patient_id(patient_name, user_id)
+            if not patient_id:
+                return []
+            
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+                
+                for result in test_results:
+                    test_type = result.get('test_type', '')
+                    test_value = result.get('value', result.get('test_value', 0))
+                    
+                    try:
+                        test_value_float = float(test_value) if test_value else 0
+                    except (ValueError, TypeError):
+                        test_value_float = 0
+                    
+                    cursor.execute('''
+                        SELECT result_id, test_type, test_value, test_date
+                        FROM test_results 
+                        WHERE patient_id = ? AND test_date = ? AND test_type = ? AND test_value = ?
+                    ''', (patient_id, test_date, test_type, test_value_float))
+                    
+                    existing = cursor.fetchone()
+                    if existing:
+                        duplicates.append({
+                            'test_type': test_type,
+                            'value': test_value_float,
+                            'date': test_date,
+                            'existing_id': existing[0]
+                        })
+                        
+        except Exception as e:
+            print(f"Error checking duplicate test results: {e}")
+        
+        return duplicates
+    
     def add_test_result(self, patient_id: int, test_date: date, test_type: str, 
                        test_value: float, unit: str = None, reference_range: str = None, user_id: int = None) -> bool:
         """Add a test result to the database."""
