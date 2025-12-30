@@ -492,18 +492,42 @@ def upload_results_page(file_parser, data_processor, user_id):
                                                                 'unit': row['Unit']
                                                             })
                                                     
-                                                    # Save using data processor
-                                                    success = data_processor.save_test_results(
+                                                    # Check for duplicates before saving
+                                                    duplicates = db.check_duplicate_test_results(
                                                         patient_name=patient_name,
-                                                        test_date=test_date,
+                                                        test_date=test_date.strftime('%Y-%m-%d') if hasattr(test_date, 'strftime') else str(test_date),
                                                         test_results=standards_final_results,
                                                         user_id=user_id
                                                     )
                                                     
-                                                    if success:
-                                                        st.success(f"Successfully saved {len(standards_final_results)} standards-based test results for {patient_name}")
-                                                    else:
-                                                        st.error("Failed to save standards-based test results to database")
+                                                    if duplicates:
+                                                        st.warning(f"⚠️ Found {len(duplicates)} duplicate test(s) already in database:")
+                                                        for dup in duplicates:
+                                                            st.write(f"  • **{dup['test_type']}**: {dup['value']} on {dup['date']}")
+                                                        
+                                                        # Filter out duplicates
+                                                        duplicate_keys = {(d['test_type'], d['value']) for d in duplicates}
+                                                        standards_final_results = [r for r in standards_final_results 
+                                                                                  if (r['test_type'], float(r['value']) if r['value'] else 0) not in duplicate_keys]
+                                                        
+                                                        if not standards_final_results:
+                                                            st.info("All tests are duplicates. No new results to save.")
+                                                        else:
+                                                            st.info(f"Saving {len(standards_final_results)} non-duplicate test(s)...")
+                                                    
+                                                    # Save using data processor
+                                                    if standards_final_results:
+                                                        success = data_processor.save_test_results(
+                                                            patient_name=patient_name,
+                                                            test_date=test_date,
+                                                            test_results=standards_final_results,
+                                                            user_id=user_id
+                                                        )
+                                                        
+                                                        if success:
+                                                            st.success(f"Successfully saved {len(standards_final_results)} standards-based test results for {patient_name}")
+                                                        else:
+                                                            st.error("Failed to save standards-based test results to database")
                                             else:
                                                 st.warning("Please enter a patient name to save results")
                                 
@@ -830,18 +854,42 @@ def upload_results_page(file_parser, data_processor, user_id):
                                                                 'unit': row['Unit']
                                                             })
                                                     
-                                                    # Save using data processor
-                                                    success = data_processor.save_test_results(
+                                                    # Check for duplicates before saving
+                                                    duplicates = db.check_duplicate_test_results(
                                                         patient_name=patient_name,
-                                                        test_date=test_date,
+                                                        test_date=test_date.strftime('%Y-%m-%d') if hasattr(test_date, 'strftime') else str(test_date),
                                                         test_results=standards_final_results,
                                                         user_id=user_id
                                                     )
                                                     
-                                                    if success:
-                                                        st.success(f"Successfully saved {len(standards_final_results)} standards-based test results for {patient_name}")
-                                                    else:
-                                                        st.error("Failed to save standards-based test results to database")
+                                                    if duplicates:
+                                                        st.warning(f"⚠️ Found {len(duplicates)} duplicate test(s) already in database:")
+                                                        for dup in duplicates:
+                                                            st.write(f"  • **{dup['test_type']}**: {dup['value']} on {dup['date']}")
+                                                        
+                                                        # Filter out duplicates
+                                                        duplicate_keys = {(d['test_type'], d['value']) for d in duplicates}
+                                                        standards_final_results = [r for r in standards_final_results 
+                                                                                  if (r['test_type'], float(r['value']) if r['value'] else 0) not in duplicate_keys]
+                                                        
+                                                        if not standards_final_results:
+                                                            st.info("All tests are duplicates. No new results to save.")
+                                                        else:
+                                                            st.info(f"Saving {len(standards_final_results)} non-duplicate test(s)...")
+                                                    
+                                                    # Save using data processor
+                                                    if standards_final_results:
+                                                        success = data_processor.save_test_results(
+                                                            patient_name=patient_name,
+                                                            test_date=test_date,
+                                                            test_results=standards_final_results,
+                                                            user_id=user_id
+                                                        )
+                                                        
+                                                        if success:
+                                                            st.success(f"Successfully saved {len(standards_final_results)} standards-based test results for {patient_name}")
+                                                        else:
+                                                            st.error("Failed to save standards-based test results to database")
                                             else:
                                                 st.warning("Please enter a patient name to save results")
                                         
@@ -1272,17 +1320,45 @@ Extraction Method: {result.get('source', 'regex')}""")
                                                 })
                                                 additional_count += 1
                                 
-                                # Save all results using the form values
-                                success = data_processor.save_test_results(
+                                # Check for duplicates before saving
+                                duplicates = db.check_duplicate_test_results(
                                     patient_name=patient_name,
-                                    test_date=test_date,
+                                    test_date=test_date.strftime('%Y-%m-%d') if hasattr(test_date, 'strftime') else str(test_date),
                                     test_results=final_results,
                                     user_id=user_id
                                 )
                                 
+                                if duplicates:
+                                    st.warning(f"⚠️ Found {len(duplicates)} duplicate test(s) already in database:")
+                                    for dup in duplicates:
+                                        st.write(f"  • **{dup['test_type']}**: {dup['value']} on {dup['date']}")
+                                    
+                                    # Filter out duplicates from final results
+                                    duplicate_keys = {(d['test_type'], d['value']) for d in duplicates}
+                                    final_results = [r for r in final_results 
+                                                    if (r['test_type'], float(r['value']) if r['value'] else 0) not in duplicate_keys]
+                                    
+                                    if not final_results:
+                                        st.info("All tests are duplicates. No new results to save.")
+                                        progress_bar.progress(100)
+                                        status_text.text("⚠️ No new results to save")
+                                    else:
+                                        st.info(f"Saving {len(final_results)} non-duplicate test(s)...")
+                                
+                                # Save all results using the form values
+                                if final_results:
+                                    success = data_processor.save_test_results(
+                                        patient_name=patient_name,
+                                        test_date=test_date,
+                                        test_results=final_results,
+                                        user_id=user_id
+                                    )
+                                else:
+                                    success = True  # No results to save (all duplicates)
+                                
                                 progress_bar.progress(100)
                                 
-                                if success:
+                                if success and final_results:
                                     status_text.text("✅ Successfully processed!")
                                     extracted_count = len([r for i, r in enumerate(test_data['results']) if st.session_state.get(f"include_{uploaded_file.name}_{i}", True)])
                                     st.success(f"Successfully saved {len(final_results)} test results for {patient_name}")
@@ -1444,18 +1520,42 @@ Extraction Method: {result.get('source', 'regex')}""")
                                                 additional_count += 1
                                 
                                 if final_results:
-                                    # Save manual results
-                                    success = data_processor.save_test_results(
+                                    # Check for duplicates before saving
+                                    duplicates = db.check_duplicate_test_results(
                                         patient_name=patient_name,
-                                        test_date=test_date,
+                                        test_date=test_date.strftime('%Y-%m-%d') if hasattr(test_date, 'strftime') else str(test_date),
                                         test_results=final_results,
                                         user_id=user_id
                                     )
                                     
-                                    if success:
-                                        st.success(f"Successfully saved {len(final_results)} manual test results for {patient_name}")
-                                    else:
-                                        st.error("Failed to save manual test results to database")
+                                    if duplicates:
+                                        st.warning(f"⚠️ Found {len(duplicates)} duplicate test(s) already in database:")
+                                        for dup in duplicates:
+                                            st.write(f"  • **{dup['test_type']}**: {dup['value']} on {dup['date']}")
+                                        
+                                        # Filter out duplicates
+                                        duplicate_keys = {(d['test_type'], d['value']) for d in duplicates}
+                                        final_results = [r for r in final_results 
+                                                        if (r['test_type'], float(r['value']) if r['value'] else 0) not in duplicate_keys]
+                                        
+                                        if not final_results:
+                                            st.info("All tests are duplicates. No new results to save.")
+                                        else:
+                                            st.info(f"Saving {len(final_results)} non-duplicate test(s)...")
+                                    
+                                    # Save manual results
+                                    if final_results:
+                                        success = data_processor.save_test_results(
+                                            patient_name=patient_name,
+                                            test_date=test_date,
+                                            test_results=final_results,
+                                            user_id=user_id
+                                        )
+                                        
+                                        if success:
+                                            st.success(f"Successfully saved {len(final_results)} manual test results for {patient_name}")
+                                        else:
+                                            st.error("Failed to save manual test results to database")
                                 else:
                                     st.warning("No valid manual tests to save. Please enter test names and non-zero values.")
                         
@@ -1632,18 +1732,42 @@ Extraction Method: {result.get('source', 'regex')}""")
                                             additional_count += 1
                                 
                                 if final_results:
-                                    # Save additional results
-                                    success = data_processor.save_test_results(
+                                    # Check for duplicates before saving
+                                    duplicates = db.check_duplicate_test_results(
                                         patient_name=patient_name,
-                                        test_date=test_date,
+                                        test_date=test_date.strftime('%Y-%m-%d') if hasattr(test_date, 'strftime') else str(test_date),
                                         test_results=final_results,
                                         user_id=user_id
                                     )
                                     
-                                    if success:
-                                        st.success(f"Successfully saved {len(final_results)} additional test results for {patient_name}")
-                                    else:
-                                        st.error("Failed to save additional test results to database")
+                                    if duplicates:
+                                        st.warning(f"⚠️ Found {len(duplicates)} duplicate test(s) already in database:")
+                                        for dup in duplicates:
+                                            st.write(f"  • **{dup['test_type']}**: {dup['value']} on {dup['date']}")
+                                        
+                                        # Filter out duplicates
+                                        duplicate_keys = {(d['test_type'], d['value']) for d in duplicates}
+                                        final_results = [r for r in final_results 
+                                                        if (r['test_type'], float(r['value']) if r['value'] else 0) not in duplicate_keys]
+                                        
+                                        if not final_results:
+                                            st.info("All tests are duplicates. No new results to save.")
+                                        else:
+                                            st.info(f"Saving {len(final_results)} non-duplicate test(s)...")
+                                    
+                                    # Save additional results
+                                    if final_results:
+                                        success = data_processor.save_test_results(
+                                            patient_name=patient_name,
+                                            test_date=test_date,
+                                            test_results=final_results,
+                                            user_id=user_id
+                                        )
+                                        
+                                        if success:
+                                            st.success(f"Successfully saved {len(final_results)} additional test results for {patient_name}")
+                                        else:
+                                            st.error("Failed to save additional test results to database")
                                 else:
                                     st.warning("No valid additional tests to save. Please enter test names and non-zero values.")
                         
