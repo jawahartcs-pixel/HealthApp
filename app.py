@@ -493,7 +493,7 @@ def upload_results_page(file_parser, data_processor, user_id):
                                                             })
                                                     
                                                     # Check for duplicates before saving
-                                                    duplicates = db.check_duplicate_test_results(
+                                                    duplicates = data_processor.db.check_duplicate_test_results(
                                                         patient_name=patient_name,
                                                         test_date=test_date.strftime('%Y-%m-%d') if hasattr(test_date, 'strftime') else str(test_date),
                                                         test_results=standards_final_results,
@@ -855,7 +855,7 @@ def upload_results_page(file_parser, data_processor, user_id):
                                                             })
                                                     
                                                     # Check for duplicates before saving
-                                                    duplicates = db.check_duplicate_test_results(
+                                                    duplicates = data_processor.db.check_duplicate_test_results(
                                                         patient_name=patient_name,
                                                         test_date=test_date.strftime('%Y-%m-%d') if hasattr(test_date, 'strftime') else str(test_date),
                                                         test_results=standards_final_results,
@@ -1321,7 +1321,7 @@ Extraction Method: {result.get('source', 'regex')}""")
                                                 additional_count += 1
                                 
                                 # Check for duplicates before saving
-                                duplicates = db.check_duplicate_test_results(
+                                duplicates = data_processor.db.check_duplicate_test_results(
                                     patient_name=patient_name,
                                     test_date=test_date.strftime('%Y-%m-%d') if hasattr(test_date, 'strftime') else str(test_date),
                                     test_results=final_results,
@@ -1521,7 +1521,7 @@ Extraction Method: {result.get('source', 'regex')}""")
                                 
                                 if final_results:
                                     # Check for duplicates before saving
-                                    duplicates = db.check_duplicate_test_results(
+                                    duplicates = data_processor.db.check_duplicate_test_results(
                                         patient_name=patient_name,
                                         test_date=test_date.strftime('%Y-%m-%d') if hasattr(test_date, 'strftime') else str(test_date),
                                         test_results=final_results,
@@ -1733,7 +1733,7 @@ Extraction Method: {result.get('source', 'regex')}""")
                                 
                                 if final_results:
                                     # Check for duplicates before saving
-                                    duplicates = db.check_duplicate_test_results(
+                                    duplicates = data_processor.db.check_duplicate_test_results(
                                         patient_name=patient_name,
                                         test_date=test_date.strftime('%Y-%m-%d') if hasattr(test_date, 'strftime') else str(test_date),
                                         test_results=final_results,
