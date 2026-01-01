@@ -2591,14 +2591,14 @@ def patient_dashboard_page(db, visualization, alert_system, user_id):
                     )
                 
                 with col_th3:
-                    # Percentage threshold slider
+                    # Percentage threshold slider (0 = show all)
                     threshold_percentage = st.slider(
                         "Change % Threshold",
-                        min_value=1,
+                        min_value=0,
                         max_value=100,
                         value=20,
                         step=1,
-                        help="Show only tests with value changes above or below this percentage"
+                        help="Show only tests with value changes above or below this percentage. Set to 0 to show all tests."
                     )
                 
                 # Validate that Report 1 and Report 2 are different
@@ -2610,40 +2610,130 @@ def patient_dashboard_page(db, visualization, alert_system, user_id):
                     report_1_data = df[df['Date'].dt.date == threshold_report_1_date]
                     report_2_data = df[df['Date'].dt.date == threshold_report_2_date]
                     
-                    # Find common test types
-                    common_test_types = set(report_1_data['Test Type'].unique()) & set(report_2_data['Test Type'].unique())
+                    # Get patient profile for gender-specific reference ranges
+                    patient_profile = db.get_patient_profile(selected_patient, user_id)
+                    patient_gender = patient_profile.get('gender') if patient_profile else None
+                    
+                    # Get investigation standards for reference ranges
+                    investigation_standards = st.session_state.get('investigation_standards')
+                    
+                    # Find common test types (or all test types if threshold is 0)
+                    if threshold_percentage == 0:
+                        # Show all tests from both reports
+                        common_test_types = set(report_1_data['Test Type'].unique()) | set(report_2_data['Test Type'].unique())
+                    else:
+                        common_test_types = set(report_1_data['Test Type'].unique()) & set(report_2_data['Test Type'].unique())
                     
                     threshold_test_types = []
                     change_details = []
                     
                     for test_type in common_test_types:
-                        value_1 = report_1_data[report_1_data['Test Type'] == test_type]['Value'].iloc[0]
-                        value_2 = report_2_data[report_2_data['Test Type'] == test_type]['Value'].iloc[0]
+                        # Get values from both reports (may be None if not in one report)
+                        value_1_data = report_1_data[report_1_data['Test Type'] == test_type]
+                        value_2_data = report_2_data[report_2_data['Test Type'] == test_type]
                         
-                        # Calculate percentage change (avoid division by zero)
-                        if value_1 != 0:
-                            pct_change = abs((value_2 - value_1) / value_1) * 100
+                        value_1 = value_1_data['Value'].iloc[0] if not value_1_data.empty else None
+                        value_2 = value_2_data['Value'].iloc[0] if not value_2_data.empty else None
+                        
+                        # Skip if either value is missing (except for threshold 0)
+                        if value_1 is None or value_2 is None:
+                            if threshold_percentage == 0:
+                                # For threshold 0, show even if one value is missing
+                                value_1_display = value_1 if value_1 is not None else "N/A"
+                                value_2_display = value_2 if value_2 is not None else "N/A"
+                                pct_change = 0
+                            else:
+                                continue
                         else:
-                            pct_change = 100 if value_2 != 0 else 0
+                            value_1_display = value_1
+                            value_2_display = value_2
+                            # Calculate percentage change (avoid division by zero)
+                            if value_1 != 0:
+                                pct_change = abs((value_2 - value_1) / value_1) * 100
+                            else:
+                                pct_change = 100 if value_2 != 0 else 0
+                        
+                        # Get reference range based on patient gender
+                        ref_range = ""
+                        ref_min = None
+                        ref_max = None
+                        if investigation_standards:
+                            gender_for_range = patient_gender.lower() if patient_gender else 'both'
+                            ref_range = investigation_standards.get_reference_range(test_type, gender_for_range)
+                            if ref_range:
+                                # Parse range to get min/max for status calculation
+                                try:
+                                    range_parts = ref_range.split('-')
+                                    if len(range_parts) >= 2:
+                                        ref_min = float(range_parts[0].strip().split()[0])
+                                        ref_max = float(range_parts[1].strip().split()[0])
+                                except:
+                                    pass
+                        
+                        # Calculate status (Improving/Degrading) based on reference range
+                        status = ""
+                        if value_1 is not None and value_2 is not None and ref_min is not None and ref_max is not None:
+                            # Calculate midpoint of reference range
+                            ref_mid = (ref_min + ref_max) / 2
+                            
+                            # Distance from reference range midpoint
+                            dist_1 = abs(value_1 - ref_mid)
+                            dist_2 = abs(value_2 - ref_mid)
+                            
+                            # Check if values are within range
+                            in_range_1 = ref_min <= value_1 <= ref_max
+                            in_range_2 = ref_min <= value_2 <= ref_max
+                            
+                            if in_range_1 and in_range_2:
+                                status = "✅ Normal"
+                            elif not in_range_1 and in_range_2:
+                                status = "📈 Improving"
+                            elif in_range_1 and not in_range_2:
+                                status = "📉 Degrading"
+                            elif dist_2 < dist_1:
+                                status = "📈 Improving"
+                            elif dist_2 > dist_1:
+                                status = "📉 Degrading"
+                            else:
+                                status = "➡️ Stable"
                         
                         if pct_change >= threshold_percentage:
                             threshold_test_types.append(test_type)
-                            direction = "📈 +" if value_2 > value_1 else "📉 -"
+                            direction = "📈 +" if (value_2 is not None and value_1 is not None and value_2 > value_1) else "📉 -"
                             change_details.append({
                                 'test_type': test_type,
-                                'value_1': value_1,
-                                'value_2': value_2,
+                                'value_1': value_1_display,
+                                'value_2': value_2_display,
                                 'pct_change': pct_change,
-                                'direction': direction
+                                'direction': direction,
+                                'range': ref_range if ref_range else "N/A",
+                                'status': status if status else "N/A"
                             })
                     
                     if threshold_test_types:
-                        st.success(f"✅ Found **{len(threshold_test_types)}** tests with changes ≥{threshold_percentage}%")
+                        if threshold_percentage == 0:
+                            st.success(f"✅ Showing **all {len(threshold_test_types)}** tests from both reports")
+                        else:
+                            st.success(f"✅ Found **{len(threshold_test_types)}** tests with changes ≥{threshold_percentage}%")
                         
-                        # Show preview of changes
-                        with st.expander("📊 Preview of significant changes", expanded=False):
+                        # Show preview of changes with title showing report dates
+                        preview_title = f"📊 {threshold_report_1_date} vs {threshold_report_2_date}"
+                        with st.expander(preview_title, expanded=False):
+                            # Create a DataFrame for better display
+                            preview_data = []
                             for detail in sorted(change_details, key=lambda x: x['pct_change'], reverse=True):
-                                st.markdown(f"**{detail['test_type']}**: {detail['value_1']} → {detail['value_2']} ({detail['direction']}{detail['pct_change']:.1f}%)")
+                                preview_data.append({
+                                    'Test': detail['test_type'],
+                                    f'Report 1 ({threshold_report_1_date})': detail['value_1'],
+                                    f'Report 2 ({threshold_report_2_date})': detail['value_2'],
+                                    'Change %': f"{detail['direction']}{detail['pct_change']:.1f}%" if detail['pct_change'] > 0 else "0%",
+                                    'Range': detail['range'],
+                                    'Status': detail['status']
+                                })
+                            
+                            if preview_data:
+                                preview_df = pd.DataFrame(preview_data)
+                                st.dataframe(preview_df, use_container_width=True, hide_index=True)
                         
                         # Button to apply threshold results to the test filter
                         if st.button("📋 Apply These Tests to Test Filter", help="Copy these threshold-selected tests to the 'Select Tests/Investigations to Display' filter above"):
