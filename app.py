@@ -2721,6 +2721,11 @@ def patient_dashboard_page(db, visualization, alert_system, user_id):
                         with st.expander(preview_title, expanded=False):
                             # Create a DataFrame for better display
                             preview_data = []
+                            copy_lines = []
+                            # Add title line for copy
+                            copy_lines.append(f"Report Comparison: {threshold_report_1_date} vs {threshold_report_2_date}")
+                            copy_lines.append("")  # Empty line after title
+                            
                             for detail in sorted(change_details, key=lambda x: x['pct_change'], reverse=True):
                                 preview_data.append({
                                     'Test': detail['test_type'],
@@ -2730,10 +2735,23 @@ def patient_dashboard_page(db, visualization, alert_system, user_id):
                                     'Range': detail['range'],
                                     'Status': detail['status']
                                 })
+                                # Build copy line: "Test name" From "Value1" to "Value2" and "Status"
+                                status_text = detail['status'].replace("📈 ", "").replace("📉 ", "").replace("✅ ", "").replace("➡️ ", "")
+                                copy_lines.append(f"{detail['test_type']}\tFrom\t{detail['value_1']}\tto\t{detail['value_2']}\tand\t{status_text}")
                             
                             if preview_data:
                                 preview_df = pd.DataFrame(preview_data)
                                 st.dataframe(preview_df, use_container_width=True, hide_index=True)
+                                
+                                # Copy button for tab-separated format
+                                copy_text = "\n".join(copy_lines)
+                                st.download_button(
+                                    label="📋 Copy to Clipboard (Tab-Separated)",
+                                    data=copy_text,
+                                    file_name=f"comparison_{threshold_report_1_date}_vs_{threshold_report_2_date}.txt",
+                                    mime="text/plain",
+                                    help="Download as tab-separated text file for easy pasting into spreadsheets"
+                                )
                         
                         # Button to apply threshold results to the test filter
                         if st.button("📋 Apply These Tests to Test Filter", help="Copy these threshold-selected tests to the 'Select Tests/Investigations to Display' filter above"):
