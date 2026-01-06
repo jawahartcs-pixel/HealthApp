@@ -475,6 +475,84 @@ class MedicationReminder:
             alert_type="automated_reminder"
         )
     
+    def _send_grouped_reminder_email(self, patient_name: str, patient_email: str, 
+                                      reminder_time: str, medications: List[Dict]) -> bool:
+        """Send a single email with multiple medications grouped together."""
+        smtp_config = self._get_smtp_config()
+        if not smtp_config:
+            print("No SMTP configuration found")
+            return False
+            
+        try:
+            # Create message
+            msg = MIMEMultipart()
+            msg['From'] = f"{smtp_config['sender_name']} <{smtp_config['email_username']}>"
+            msg['To'] = patient_email
+            
+            # Build subject line
+            if len(medications) == 1:
+                msg['Subject'] = f"Medication Reminder: {medications[0]['medication_name']}"
+            else:
+                msg['Subject'] = f"Medication Reminder: {len(medications)} Medications Due"
+            
+            # Build medication list for body
+            med_list = "\n".join([f"  - {med['medication_name']} ({med['dosage']})" for med in medications])
+            
+            body = f"""
+Dear {patient_name},
+
+This is a reminder for your medication(s) due at {reminder_time}:
+
+{med_list}
+
+Please take your medication(s) as prescribed.
+
+Best regards,
+{smtp_config['sender_name']}
+            """
+            
+            msg.attach(MIMEText(body, 'plain'))
+            
+            # Send email with improved SSL/TLS handling
+            server = None
+            try:
+                if smtp_config['smtp_port'] == 465:
+                    server = smtplib.SMTP_SSL(smtp_config['smtp_server'], smtp_config['smtp_port'])
+                else:
+                    server = smtplib.SMTP(smtp_config['smtp_server'], smtp_config['smtp_port'])
+                    server.starttls()
+                
+                server.login(smtp_config['email_username'], smtp_config['email_password'])
+            except smtplib.SMTPException as e:
+                if server:
+                    try:
+                        server.quit()
+                    except:
+                        pass
+                
+                try:
+                    if smtp_config['smtp_port'] == 465:
+                        server = smtplib.SMTP(smtp_config['smtp_server'], 587)
+                        server.starttls()
+                    else:
+                        server = smtplib.SMTP_SSL(smtp_config['smtp_server'], 465)
+                    
+                    server.login(smtp_config['email_username'], smtp_config['email_password'])
+                except Exception as fallback_e:
+                    print(f"Both SSL methods failed. Original: {e}, Fallback: {fallback_e}")
+                    return False
+            
+            server.send_message(msg)
+            server.quit()
+            
+            med_names = ", ".join([med['medication_name'] for med in medications])
+            print(f"Grouped email sent to {patient_email} for {len(medications)} medications: {med_names}")
+            return True
+            
+        except Exception as e:
+            print(f"Error sending grouped email reminder: {e}")
+            return False
+    
     def _log_email_history(self, reminder: Dict) -> bool:
         """Log email history to database."""
         try:
@@ -1519,7 +1597,7 @@ Best regards,
         return False
     
     def process_pending_email_reminders(self) -> Dict[str, Any]:
-        """Process all pending email reminders and send emails."""
+        """Process all pending email reminders and send emails, grouping by patient and time."""
         try:
             # Get timezone-aware current time
             from database import Database
@@ -1538,24 +1616,54 @@ Best regards,
                 'sent_successfully': 0,
                 'failed': 0,
                 'sent_reminders': [],
-                'failed_reminders': []
+                'failed_reminders': [],
+                'emails_sent': 0  # Track actual emails sent (grouped)
             }
             
+            # Filter out already sent reminders and group by patient + time
+            grouped_reminders = {}
             for reminder in pending_reminders:
-                # Check if email was already sent today for this specific medication time
                 if not self._already_sent_today(reminder):
-                    success = self._send_enhanced_reminder_email(reminder)
-                    
-                    if success:
-                        results['sent_successfully'] += 1
-                        results['sent_reminders'].append(reminder)
-                        # Log email history
-                        self._log_email_history(reminder)
-                    else:
-                        results['failed'] += 1
-                        results['failed_reminders'].append(reminder)
+                    # Group key: patient_name + patient_email + time
+                    group_key = (reminder['patient_name'], reminder.get('patient_email', ''), reminder['time'])
+                    if group_key not in grouped_reminders:
+                        grouped_reminders[group_key] = []
+                    grouped_reminders[group_key].append(reminder)
                 else:
                     print(f"Email already sent today for {reminder['patient_name']} - {reminder['medication_name']} at {reminder['time']}")
+            
+            # Send grouped emails
+            for (patient_name, patient_email, reminder_time), medications in grouped_reminders.items():
+                if not patient_email:
+                    print(f"No email address for {patient_name}")
+                    for med in medications:
+                        results['failed'] += 1
+                        results['failed_reminders'].append(med)
+                    continue
+                
+                # Send single grouped email for all medications at this time
+                success = self._send_grouped_reminder_email(
+                    patient_name=patient_name,
+                    patient_email=patient_email,
+                    reminder_time=reminder_time,
+                    medications=medications
+                )
+                
+                if success:
+                    results['emails_sent'] += 1
+                    for med in medications:
+                        results['sent_successfully'] += 1
+                        results['sent_reminders'].append(med)
+                        # Log email history for each medication
+                        self._log_email_history(med)
+                else:
+                    for med in medications:
+                        results['failed'] += 1
+                        results['failed_reminders'].append(med)
+            
+            # Print summary of grouping
+            if grouped_reminders:
+                print(f"Grouped {len(pending_reminders)} reminders into {len(grouped_reminders)} email(s)")
             
             return results
             

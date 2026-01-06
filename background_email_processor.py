@@ -19,8 +19,9 @@ def process_email_reminders():
         
         if results['total_pending'] > 0:
             print(f"[{current_time}] Email Processing Results:")
-            print(f"  - Pending: {results['total_pending']}")
-            print(f"  - Sent: {results['sent_successfully']}")
+            print(f"  - Pending medications: {results['total_pending']}")
+            print(f"  - Emails sent: {results.get('emails_sent', 0)} (grouped)")
+            print(f"  - Medications processed: {results['sent_successfully']}")
             print(f"  - Failed: {results['failed']}")
             
             if results['sent_reminders']:
