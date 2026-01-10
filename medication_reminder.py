@@ -460,69 +460,6 @@ class MedicationReminder:
             print(f"Error checking email history: {e}")
             return False
     
-    def _get_all_medications_at_time(self, patient_name: str, medication_time: str, check_date) -> List[Dict]:
-        """Get all active medications for a patient at a specific time that are due today."""
-        try:
-            with sqlite3.connect(self.db_path) as conn:
-                cursor = conn.cursor()
-                
-                cursor.execute('''
-                    SELECT m.id, m.medication_name, m.dosage, ms.interval_days, m.start_date, ms.days_of_week
-                    FROM medications m
-                    JOIN medication_schedule ms ON m.id = ms.medication_id
-                    WHERE m.patient_name = ?
-                    AND ms.time_of_day = ?
-                    AND m.active = 1
-                    AND ms.reminder_enabled = 1
-                    AND (m.end_date IS NULL OR m.end_date >= ?)
-                ''', (patient_name, medication_time, check_date.strftime('%Y-%m-%d')))
-                
-                results = []
-                for row in cursor.fetchall():
-                    medication_id, medication_name, dosage, interval_days, start_date_str, days_of_week_json = row
-                    
-                    # Check if medication is due today based on interval or days_of_week
-                    is_due_today = False
-                    
-                    if interval_days and interval_days > 1:
-                        # Interval-based medication
-                        try:
-                            start_date = datetime.strptime(start_date_str, '%Y-%m-%d').date()
-                            days_passed = (check_date - start_date).days
-                            if days_passed >= 0 and days_passed % interval_days == 0:
-                                is_due_today = True
-                        except:
-                            pass
-                    elif days_of_week_json:
-                        # Weekly medication
-                        try:
-                            days_of_week = json.loads(days_of_week_json) if days_of_week_json else []
-                            if days_of_week and len(days_of_week) > 0:
-                                if check_date.weekday() + 1 in days_of_week:
-                                    is_due_today = True
-                            else:
-                                # Empty days list means daily
-                                is_due_today = True
-                        except:
-                            is_due_today = True
-                    else:
-                        # Daily medication
-                        is_due_today = True
-                    
-                    if is_due_today:
-                        results.append({
-                            'medication_id': medication_id,
-                            'patient_name': patient_name,
-                            'medication_name': medication_name,
-                            'dosage': dosage
-                        })
-                
-                return results
-                
-        except Exception as e:
-            print(f"Error getting medications at time: {e}")
-            return []
-    
     def _send_enhanced_reminder_email(self, reminder: Dict) -> bool:
         """Send enhanced reminder email using database SMTP configuration."""
         if not reminder.get('patient_email'):
@@ -1660,7 +1597,7 @@ Best regards,
         return False
     
     def process_pending_email_reminders(self) -> Dict[str, Any]:
-        """Process all pending email reminders and send emails, grouping by patient and medication time."""
+        """Process all pending email reminders and send emails, grouping by patient and time."""
         try:
             # Get timezone-aware current time
             from database import Database
@@ -1683,52 +1620,17 @@ Best regards,
                 'emails_sent': 0  # Track actual emails sent (grouped)
             }
             
-            if not pending_reminders:
-                return results
-            
-            # Get ALL medications at the same time as any pending reminder
-            # This ensures we group medications with different alert timings
+            # Filter out already sent reminders and group by patient + time
             grouped_reminders = {}
-            processed_medication_times = set()
-            
-            print(f"DEBUG GROUPING: Processing {len(pending_reminders)} pending reminders")
-            
             for reminder in pending_reminders:
-                patient_name = reminder['patient_name']
-                patient_email = reminder.get('patient_email', '')
-                medication_time = reminder['time']  # This is the medication time, not alert time
-                
-                # Group key: patient_name + patient_email + medication_time
-                group_key = (patient_name, patient_email, medication_time)
-                
-                # If we already processed this medication time group, skip
-                if group_key in processed_medication_times:
-                    continue
-                
-                processed_medication_times.add(group_key)
-                
-                # Get ALL medications at this same time for this patient (not just due ones)
-                all_meds_at_time = self._get_all_medications_at_time(patient_name, medication_time, current_tz_time.date())
-                
-                print(f"DEBUG GROUPING: Found {len(all_meds_at_time)} medications at time {medication_time} for {patient_name}")
-                
-                # Filter out already sent and add to group
-                meds_to_send = []
-                for med in all_meds_at_time:
-                    med['patient_email'] = patient_email
-                    med['time'] = medication_time
-                    if not self._already_sent_today(med):
-                        meds_to_send.append(med)
-                        print(f"DEBUG GROUPING: Adding {med['medication_name']} to group")
-                    else:
-                        print(f"DEBUG GROUPING: Skipping {med['medication_name']} - already sent today")
-                
-                if meds_to_send:
-                    grouped_reminders[group_key] = meds_to_send
-            
-            print(f"DEBUG GROUPING: Created {len(grouped_reminders)} groups")
-            for group_key, meds in grouped_reminders.items():
-                print(f"DEBUG GROUPING: Group {group_key}: {[m['medication_name'] for m in meds]}")
+                if not self._already_sent_today(reminder):
+                    # Group key: patient_name + patient_email + time
+                    group_key = (reminder['patient_name'], reminder.get('patient_email', ''), reminder['time'])
+                    if group_key not in grouped_reminders:
+                        grouped_reminders[group_key] = []
+                    grouped_reminders[group_key].append(reminder)
+                else:
+                    print(f"Email already sent today for {reminder['patient_name']} - {reminder['medication_name']} at {reminder['time']}")
             
             # Send grouped emails
             for (patient_name, patient_email, reminder_time), medications in grouped_reminders.items():
