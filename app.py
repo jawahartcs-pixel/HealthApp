@@ -72,7 +72,7 @@ def main():
     auth_ui.sidebar_user_info()
     
     # Page selection
-    pages = ["Upload Results", "View Patients", "Patient Dashboard", "Search & Filter", "Export Data", "Manage Data", "Alert Dashboard", "AI Anomaly Detection", "Medication Reminders", "Investigation Standards"]
+    pages = ["Upload Results", "View Patients", "Patient Dashboard", "Medication Reminders", "Manage Data", "Investigation Standards", "Search & Filter", "Export Data", "Alert Dashboard", "AI Anomaly Detection"]
     
     # Add profile page for logged-in users
     if st.session_state.get('user_id'):
