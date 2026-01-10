@@ -4433,7 +4433,7 @@ def ai_anomaly_detection_page(anomaly_detector, user_id):
         
         with st.spinner("🧠 AI is analyzing your data..."):
             if analysis_type == "All Patients":
-                results = anomaly_detector.detect_anomalies(user_id=user_id)
+                results = anomaly_detector.get_all_patients_summary(user_id=user_id)
             elif analysis_type == "Specific Patient":
                 results = anomaly_detector.get_patient_anomaly_summary(selected_patient, user_id)
             else:  # Anomaly Trends
