@@ -4507,6 +4507,20 @@ def display_all_patients_analysis(results):
                 'low': '#44ff44'
             }.get(rec.get('priority', 'medium'), '#888888')
             
+            # Build search links HTML
+            search_links_html = ""
+            anomaly_links = rec.get('anomaly_links', [])
+            if anomaly_links:
+                search_links_html = "<h5>🔍 Research Links:</h5><ul>"
+                for anomaly in anomaly_links:
+                    test_type = anomaly.get('test_type', 'Test')
+                    value = anomaly.get('value', 'N/A')
+                    patient = anomaly.get('patient_name', 'Unknown')
+                    search_url = anomaly.get('search_link', '')
+                    if search_url:
+                        search_links_html += f'<li><a href="{search_url}" target="_blank">{test_type}: {value} ({patient})</a></li>'
+                search_links_html += "</ul>"
+            
             st.markdown(f"""
             <div style="border-left: 4px solid {severity_color}; padding-left: 20px; margin: 10px 0;">
                 <h4>{rec['title']}</h4>
@@ -4514,6 +4528,7 @@ def display_all_patients_analysis(results):
                 <ul>
                     {''.join([f'<li>{item}</li>' for item in rec['action_items']])}
                 </ul>
+                {search_links_html}
             </div>
             """, unsafe_allow_html=True)
     
@@ -4589,13 +4604,33 @@ def display_patient_analysis(results, patient_name):
         st.subheader("🎯 Personalized Recommendations")
         
         for rec in patient_recommendations:
+            severity_color = {
+                'high': '#ff4444',
+                'medium': '#ffaa00',
+                'low': '#44ff44'
+            }.get(rec.get('priority', 'medium'), '#4CAF50')
+            
+            # Build search links HTML
+            search_links_html = ""
+            anomaly_links = rec.get('anomaly_links', [])
+            if anomaly_links:
+                search_links_html = "<h5>🔍 Research Links:</h5><ul>"
+                for anomaly in anomaly_links:
+                    test_type = anomaly.get('test_type', 'Test')
+                    value = anomaly.get('value', 'N/A')
+                    search_url = anomaly.get('search_link', '')
+                    if search_url:
+                        search_links_html += f'<li><a href="{search_url}" target="_blank">{test_type}: {value}</a></li>'
+                search_links_html += "</ul>"
+            
             st.markdown(f"""
-            <div style="border-left: 4px solid #4CAF50; padding-left: 20px; margin: 10px 0;">
+            <div style="border-left: 4px solid {severity_color}; padding-left: 20px; margin: 10px 0;">
                 <h4>{rec['title']}</h4>
                 <p>{rec['description']}</p>
                 <ul>
                     {''.join([f'<li>{item}</li>' for item in rec['action_items']])}
                 </ul>
+                {search_links_html}
             </div>
             """, unsafe_allow_html=True)
 
