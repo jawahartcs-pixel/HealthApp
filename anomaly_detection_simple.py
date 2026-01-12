@@ -10,6 +10,7 @@ from sklearn.preprocessing import StandardScaler
 from scipy import stats
 from datetime import datetime, timedelta
 from typing import Dict, List, Any, Optional, Tuple
+from urllib.parse import quote_plus
 import warnings
 warnings.filterwarnings('ignore')
 
@@ -18,6 +19,26 @@ class SimpleAnomalyDetector:
         """Initialize anomaly detection system with database connection."""
         self.database = database
         self.scaler = StandardScaler()
+    
+    def _build_google_search_url(self, test_name: str, test_value: float, patient_name: str = None, 
+                                  user_id: int = None) -> str:
+        """Build a Google search URL with test info and patient context."""
+        search_terms = [test_name, f"{test_value}"]
+        
+        if patient_name and user_id:
+            profile = self.database.get_patient_profile(patient_name, user_id)
+            if profile:
+                if profile.get('age'):
+                    search_terms.append(f"age {profile['age']}")
+                if profile.get('medical_history'):
+                    history = profile['medical_history'][:100]
+                    search_terms.append(history)
+                if profile.get('medications'):
+                    meds = profile['medications'][:80]
+                    search_terms.append(f"treatment {meds}")
+        
+        query = " ".join(search_terms)
+        return f"https://www.google.com/search?q={quote_plus(query)}"
         
     def detect_anomalies(self, patient_name: str = None, user_id: int = None) -> Dict[str, Any]:
         """
@@ -285,7 +306,7 @@ class SimpleAnomalyDetector:
                 'severity_distribution': severity_counts,  # Add for backward compatibility
                 'anomaly_types': anomaly_types,
                 'detailed_results': results,
-                'recommendations': self._generate_patient_recommendations(patient_name, results, total_anomalies),
+                'recommendations': self._generate_patient_recommendations(patient_name, results, total_anomalies, user_id),
                 'anomalies': patient_anomalies,  # Add complete anomalies list for this patient
                 'status': 'success'
             }
@@ -339,7 +360,7 @@ class SimpleAnomalyDetector:
                 'detailed_results': results,
                 'total_patients': len(patient_summaries),
                 'data_summary': {'total_patients': len(patient_summaries)},
-                'recommendations': self._generate_recommendations(results, patient_summaries),
+                'recommendations': self._generate_recommendations(results, patient_summaries, user_id),
                 'anomalies': all_anomalies,  # Add complete anomalies list
                 'status': 'success'
             }
@@ -397,12 +418,29 @@ class SimpleAnomalyDetector:
                 'trends': []
             }
     
-    def _generate_recommendations(self, results: Dict, patient_summaries: Dict) -> List[Dict]:
+    def _generate_recommendations(self, results: Dict, patient_summaries: Dict, user_id: int = None) -> List[Dict]:
         """Generate actionable recommendations based on anomaly detection results."""
         recommendations = []
         
+        # Collect all anomalies with search links
+        all_anomalies_with_links = []
+        for method, data in results.items():
+            if method in ['statistical_outliers', 'temporal_anomalies', 'isolation_forest']:
+                if isinstance(data, dict) and 'anomalies' in data:
+                    for anomaly in data['anomalies']:
+                        search_url = self._build_google_search_url(
+                            anomaly.get('test_type', 'blood test'),
+                            anomaly.get('value', 0),
+                            anomaly.get('patient_name'),
+                            user_id
+                        )
+                        all_anomalies_with_links.append({
+                            **anomaly,
+                            'search_link': search_url
+                        })
+        
         # General recommendations based on total anomalies
-        total_anomalies = sum(len(data.get('anomalies', [])) for data in results.values() if isinstance(data, dict))
+        total_anomalies = len(all_anomalies_with_links)
         
         if total_anomalies > 10:
             recommendations.append({
@@ -414,13 +452,28 @@ class SimpleAnomalyDetector:
                     'Identify patterns in abnormal results',
                     'Consider additional diagnostic testing',
                     'Schedule follow-up appointments for affected patients'
-                ]
+                ],
+                'anomaly_links': all_anomalies_with_links[:10]
+            })
+        elif total_anomalies > 0:
+            recommendations.append({
+                'title': 'Anomalies Detected',
+                'description': f'Detected {total_anomalies} anomalies requiring review.',
+                'priority': 'medium',
+                'action_items': [
+                    'Review abnormal test results',
+                    'Consider follow-up testing',
+                    'Monitor patient trends'
+                ],
+                'anomaly_links': all_anomalies_with_links
             })
         
         # Patient-specific recommendations
         high_risk_patients = [name for name, summary in patient_summaries.items() if summary.get('high', 0) > 0]
         
         if high_risk_patients:
+            high_risk_anomalies = [a for a in all_anomalies_with_links 
+                                   if a.get('patient_name') in high_risk_patients and a.get('severity') == 'high']
             recommendations.append({
                 'title': 'High-Risk Patient Monitoring',
                 'description': f'Found {len(high_risk_patients)} patients with high-severity anomalies requiring immediate attention.',
@@ -430,11 +483,13 @@ class SimpleAnomalyDetector:
                     'Schedule urgent medical consultations',
                     'Review medication adjustments',
                     'Implement enhanced monitoring protocols'
-                ]
+                ],
+                'anomaly_links': high_risk_anomalies[:10]
             })
         
         # Test-specific recommendations
         if 'statistical_outliers' in results and results['statistical_outliers'].get('anomalies'):
+            stat_anomalies = [a for a in all_anomalies_with_links if a.get('method') == 'statistical_outlier']
             recommendations.append({
                 'title': 'Statistical Outlier Review',
                 'description': 'Multiple test results show statistical deviations from normal ranges.',
@@ -444,14 +499,32 @@ class SimpleAnomalyDetector:
                     'Check for systematic testing errors',
                     'Review patient preparation protocols',
                     'Consider retesting abnormal values'
-                ]
+                ],
+                'anomaly_links': stat_anomalies[:10]
             })
         
         return recommendations
     
-    def _generate_patient_recommendations(self, patient_name: str, results: Dict, total_anomalies: int) -> List[Dict]:
+    def _generate_patient_recommendations(self, patient_name: str, results: Dict, total_anomalies: int, user_id: int = None) -> List[Dict]:
         """Generate recommendations for a specific patient."""
         recommendations = []
+        
+        # Collect anomalies with search links for this patient
+        patient_anomalies_with_links = []
+        for method, data in results.items():
+            if method in ['statistical_outliers', 'temporal_anomalies', 'isolation_forest']:
+                if isinstance(data, dict) and 'anomalies' in data:
+                    for anomaly in data['anomalies']:
+                        search_url = self._build_google_search_url(
+                            anomaly.get('test_type', 'blood test'),
+                            anomaly.get('value', 0),
+                            patient_name,
+                            user_id
+                        )
+                        patient_anomalies_with_links.append({
+                            **anomaly,
+                            'search_link': search_url
+                        })
         
         if total_anomalies > 3:
             recommendations.append({
@@ -463,7 +536,8 @@ class SimpleAnomalyDetector:
                     'Review current medications and dosages',
                     'Consider comprehensive health assessment',
                     'Implement more frequent monitoring'
-                ]
+                ],
+                'anomaly_links': patient_anomalies_with_links
             })
         elif total_anomalies > 0:
             recommendations.append({
@@ -475,7 +549,8 @@ class SimpleAnomalyDetector:
                     'Retest abnormal values within 2 weeks',
                     'Review lifestyle factors',
                     'Monitor trends closely'
-                ]
+                ],
+                'anomaly_links': patient_anomalies_with_links
             })
         
         return recommendations
