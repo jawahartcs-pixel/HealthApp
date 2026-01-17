@@ -3059,6 +3059,9 @@ def patient_dashboard_page(db, visualization, alert_system, user_id):
         # Visualizations by Test Categories
         st.subheader("📈 Test Trends by Medical Category (Filtered Reports)")
         
+        # Add option to sort as single alphabetical group
+        sort_as_single_group = st.checkbox("Sort all tests alphabetically (single group)", value=False, key="sort_single_group")
+        
         # Get unique test types from filtered data
         test_types = filtered_df['Test Type'].unique().tolist()
         
@@ -3119,70 +3122,125 @@ def patient_dashboard_page(db, visualization, alert_system, user_id):
                         proper_categorized_tests['Other'] = []
                     proper_categorized_tests['Other'].append(test_type)
             
-            # Display charts based on selected type
-            if chart_type == "2D Grouped":
-                # Show grouped comparison for each category
-                for category, tests_in_category in proper_categorized_tests.items():
-                    if len(tests_in_category) >= 1:
-                        st.subheader(f"🔬 {category}")
-                        category_data = filtered_df[filtered_df['Test Type'].isin(tests_in_category)]
-                        if not category_data.empty:
-                            patient_profile = db.get_patient_profile(selected_patient, user_id)
-                            patient_gender = patient_profile.get('gender') if patient_profile else None
-                            fig_grouped = visualization.create_grouped_chart(
-                                category_data, selected_patient, tests_in_category, category, patient_gender, filtered_patient_events
-                            )
-                            st.plotly_chart(fig_grouped, use_container_width=True, key=f"grouped_chart_{category.replace(' ', '_')}")
-            else:
-                # Show charts grouped by proper investigation standards categories
-                for category, tests_in_category in proper_categorized_tests.items():
-                    with st.expander(f"🔬 {category} ({len(tests_in_category)} tests)", expanded=True):
-                        # Create charts in a grid layout for this category
-                        num_cols = min(2, len(tests_in_category))
+            # Display charts based on selected type and sort option
+            if sort_as_single_group:
+                # Single alphabetical group - sort all tests alphabetically
+                all_tests_sorted = sorted(test_types, key=lambda x: x.lower())
+                
+                if chart_type == "2D Grouped":
+                    # Show all tests in one grouped chart
+                    st.subheader("🔬 All Tests (Alphabetical)")
+                    all_data = filtered_df[filtered_df['Test Type'].isin(all_tests_sorted)]
+                    if not all_data.empty:
+                        patient_profile = db.get_patient_profile(selected_patient, user_id)
+                        patient_gender = patient_profile.get('gender') if patient_profile else None
+                        fig_grouped = visualization.create_grouped_chart(
+                            all_data, selected_patient, all_tests_sorted, "All Tests", patient_gender, filtered_patient_events
+                        )
+                        st.plotly_chart(fig_grouped, use_container_width=True, key="grouped_chart_all_alphabetical")
+                else:
+                    # Show individual charts in alphabetical order
+                    num_cols = 2
+                    for i in range(0, len(all_tests_sorted), num_cols):
+                        cols = st.columns(num_cols)
                         
-                        # Group test types into rows
-                        for i in range(0, len(tests_in_category), num_cols):
-                            cols = st.columns(num_cols)
-                            
-                            for j in range(num_cols):
-                                if i + j < len(tests_in_category):
-                                    test_type = tests_in_category[i + j]
-                                    test_data = filtered_df[filtered_df['Test Type'] == test_type].copy()
+                        for j in range(num_cols):
+                            if i + j < len(all_tests_sorted):
+                                test_type = all_tests_sorted[i + j]
+                                test_data = filtered_df[filtered_df['Test Type'] == test_type].copy()
+                                
+                                if not test_data.empty:
+                                    test_data = test_data.sort_values('Date')
                                     
-                                    if not test_data.empty:
-                                        # Sort by date for proper trend visualization
-                                        test_data = test_data.sort_values('Date')
+                                    with cols[j]:
+                                        patient_profile = db.get_patient_profile(selected_patient, user_id)
+                                        patient_gender = patient_profile.get('gender') if patient_profile else None
                                         
-                                        with cols[j]:
-                                            # Get patient gender for gender-specific reference ranges
-                                            patient_profile = db.get_patient_profile(selected_patient, user_id)
-                                            patient_gender = patient_profile.get('gender') if patient_profile else None
+                                        if chart_type == "2D Beautiful":
+                                            fig = visualization.create_beautiful_2d_chart(test_data, test_type, selected_patient, patient_gender, filtered_patient_events)
+                                        else:
+                                            fig = visualization.create_trend_chart(test_data, test_type, selected_patient, patient_gender, filtered_patient_events)
+                                        
+                                        st.plotly_chart(fig, use_container_width=True, key=f"chart_alpha_{test_type.replace(' ', '_')}_{i}_{j}")
+                                        
+                                        latest_value = test_data.iloc[-1]['Value']
+                                        latest_date = test_data.iloc[-1]['Date'].strftime('%Y-%m-%d')
+                                        unit = test_data.iloc[-1]['Unit'] or ''
+                                        unit = unit if unit is not None else ''
+                                        
+                                        if len(test_data) > 1:
+                                            trend_change = test_data.iloc[-1]['Value'] - test_data.iloc[-2]['Value']
+                                            trend_icon = "📈" if trend_change > 0 else "📉" if trend_change < 0 else "➡️"
+                                            st.caption(f"Latest: **{latest_value} {unit}** ({latest_date}) {trend_icon}")
+                                        else:
+                                            st.caption(f"Latest: **{latest_value} {unit}** ({latest_date})")
+                                        
+                                        st.caption(f"📊 {len(test_data)} data points")
+            else:
+                # Group by category (default behavior)
+                if chart_type == "2D Grouped":
+                    # Show grouped comparison for each category
+                    for category, tests_in_category in proper_categorized_tests.items():
+                        if len(tests_in_category) >= 1:
+                            st.subheader(f"🔬 {category}")
+                            category_data = filtered_df[filtered_df['Test Type'].isin(tests_in_category)]
+                            if not category_data.empty:
+                                patient_profile = db.get_patient_profile(selected_patient, user_id)
+                                patient_gender = patient_profile.get('gender') if patient_profile else None
+                                fig_grouped = visualization.create_grouped_chart(
+                                    category_data, selected_patient, tests_in_category, category, patient_gender, filtered_patient_events
+                                )
+                                st.plotly_chart(fig_grouped, use_container_width=True, key=f"grouped_chart_{category.replace(' ', '_')}")
+                else:
+                    # Show charts grouped by proper investigation standards categories
+                    for category, tests_in_category in proper_categorized_tests.items():
+                        with st.expander(f"🔬 {category} ({len(tests_in_category)} tests)", expanded=True):
+                            # Create charts in a grid layout for this category
+                            num_cols = min(2, len(tests_in_category))
+                            
+                            # Group test types into rows
+                            for i in range(0, len(tests_in_category), num_cols):
+                                cols = st.columns(num_cols)
+                                
+                                for j in range(num_cols):
+                                    if i + j < len(tests_in_category):
+                                        test_type = tests_in_category[i + j]
+                                        test_data = filtered_df[filtered_df['Test Type'] == test_type].copy()
+                                        
+                                        if not test_data.empty:
+                                            # Sort by date for proper trend visualization
+                                            test_data = test_data.sort_values('Date')
                                             
-                                            # Create chart based on selected type
-                                            if chart_type == "2D Beautiful":
-                                                fig = visualization.create_beautiful_2d_chart(test_data, test_type, selected_patient, patient_gender, filtered_patient_events)
-                                            else:
-                                                fig = visualization.create_trend_chart(test_data, test_type, selected_patient, patient_gender, filtered_patient_events)
-                                            
-                                            st.plotly_chart(fig, use_container_width=True, key=f"chart_{category.replace(' ', '_')}_{test_type.replace(' ', '_')}_{i}_{j}")
-                                            
-                                            # Add a compact summary below each chart
-                                            latest_value = test_data.iloc[-1]['Value']
-                                            latest_date = test_data.iloc[-1]['Date'].strftime('%Y-%m-%d')
-                                            unit = test_data.iloc[-1]['Unit'] or ''
-                                            unit = unit if unit is not None else ''
-                                            
-                                            # Calculate trend (if more than one data point)
-                                            if len(test_data) > 1:
-                                                trend_change = test_data.iloc[-1]['Value'] - test_data.iloc[-2]['Value']
-                                                trend_icon = "📈" if trend_change > 0 else "📉" if trend_change < 0 else "➡️"
+                                            with cols[j]:
+                                                # Get patient gender for gender-specific reference ranges
+                                                patient_profile = db.get_patient_profile(selected_patient, user_id)
+                                                patient_gender = patient_profile.get('gender') if patient_profile else None
                                                 
-                                                st.caption(f"Latest: **{latest_value} {unit}** ({latest_date}) {trend_icon}")
-                                            else:
-                                                st.caption(f"Latest: **{latest_value} {unit}** ({latest_date})")
-                                            
-                                            # Show data point count
-                                            st.caption(f"📊 {len(test_data)} data points")
+                                                # Create chart based on selected type
+                                                if chart_type == "2D Beautiful":
+                                                    fig = visualization.create_beautiful_2d_chart(test_data, test_type, selected_patient, patient_gender, filtered_patient_events)
+                                                else:
+                                                    fig = visualization.create_trend_chart(test_data, test_type, selected_patient, patient_gender, filtered_patient_events)
+                                                
+                                                st.plotly_chart(fig, use_container_width=True, key=f"chart_{category.replace(' ', '_')}_{test_type.replace(' ', '_')}_{i}_{j}")
+                                                
+                                                # Add a compact summary below each chart
+                                                latest_value = test_data.iloc[-1]['Value']
+                                                latest_date = test_data.iloc[-1]['Date'].strftime('%Y-%m-%d')
+                                                unit = test_data.iloc[-1]['Unit'] or ''
+                                                unit = unit if unit is not None else ''
+                                                
+                                                # Calculate trend (if more than one data point)
+                                                if len(test_data) > 1:
+                                                    trend_change = test_data.iloc[-1]['Value'] - test_data.iloc[-2]['Value']
+                                                    trend_icon = "📈" if trend_change > 0 else "📉" if trend_change < 0 else "➡️"
+                                                    
+                                                    st.caption(f"Latest: **{latest_value} {unit}** ({latest_date}) {trend_icon}")
+                                                else:
+                                                    st.caption(f"Latest: **{latest_value} {unit}** ({latest_date})")
+                                                
+                                                # Show data point count
+                                                st.caption(f"📊 {len(test_data)} data points")
         else:
             st.info("No test results available for visualization.")
         
