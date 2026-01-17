@@ -2426,8 +2426,8 @@ def patient_dashboard_page(db, visualization, alert_system, user_id):
         unique_dates = sorted(df['Date'].dt.date.unique(), reverse=True)
         unique_test_types = sorted(df['Test Type'].unique())
         
-        # Report filter section
-        st.subheader("🗂️ Filter Reports and Tests")
+        # Create main dashboard tabs - Filter tab first so it's visible on load
+        filter_tab, summary_tab, alerts_tab = st.tabs(["🗂️ Filter Reports and Tests", "📋 Report Summary & Events", "🚨 Active Alerts"])
         
         # Initialize session state for filters if not present
         filter_key_prefix = f"filter_{selected_patient}"
@@ -2436,333 +2436,334 @@ def patient_dashboard_page(db, visualization, alert_system, user_id):
         if f'{filter_key_prefix}_tests' not in st.session_state:
             st.session_state[f'{filter_key_prefix}_tests'] = list(unique_test_types)
         
-        # Date filter with Clear All / Select All buttons
-        st.markdown("**Select Reports to Display (by Date)**")
-        col_date_btns1, col_date_btns2, col_date_btns3 = st.columns([1, 1, 4])
-        with col_date_btns1:
-            if st.button("✅ Select All", key="select_all_dates"):
-                st.session_state[f'{filter_key_prefix}_dates'] = list(unique_dates)
-                st.rerun()
-        with col_date_btns2:
-            if st.button("❌ Clear All", key="clear_all_dates"):
-                st.session_state[f'{filter_key_prefix}_dates'] = []
-                st.rerun()
-        
-        col_filter1, col_filter2 = st.columns([3, 1])
-        
-        with col_filter1:
-            # Multiselect for report dates
-            selected_dates = st.multiselect(
-                "Reports",
-                options=unique_dates,
-                default=st.session_state[f'{filter_key_prefix}_dates'],
-                format_func=lambda x: f"📊 Report from {x}",
-                help="Select which reports to include in the dashboard.",
+        with filter_tab:
+            # Date filter with Clear All / Select All buttons
+            st.markdown("**Select Reports to Display (by Date)**")
+            col_date_btns1, col_date_btns2, col_date_btns3 = st.columns([1, 1, 4])
+            with col_date_btns1:
+                if st.button("✅ Select All", key="select_all_dates"):
+                    st.session_state[f'{filter_key_prefix}_dates'] = list(unique_dates)
+                    st.rerun()
+            with col_date_btns2:
+                if st.button("❌ Clear All", key="clear_all_dates"):
+                    st.session_state[f'{filter_key_prefix}_dates'] = []
+                    st.rerun()
+            
+            col_filter1, col_filter2 = st.columns([3, 1])
+            
+            with col_filter1:
+                # Multiselect for report dates
+                selected_dates = st.multiselect(
+                    "Reports",
+                    options=unique_dates,
+                    default=st.session_state[f'{filter_key_prefix}_dates'],
+                    format_func=lambda x: f"📊 Report from {x}",
+                    help="Select which reports to include in the dashboard.",
+                    label_visibility="collapsed"
+                )
+                # Update session state
+                st.session_state[f'{filter_key_prefix}_dates'] = selected_dates
+            
+            with col_filter2:
+                st.write("")
+                if st.button("🔄 Reset All Filters"):
+                    # Clear all filter session states
+                    st.session_state[f'{filter_key_prefix}_dates'] = list(unique_dates)
+                    st.session_state[f'{filter_key_prefix}_tests'] = list(unique_test_types)
+                    if f'{filter_key_prefix}_events' in st.session_state:
+                        del st.session_state[f'{filter_key_prefix}_events']
+                    st.rerun()
+            
+            # Test type filter with Clear All / Select All buttons
+            st.markdown("**Select Tests/Investigations to Display**")
+            col_test_btns1, col_test_btns2, col_test_btns3 = st.columns([1, 1, 4])
+            with col_test_btns1:
+                if st.button("✅ Select All", key="select_all_tests"):
+                    st.session_state[f'{filter_key_prefix}_tests'] = list(unique_test_types)
+                    st.rerun()
+            with col_test_btns2:
+                if st.button("❌ Clear All", key="clear_all_tests"):
+                    st.session_state[f'{filter_key_prefix}_tests'] = []
+                    st.rerun()
+            
+            selected_test_types = st.multiselect(
+                "Tests",
+                options=unique_test_types,
+                default=st.session_state[f'{filter_key_prefix}_tests'],
+                format_func=lambda x: f"🔬 {x}",
+                help="Select which tests to include in the dashboard.",
                 label_visibility="collapsed"
             )
             # Update session state
-            st.session_state[f'{filter_key_prefix}_dates'] = selected_dates
-        
-        with col_filter2:
-            st.write("")
-            if st.button("🔄 Reset All Filters"):
-                # Clear all filter session states
-                st.session_state[f'{filter_key_prefix}_dates'] = list(unique_dates)
-                st.session_state[f'{filter_key_prefix}_tests'] = list(unique_test_types)
-                if f'{filter_key_prefix}_events' in st.session_state:
-                    del st.session_state[f'{filter_key_prefix}_events']
-                st.rerun()
-        
-        # Test type filter with Clear All / Select All buttons
-        st.markdown("**Select Tests/Investigations to Display**")
-        col_test_btns1, col_test_btns2, col_test_btns3 = st.columns([1, 1, 4])
-        with col_test_btns1:
-            if st.button("✅ Select All", key="select_all_tests"):
-                st.session_state[f'{filter_key_prefix}_tests'] = list(unique_test_types)
-                st.rerun()
-        with col_test_btns2:
-            if st.button("❌ Clear All", key="clear_all_tests"):
-                st.session_state[f'{filter_key_prefix}_tests'] = []
-                st.rerun()
-        
-        selected_test_types = st.multiselect(
-            "Tests",
-            options=unique_test_types,
-            default=st.session_state[f'{filter_key_prefix}_tests'],
-            format_func=lambda x: f"🔬 {x}",
-            help="Select which tests to include in the dashboard.",
-            label_visibility="collapsed"
-        )
-        # Update session state
-        st.session_state[f'{filter_key_prefix}_tests'] = selected_test_types
-        
-        # Event filter (if events exist for this patient)
-        selected_events = []
-        filtered_patient_events = []
-        if patient_events_all:
-            event_options = [f"{event['event_name']} ({pd.to_datetime(event['event_date']).strftime('%Y-%m-%d')})" for event in patient_events_all]
+            st.session_state[f'{filter_key_prefix}_tests'] = selected_test_types
             
-            # Initialize event session state if not present
-            if f'{filter_key_prefix}_events' not in st.session_state:
-                st.session_state[f'{filter_key_prefix}_events'] = list(event_options)
-            
-            # Event filter with Clear All / Select All buttons
-            st.markdown("**Select Events to Display on Charts**")
-            col_event_btns1, col_event_btns2, col_event_btns3 = st.columns([1, 1, 4])
-            with col_event_btns1:
-                if st.button("✅ Select All", key="select_all_events"):
+            # Event filter (if events exist for this patient)
+            selected_events = []
+            filtered_patient_events = []
+            if patient_events_all:
+                event_options = [f"{event['event_name']} ({pd.to_datetime(event['event_date']).strftime('%Y-%m-%d')})" for event in patient_events_all]
+                
+                # Initialize event session state if not present
+                if f'{filter_key_prefix}_events' not in st.session_state:
                     st.session_state[f'{filter_key_prefix}_events'] = list(event_options)
-                    st.rerun()
-            with col_event_btns2:
-                if st.button("❌ Clear All", key="clear_all_events"):
-                    st.session_state[f'{filter_key_prefix}_events'] = []
-                    st.rerun()
+                
+                # Event filter with Clear All / Select All buttons
+                st.markdown("**Select Events to Display on Charts**")
+                col_event_btns1, col_event_btns2, col_event_btns3 = st.columns([1, 1, 4])
+                with col_event_btns1:
+                    if st.button("✅ Select All", key="select_all_events"):
+                        st.session_state[f'{filter_key_prefix}_events'] = list(event_options)
+                        st.rerun()
+                with col_event_btns2:
+                    if st.button("❌ Clear All", key="clear_all_events"):
+                        st.session_state[f'{filter_key_prefix}_events'] = []
+                        st.rerun()
+                
+                selected_events = st.multiselect(
+                    "Events",
+                    options=event_options,
+                    default=st.session_state[f'{filter_key_prefix}_events'],
+                    format_func=lambda x: f"📌 {x}",
+                    help="Select which patient events to display as markers on charts.",
+                    label_visibility="collapsed"
+                )
+                # Update session state
+                st.session_state[f'{filter_key_prefix}_events'] = selected_events
+                
+                # Filter events based on selection
+                if selected_events:
+                    for event in patient_events_all:
+                        event_label = f"{event['event_name']} ({pd.to_datetime(event['event_date']).strftime('%Y-%m-%d')})"
+                        if event_label in selected_events:
+                            filtered_patient_events.append(event)
             
-            selected_events = st.multiselect(
-                "Events",
-                options=event_options,
-                default=st.session_state[f'{filter_key_prefix}_events'],
-                format_func=lambda x: f"📌 {x}",
-                help="Select which patient events to display as markers on charts.",
-                label_visibility="collapsed"
+            st.divider()
+            
+            # Threshold comparison filter (optional, disabled by default)
+            # Initialize session state for threshold toggle if not set
+            if f'{filter_key_prefix}_threshold_enabled' not in st.session_state:
+                st.session_state[f'{filter_key_prefix}_threshold_enabled'] = False
+            
+            # Get the current value for the toggle (checking if it should be disabled)
+            threshold_default_value = st.session_state[f'{filter_key_prefix}_threshold_enabled']
+            
+            threshold_filter_enabled = st.toggle(
+                "📊 Show values above threshold between reports",
+                value=threshold_default_value,
+                help="Enable this filter to compare two reports and show only test results with changes above a specified threshold percentage."
             )
             # Update session state
-            st.session_state[f'{filter_key_prefix}_events'] = selected_events
+            st.session_state[f'{filter_key_prefix}_threshold_enabled'] = threshold_filter_enabled
             
-            # Filter events based on selection
-            if selected_events:
-                for event in patient_events_all:
-                    event_label = f"{event['event_name']} ({pd.to_datetime(event['event_date']).strftime('%Y-%m-%d')})"
-                    if event_label in selected_events:
-                        filtered_patient_events.append(event)
-        
-        st.divider()
-        
-        # Threshold comparison filter (optional, disabled by default)
-        # Initialize session state for threshold toggle if not set
-        if f'{filter_key_prefix}_threshold_enabled' not in st.session_state:
-            st.session_state[f'{filter_key_prefix}_threshold_enabled'] = False
-        
-        # Get the current value for the toggle (checking if it should be disabled)
-        threshold_default_value = st.session_state[f'{filter_key_prefix}_threshold_enabled']
-        
-        threshold_filter_enabled = st.toggle(
-            "📊 Show values above threshold between reports",
-            value=threshold_default_value,
-            help="Enable this filter to compare two reports and show only test results with changes above a specified threshold percentage."
-        )
-        # Update session state
-        st.session_state[f'{filter_key_prefix}_threshold_enabled'] = threshold_filter_enabled
-        
-        # Store threshold filter settings
-        threshold_test_types = None
-        threshold_report_1_date = None
-        threshold_report_2_date = None
-        threshold_percentage = 20
-        
-        if threshold_filter_enabled:
-            st.info("🔍 **Threshold Comparison Filter:** Compare two reports and show only tests with significant changes.")
+            # Store threshold filter settings
+            threshold_test_types = None
+            threshold_report_1_date = None
+            threshold_report_2_date = None
+            threshold_percentage = 20
             
-            # Check if we have at least 2 reports
-            if len(unique_dates) < 2:
-                st.warning("⚠️ Need at least 2 reports to use threshold comparison. This filter has been disabled.")
-                threshold_filter_enabled = False
-            else:
-                col_th1, col_th2, col_th3 = st.columns([2, 2, 1])
+            if threshold_filter_enabled:
+                st.info("🔍 **Threshold Comparison Filter:** Compare two reports and show only tests with significant changes.")
                 
-                with col_th1:
-                    # Report 1 (older/baseline report) - default to second most recent
-                    threshold_report_1_date = st.selectbox(
-                        "📋 Report 1 (Baseline)",
-                        options=unique_dates,
-                        index=1 if len(unique_dates) > 1 else 0,  # Default to second most recent (previous)
-                        format_func=lambda x: f"📊 {x}",
-                        help="Select the baseline report to compare from (older report)"
-                    )
-                
-                with col_th2:
-                    # Report 2 (newer/comparison report) - default to most recent
-                    threshold_report_2_date = st.selectbox(
-                        "📋 Report 2 (Compare to)",
-                        options=unique_dates,
-                        index=0,  # Default to most recent
-                        format_func=lambda x: f"📊 {x}",
-                        help="Select the report to compare against the baseline (newer report)"
-                    )
-                
-                with col_th3:
-                    # Percentage threshold slider (0 = show all)
-                    threshold_percentage = st.slider(
-                        "Change % Threshold",
-                        min_value=0,
-                        max_value=100,
-                        value=20,
-                        step=1,
-                        help="Show only tests with value changes above or below this percentage. Set to 0 to show all tests."
-                    )
-                
-                # Validate that Report 1 and Report 2 are different
-                if threshold_report_1_date == threshold_report_2_date:
-                    st.warning("⚠️ Please select two different reports to compare.")
+                # Check if we have at least 2 reports
+                if len(unique_dates) < 2:
+                    st.warning("⚠️ Need at least 2 reports to use threshold comparison. This filter has been disabled.")
                     threshold_filter_enabled = False
                 else:
-                    # Calculate which test types have changes above threshold
-                    report_1_data = df[df['Date'].dt.date == threshold_report_1_date]
-                    report_2_data = df[df['Date'].dt.date == threshold_report_2_date]
+                    col_th1, col_th2, col_th3 = st.columns([2, 2, 1])
                     
-                    # Get patient profile for gender-specific reference ranges
-                    patient_profile = db.get_patient_profile(selected_patient, user_id)
-                    patient_gender = patient_profile.get('gender') if patient_profile else None
+                    with col_th1:
+                        # Report 1 (older/baseline report) - default to second most recent
+                        threshold_report_1_date = st.selectbox(
+                            "📋 Report 1 (Baseline)",
+                            options=unique_dates,
+                            index=1 if len(unique_dates) > 1 else 0,  # Default to second most recent (previous)
+                            format_func=lambda x: f"📊 {x}",
+                            help="Select the baseline report to compare from (older report)"
+                        )
                     
-                    # Get investigation standards for reference ranges
-                    investigation_standards = st.session_state.get('investigation_standards')
+                    with col_th2:
+                        # Report 2 (newer/comparison report) - default to most recent
+                        threshold_report_2_date = st.selectbox(
+                            "📋 Report 2 (Compare to)",
+                            options=unique_dates,
+                            index=0,  # Default to most recent
+                            format_func=lambda x: f"📊 {x}",
+                            help="Select the report to compare against the baseline (newer report)"
+                        )
                     
-                    # Find common test types (or all test types if threshold is 0)
-                    if threshold_percentage == 0:
-                        # Show all tests from both reports
-                        common_test_types = set(report_1_data['Test Type'].unique()) | set(report_2_data['Test Type'].unique())
-                    else:
-                        common_test_types = set(report_1_data['Test Type'].unique()) & set(report_2_data['Test Type'].unique())
+                    with col_th3:
+                        # Percentage threshold slider (0 = show all)
+                        threshold_percentage = st.slider(
+                            "Change % Threshold",
+                            min_value=0,
+                            max_value=100,
+                            value=20,
+                            step=1,
+                            help="Show only tests with value changes above or below this percentage. Set to 0 to show all tests."
+                        )
                     
-                    threshold_test_types = []
-                    change_details = []
-                    
-                    for test_type in common_test_types:
-                        # Get values from both reports (may be None if not in one report)
-                        value_1_data = report_1_data[report_1_data['Test Type'] == test_type]
-                        value_2_data = report_2_data[report_2_data['Test Type'] == test_type]
-                        
-                        value_1 = value_1_data['Value'].iloc[0] if not value_1_data.empty else None
-                        value_2 = value_2_data['Value'].iloc[0] if not value_2_data.empty else None
-                        
-                        # Skip if either value is missing (except for threshold 0)
-                        if value_1 is None or value_2 is None:
-                            if threshold_percentage == 0:
-                                # For threshold 0, show even if one value is missing
-                                value_1_display = value_1 if value_1 is not None else "N/A"
-                                value_2_display = value_2 if value_2 is not None else "N/A"
-                                pct_change = 0
-                            else:
-                                continue
-                        else:
-                            value_1_display = value_1
-                            value_2_display = value_2
-                            # Calculate percentage change (avoid division by zero)
-                            if value_1 != 0:
-                                pct_change = abs((value_2 - value_1) / value_1) * 100
-                            else:
-                                pct_change = 100 if value_2 != 0 else 0
-                        
-                        # Get reference range based on patient gender
-                        ref_range = ""
-                        ref_min = None
-                        ref_max = None
-                        if investigation_standards:
-                            gender_for_range = patient_gender.lower() if patient_gender else 'both'
-                            ref_range = investigation_standards.get_reference_range(test_type, gender_for_range)
-                            if ref_range:
-                                # Parse range to get min/max for status calculation
-                                try:
-                                    range_parts = ref_range.split('-')
-                                    if len(range_parts) >= 2:
-                                        ref_min = float(range_parts[0].strip().split()[0])
-                                        ref_max = float(range_parts[1].strip().split()[0])
-                                except:
-                                    pass
-                        
-                        # Calculate status (Improving/Degrading) based on reference range
-                        status = ""
-                        if value_1 is not None and value_2 is not None and ref_min is not None and ref_max is not None:
-                            # Calculate midpoint of reference range
-                            ref_mid = (ref_min + ref_max) / 2
-                            
-                            # Distance from reference range midpoint
-                            dist_1 = abs(value_1 - ref_mid)
-                            dist_2 = abs(value_2 - ref_mid)
-                            
-                            # Check if values are within range
-                            in_range_1 = ref_min <= value_1 <= ref_max
-                            in_range_2 = ref_min <= value_2 <= ref_max
-                            
-                            if in_range_1 and in_range_2:
-                                status = "✅ Normal"
-                            elif not in_range_1 and in_range_2:
-                                status = "📈 Improving"
-                            elif in_range_1 and not in_range_2:
-                                status = "📉 Degrading"
-                            elif dist_2 < dist_1:
-                                status = "📈 Improving"
-                            elif dist_2 > dist_1:
-                                status = "📉 Degrading"
-                            else:
-                                status = "➡️ Stable"
-                        
-                        if pct_change >= threshold_percentage:
-                            threshold_test_types.append(test_type)
-                            direction = "📈 +" if (value_2 is not None and value_1 is not None and value_2 > value_1) else "📉 -"
-                            change_details.append({
-                                'test_type': test_type,
-                                'value_1': value_1_display,
-                                'value_2': value_2_display,
-                                'pct_change': pct_change,
-                                'direction': direction,
-                                'range': ref_range if ref_range else "N/A",
-                                'status': status if status else "N/A"
-                            })
-                    
-                    if threshold_test_types:
-                        if threshold_percentage == 0:
-                            st.success(f"✅ Showing **all {len(threshold_test_types)}** tests from both reports")
-                        else:
-                            st.success(f"✅ Found **{len(threshold_test_types)}** tests with changes ≥{threshold_percentage}%")
-                        
-                        # Show preview of changes with title showing report dates
-                        preview_title = f"📊 {threshold_report_1_date} vs {threshold_report_2_date}"
-                        with st.expander(preview_title, expanded=False):
-                            # Create a DataFrame for better display
-                            preview_data = []
-                            copy_lines = []
-                            # Add title line for copy
-                            copy_lines.append(f"Report Comparison: {threshold_report_1_date} vs {threshold_report_2_date}")
-                            copy_lines.append("")  # Empty line after title
-                            
-                            for detail in sorted(change_details, key=lambda x: x['pct_change'], reverse=True):
-                                preview_data.append({
-                                    'Test': detail['test_type'],
-                                    f'Report 1 ({threshold_report_1_date})': detail['value_1'],
-                                    f'Report 2 ({threshold_report_2_date})': detail['value_2'],
-                                    'Change %': f"{detail['direction']}{detail['pct_change']:.1f}%" if detail['pct_change'] > 0 else "0%",
-                                    'Range': detail['range'],
-                                    'Status': detail['status']
-                                })
-                                # Build copy line: "Test name" From "Value1" to "Value2" and "Status"
-                                status_text = detail['status'].replace("📈 ", "").replace("📉 ", "").replace("✅ ", "").replace("➡️ ", "")
-                                copy_lines.append(f"{detail['test_type']}\tFrom\t{detail['value_1']}\tto\t{detail['value_2']}\tand\t{status_text}")
-                            
-                            if preview_data:
-                                preview_df = pd.DataFrame(preview_data)
-                                st.dataframe(preview_df, use_container_width=True, hide_index=True)
-                                
-                                # Copy button for tab-separated format
-                                copy_text = "\n".join(copy_lines)
-                                st.download_button(
-                                    label="📋 Copy to Clipboard (Tab-Separated)",
-                                    data=copy_text,
-                                    file_name=f"comparison_{threshold_report_1_date}_vs_{threshold_report_2_date}.txt",
-                                    mime="text/plain",
-                                    help="Download as tab-separated text file for easy pasting into spreadsheets"
-                                )
-                        
-                        # Button to apply threshold results to the test filter
-                        if st.button("📋 Apply These Tests to Test Filter", help="Copy these threshold-selected tests to the 'Select Tests/Investigations to Display' filter above"):
-                            st.session_state[f'{filter_key_prefix}_tests'] = list(threshold_test_types)
-                            # Disable the threshold toggle
-                            st.session_state[f'{filter_key_prefix}_threshold_enabled'] = False
-                            st.success(f"✅ Applied {len(threshold_test_types)} tests to the Test Filter. The threshold filter has been disabled.")
-                            st.rerun()
-                    else:
-                        st.warning(f"⚠️ No tests found with changes ≥{threshold_percentage}% between the selected reports.")
+                    # Validate that Report 1 and Report 2 are different
+                    if threshold_report_1_date == threshold_report_2_date:
+                        st.warning("⚠️ Please select two different reports to compare.")
                         threshold_filter_enabled = False
+                    else:
+                        # Calculate which test types have changes above threshold
+                        report_1_data = df[df['Date'].dt.date == threshold_report_1_date]
+                        report_2_data = df[df['Date'].dt.date == threshold_report_2_date]
+                        
+                        # Get patient profile for gender-specific reference ranges
+                        patient_profile = db.get_patient_profile(selected_patient, user_id)
+                        patient_gender = patient_profile.get('gender') if patient_profile else None
+                        
+                        # Get investigation standards for reference ranges
+                        investigation_standards = st.session_state.get('investigation_standards')
+                        
+                        # Find common test types (or all test types if threshold is 0)
+                        if threshold_percentage == 0:
+                            # Show all tests from both reports
+                            common_test_types = set(report_1_data['Test Type'].unique()) | set(report_2_data['Test Type'].unique())
+                        else:
+                            common_test_types = set(report_1_data['Test Type'].unique()) & set(report_2_data['Test Type'].unique())
+                        
+                        threshold_test_types = []
+                        change_details = []
+                        
+                        for test_type in common_test_types:
+                            # Get values from both reports (may be None if not in one report)
+                            value_1_data = report_1_data[report_1_data['Test Type'] == test_type]
+                            value_2_data = report_2_data[report_2_data['Test Type'] == test_type]
+                            
+                            value_1 = value_1_data['Value'].iloc[0] if not value_1_data.empty else None
+                            value_2 = value_2_data['Value'].iloc[0] if not value_2_data.empty else None
+                            
+                            # Skip if either value is missing (except for threshold 0)
+                            if value_1 is None or value_2 is None:
+                                if threshold_percentage == 0:
+                                    # For threshold 0, show even if one value is missing
+                                    value_1_display = value_1 if value_1 is not None else "N/A"
+                                    value_2_display = value_2 if value_2 is not None else "N/A"
+                                    pct_change = 0
+                                else:
+                                    continue
+                            else:
+                                value_1_display = value_1
+                                value_2_display = value_2
+                                # Calculate percentage change (avoid division by zero)
+                                if value_1 != 0:
+                                    pct_change = abs((value_2 - value_1) / value_1) * 100
+                                else:
+                                    pct_change = 100 if value_2 != 0 else 0
+                            
+                            # Get reference range based on patient gender
+                            ref_range = ""
+                            ref_min = None
+                            ref_max = None
+                            if investigation_standards:
+                                gender_for_range = patient_gender.lower() if patient_gender else 'both'
+                                ref_range = investigation_standards.get_reference_range(test_type, gender_for_range)
+                                if ref_range:
+                                    # Parse range to get min/max for status calculation
+                                    try:
+                                        range_parts = ref_range.split('-')
+                                        if len(range_parts) >= 2:
+                                            ref_min = float(range_parts[0].strip().split()[0])
+                                            ref_max = float(range_parts[1].strip().split()[0])
+                                    except:
+                                        pass
+                            
+                            # Calculate status (Improving/Degrading) based on reference range
+                            status = ""
+                            if value_1 is not None and value_2 is not None and ref_min is not None and ref_max is not None:
+                                # Calculate midpoint of reference range
+                                ref_mid = (ref_min + ref_max) / 2
+                                
+                                # Distance from reference range midpoint
+                                dist_1 = abs(value_1 - ref_mid)
+                                dist_2 = abs(value_2 - ref_mid)
+                                
+                                # Check if values are within range
+                                in_range_1 = ref_min <= value_1 <= ref_max
+                                in_range_2 = ref_min <= value_2 <= ref_max
+                                
+                                if in_range_1 and in_range_2:
+                                    status = "✅ Normal"
+                                elif not in_range_1 and in_range_2:
+                                    status = "📈 Improving"
+                                elif in_range_1 and not in_range_2:
+                                    status = "📉 Degrading"
+                                elif dist_2 < dist_1:
+                                    status = "📈 Improving"
+                                elif dist_2 > dist_1:
+                                    status = "📉 Degrading"
+                                else:
+                                    status = "➡️ Stable"
+                            
+                            if pct_change >= threshold_percentage:
+                                threshold_test_types.append(test_type)
+                                direction = "📈 +" if (value_2 is not None and value_1 is not None and value_2 > value_1) else "📉 -"
+                                change_details.append({
+                                    'test_type': test_type,
+                                    'value_1': value_1_display,
+                                    'value_2': value_2_display,
+                                    'pct_change': pct_change,
+                                    'direction': direction,
+                                    'range': ref_range if ref_range else "N/A",
+                                    'status': status if status else "N/A"
+                                })
+                        
+                        if threshold_test_types:
+                            if threshold_percentage == 0:
+                                st.success(f"✅ Showing **all {len(threshold_test_types)}** tests from both reports")
+                            else:
+                                st.success(f"✅ Found **{len(threshold_test_types)}** tests with changes ≥{threshold_percentage}%")
+                            
+                            # Show preview of changes with title showing report dates
+                            preview_title = f"📊 {threshold_report_1_date} vs {threshold_report_2_date}"
+                            with st.expander(preview_title, expanded=False):
+                                # Create a DataFrame for better display
+                                preview_data = []
+                                copy_lines = []
+                                # Add title line for copy
+                                copy_lines.append(f"Report Comparison: {threshold_report_1_date} vs {threshold_report_2_date}")
+                                copy_lines.append("")  # Empty line after title
+                                
+                                for detail in sorted(change_details, key=lambda x: x['pct_change'], reverse=True):
+                                    preview_data.append({
+                                        'Test': detail['test_type'],
+                                        f'Report 1 ({threshold_report_1_date})': detail['value_1'],
+                                        f'Report 2 ({threshold_report_2_date})': detail['value_2'],
+                                        'Change %': f"{detail['direction']}{detail['pct_change']:.1f}%" if detail['pct_change'] > 0 else "0%",
+                                        'Range': detail['range'],
+                                        'Status': detail['status']
+                                    })
+                                    # Build copy line: "Test name" From "Value1" to "Value2" and "Status"
+                                    status_text = detail['status'].replace("📈 ", "").replace("📉 ", "").replace("✅ ", "").replace("➡️ ", "")
+                                    copy_lines.append(f"{detail['test_type']}\tFrom\t{detail['value_1']}\tto\t{detail['value_2']}\tand\t{status_text}")
+                                
+                                if preview_data:
+                                    preview_df = pd.DataFrame(preview_data)
+                                    st.dataframe(preview_df, use_container_width=True, hide_index=True)
+                                    
+                                    # Copy button for tab-separated format
+                                    copy_text = "\n".join(copy_lines)
+                                    st.download_button(
+                                        label="📋 Copy to Clipboard (Tab-Separated)",
+                                        data=copy_text,
+                                        file_name=f"comparison_{threshold_report_1_date}_vs_{threshold_report_2_date}.txt",
+                                        mime="text/plain",
+                                        help="Download as tab-separated text file for easy pasting into spreadsheets"
+                                    )
+                            
+                            # Button to apply threshold results to the test filter
+                            if st.button("📋 Apply These Tests to Test Filter", help="Copy these threshold-selected tests to the 'Select Tests/Investigations to Display' filter above"):
+                                st.session_state[f'{filter_key_prefix}_tests'] = list(threshold_test_types)
+                                # Disable the threshold toggle
+                                st.session_state[f'{filter_key_prefix}_threshold_enabled'] = False
+                                st.success(f"✅ Applied {len(threshold_test_types)} tests to the Test Filter. The threshold filter has been disabled.")
+                                st.rerun()
+                        else:
+                            st.warning(f"⚠️ No tests found with changes ≥{threshold_percentage}% between the selected reports.")
+                            threshold_filter_enabled = False
         
         # Apply filters to dataframe
         if not selected_dates:
@@ -2891,10 +2892,7 @@ def patient_dashboard_page(db, visualization, alert_system, user_id):
             last_test = filtered_df['Date'].max().strftime('%Y-%m-%d')
             st.metric("Last Test", last_test)
         
-        # Create tabs for Report Summary and Active Alerts
-        dashboard_tab1, dashboard_tab2 = st.tabs(["📋 Report Summary & Events Timeline", "🚨 Active Alerts & Events Timeline"])
-        
-        # Prepare data for both tabs (compute once, use in tabs)
+        # Prepare data for tabs (compute once, use in tabs)
         # Create a detailed summary by date (only for selected dates)
         date_groups = filtered_df.groupby(filtered_df['Date'].dt.date).agg({
             'Test Type': ['count', lambda x: ', '.join(sorted(x.unique()))]
@@ -2922,7 +2920,7 @@ def patient_dashboard_page(db, visualization, alert_system, user_id):
                 if alert_date in active_dates and alert_test_type in active_test_types:
                     filtered_alerts.append(alert)
         
-        with dashboard_tab1:
+        with summary_tab:
             # Create a combined list of reports and events with dates
             timeline_items = []
             
@@ -2971,7 +2969,7 @@ def patient_dashboard_page(db, visualization, alert_system, user_id):
             if not timeline_items:
                 st.info("No reports or events found for the selected filters.")
         
-        with dashboard_tab2:
+        with alerts_tab:
             # Display patient alerts (filtered by active report dates and test types)
             if filtered_alerts:
                 
