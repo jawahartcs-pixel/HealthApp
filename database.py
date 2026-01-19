@@ -229,6 +229,24 @@ class Database:
                 CREATE INDEX IF NOT EXISTS idx_event_date ON patient_events(event_date)
             ''')
             
+            # Create user preferences table for storing UI settings
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS user_preferences (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id INTEGER,
+                    patient_name TEXT,
+                    preference_key TEXT NOT NULL,
+                    preference_value TEXT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    UNIQUE(user_id, patient_name, preference_key)
+                )
+            ''')
+            
+            cursor.execute('''
+                CREATE INDEX IF NOT EXISTS idx_user_prefs ON user_preferences(user_id, patient_name, preference_key)
+            ''')
+            
             # Create indexes after columns are added
             cursor.execute('''
                 CREATE INDEX IF NOT EXISTS idx_user_id ON patients(user_id)
@@ -1122,4 +1140,51 @@ class Database:
                 return True
         except Exception as e:
             print(f"Error clearing email history: {e}")
+            return False
+    
+    def save_user_preference(self, user_id: int, patient_name: str, preference_key: str, preference_value: str) -> bool:
+        """Save a user preference (upsert)."""
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+                cursor.execute('''
+                    INSERT INTO user_preferences (user_id, patient_name, preference_key, preference_value, updated_at)
+                    VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
+                    ON CONFLICT(user_id, patient_name, preference_key) 
+                    DO UPDATE SET preference_value = excluded.preference_value, updated_at = CURRENT_TIMESTAMP
+                ''', (user_id, patient_name, preference_key, preference_value))
+                conn.commit()
+                return True
+        except Exception as e:
+            print(f"Error saving user preference: {e}")
+            return False
+    
+    def get_user_preference(self, user_id: int, patient_name: str, preference_key: str) -> Optional[str]:
+        """Get a user preference value."""
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+                cursor.execute('''
+                    SELECT preference_value FROM user_preferences
+                    WHERE user_id = ? AND patient_name = ? AND preference_key = ?
+                ''', (user_id, patient_name, preference_key))
+                result = cursor.fetchone()
+                return result[0] if result else None
+        except Exception as e:
+            print(f"Error getting user preference: {e}")
+            return None
+    
+    def delete_user_preference(self, user_id: int, patient_name: str, preference_key: str) -> bool:
+        """Delete a user preference."""
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+                cursor.execute('''
+                    DELETE FROM user_preferences
+                    WHERE user_id = ? AND patient_name = ? AND preference_key = ?
+                ''', (user_id, patient_name, preference_key))
+                conn.commit()
+                return True
+        except Exception as e:
+            print(f"Error deleting user preference: {e}")
             return False

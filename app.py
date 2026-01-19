@@ -3991,14 +3991,6 @@ def manage_data_page(db, user_id):
                         
                         st.divider()
                         
-                        # Initialize session state for filter selection
-                        filter_key = f"heatmap_filter_{selected_patient}"
-                        if filter_key not in st.session_state:
-                            st.session_state[filter_key] = {'groups': {}, 'tests': {}}
-                        
-                        # Expandable checkbox tree filter
-                        st.write("**Filter by Test Groups:**")
-                        
                         # Get all tests from patient data
                         all_patient_tests = edit_df['Test Type'].unique().tolist()
                         
@@ -4018,11 +4010,30 @@ def manage_data_page(db, user_id):
                         if uncategorized_tests:
                             patient_tests_by_category['Other'] = uncategorized_tests
                         
+                        # Initialize session state for filter selection
+                        filter_key = f"heatmap_filter_{selected_patient}"
+                        if filter_key not in st.session_state:
+                            # Try to load saved preferences from database
+                            saved_tests_json = db.get_user_preference(user_id, selected_patient, 'heatmap_selected_tests')
+                            if saved_tests_json:
+                                import json
+                                try:
+                                    saved_tests = json.loads(saved_tests_json)
+                                    st.session_state[filter_key] = {'groups': {}, 'tests': {t: True for t in saved_tests if t in all_patient_tests}}
+                                except:
+                                    st.session_state[filter_key] = {'groups': {}, 'tests': {t: True for t in all_patient_tests}}
+                            else:
+                                # Default: select all tests
+                                st.session_state[filter_key] = {'groups': {}, 'tests': {t: True for t in all_patient_tests}}
+                        
+                        # Expandable checkbox tree filter
+                        st.write("**Filter by Test Groups:**")
+                        
                         # Create filter UI
                         selected_tests = []
                         
                         with st.expander("📋 Select Test Groups and Tests", expanded=True):
-                            # Select All / Deselect All buttons
+                            # Select All / Deselect All / Save buttons
                             btn_col1, btn_col2, btn_col3 = st.columns([1, 1, 2])
                             with btn_col1:
                                 if st.button("✅ Select All", key="select_all_tests"):
@@ -4038,7 +4049,13 @@ def manage_data_page(db, user_id):
                                     st.rerun()
                             with btn_col3:
                                 if st.button("💾 Save Filter Selection", key="save_filter_selection"):
-                                    st.success("Filter selection saved!")
+                                    # Save selected tests to database
+                                    import json
+                                    tests_to_save = [t for t, selected in st.session_state[filter_key]['tests'].items() if selected]
+                                    if db.save_user_preference(user_id, selected_patient, 'heatmap_selected_tests', json.dumps(tests_to_save)):
+                                        st.success("Filter selection saved! It will be restored next time.")
+                                    else:
+                                        st.error("Failed to save filter selection.")
                             
                             # Display categories with expandable tests
                             for category in sorted(patient_tests_by_category.keys()):
@@ -4046,6 +4063,7 @@ def manage_data_page(db, user_id):
                                 
                                 # Check if all tests in category are selected
                                 all_selected = all(st.session_state[filter_key]['tests'].get(t, False) for t in tests_in_cat)
+                                any_selected = any(st.session_state[filter_key]['tests'].get(t, False) for t in tests_in_cat)
                                 
                                 # Category checkbox
                                 group_checked = st.checkbox(
@@ -4054,8 +4072,9 @@ def manage_data_page(db, user_id):
                                     key=f"group_{category}"
                                 )
                                 
-                                # Handle group checkbox change
-                                if group_checked != st.session_state[filter_key]['groups'].get(category, False):
+                                # Handle group checkbox change - only trigger if user clicked the group checkbox
+                                prev_group_state = st.session_state[filter_key]['groups'].get(category, all_selected)
+                                if group_checked != prev_group_state:
                                     st.session_state[filter_key]['groups'][category] = group_checked
                                     for test in tests_in_cat:
                                         st.session_state[filter_key]['tests'][test] = group_checked
@@ -4075,9 +4094,10 @@ def manage_data_page(db, user_id):
                                                 selected_tests.append(test)
                                             st.session_state[filter_key]['tests'][test] = test_checked
                         
-                        # If no tests selected, select all
+                        # If no tests selected, show warning but don't auto-select
                         if not selected_tests:
-                            selected_tests = all_patient_tests
+                            st.warning("No tests selected. Please select at least one test to view the heat map.")
+                            selected_tests = []
                         
                         # Prepare pivot data
                         heatmap_df = edit_df[edit_df['Test Type'].isin(selected_tests)].copy()
@@ -4121,15 +4141,63 @@ def manage_data_page(db, user_id):
                                 
                                 # Get gender-specific reference range from standards
                                 info = test_info.get(test)
-                                if info and info['min'] is not None and info['max'] is not None:
-                                    reference_ranges[test] = {'min': float(info['min']), 'max': float(info['max'])}
-                                    units_map[test] = info['unit']
+                                if info and info.get('min') is not None and info.get('max') is not None:
+                                    try:
+                                        reference_ranges[test] = {'min': float(info['min']), 'max': float(info['max'])}
+                                        units_map[test] = info.get('unit', '')
+                                    except (ValueError, TypeError):
+                                        reference_ranges[test] = None
+                                        units_map[test] = ''
                                 else:
-                                    # Fallback to stored reference range
-                                    if not test_rows.empty:
-                                        ref_str = test_rows.iloc[0]['Reference Range']
-                                        reference_ranges[test] = ref_str
-                                        units_map[test] = test_rows.iloc[0]['Unit']
+                                    # Fallback: try to find matching standard by standardizing name
+                                    std_name, std_match = investigation_standards.standardize_test_name(test)
+                                    if std_match:
+                                        if patient_gender == 'male':
+                                            range_min = std_match.get('male_range_min')
+                                            range_max = std_match.get('male_range_max')
+                                            unit = std_match.get('male_unit', '')
+                                        elif patient_gender == 'female':
+                                            range_min = std_match.get('female_range_min')
+                                            range_max = std_match.get('female_range_max')
+                                            unit = std_match.get('female_unit', '')
+                                        else:
+                                            range_min = std_match.get('male_range_min')
+                                            range_max = std_match.get('male_range_max')
+                                            unit = std_match.get('male_unit', '')
+                                        
+                                        if range_min is not None and range_max is not None:
+                                            try:
+                                                reference_ranges[test] = {'min': float(range_min), 'max': float(range_max)}
+                                                units_map[test] = unit
+                                            except (ValueError, TypeError):
+                                                reference_ranges[test] = None
+                                                units_map[test] = ''
+                                        else:
+                                            reference_ranges[test] = None
+                                            units_map[test] = ''
+                                    else:
+                                        # Final fallback to stored reference range string
+                                        if not test_rows.empty:
+                                            ref_str = test_rows.iloc[0]['Reference Range']
+                                            units_map[test] = test_rows.iloc[0]['Unit'] or ''
+                                            # Try to parse the reference range string
+                                            if ref_str and '-' in str(ref_str):
+                                                try:
+                                                    parts = str(ref_str).replace(' ', '').split('-')
+                                                    if len(parts) >= 2:
+                                                        low = float(parts[0])
+                                                        high_part = parts[1].split()[0] if ' ' in parts[1] else parts[1]
+                                                        high = float(''.join(c for c in high_part if c.isdigit() or c == '.'))
+                                                        reference_ranges[test] = {'min': low, 'max': high}
+                                                    else:
+                                                        reference_ranges[test] = None
+                                                except:
+                                                    reference_ranges[test] = None
+                                            else:
+                                                reference_ranges[test] = None
+                                        else:
+                                            reference_ranges[test] = None
+                                            units_map[test] = ''
                                 
                                 for date in unique_dates:
                                     date_rows = test_rows[test_rows['Date_Formatted'] == date]
@@ -4144,59 +4212,69 @@ def manage_data_page(db, user_id):
                             pivot_df = pd.DataFrame(pivot_data).T
                             pivot_df.index.name = 'Test Name'
                             
-                            # Color function using strict RGB shades
+                            # Color function using strict RGB shades - pure red/green/blue
                             def get_deviation_color(value, ref_info):
                                 if value is None or pd.isna(value):
                                     return ""
                                 
                                 try:
                                     value = float(value)
-                                    low, high = None, None
-                                    
-                                    if isinstance(ref_info, dict):
-                                        low = ref_info.get('min')
-                                        high = ref_info.get('max')
-                                    elif isinstance(ref_info, str) and ref_info:
-                                        ref_str = str(ref_info).replace(' ', '')
-                                        if '-' in ref_str:
-                                            parts = ref_str.split('-')
-                                            if len(parts) >= 2:
-                                                try:
-                                                    low = float(parts[0])
-                                                    high = float(parts[1].split()[0])
-                                                except:
-                                                    pass
-                                    
-                                    if low is None or high is None:
-                                        return ""
-                                    
-                                    low, high = float(low), float(high)
-                                    range_size = high - low if high > low else 1
-                                    
-                                    if low <= value <= high:
-                                        # NORMAL - Green shades (pure green tones)
-                                        mid = (low + high) / 2
-                                        deviation = abs(value - mid) / (range_size / 2) if range_size > 0 else 0
-                                        deviation = min(deviation, 1)
-                                        # Light green to dark green
-                                        green = int(200 - deviation * 60)
-                                        return f"background-color: rgb(144, {green}, 144)"
-                                    elif value < low:
-                                        # BELOW NORMAL - Blue shades (pure blue tones)
-                                        deviation = min((low - value) / range_size, 2)
-                                        # Light blue to dark blue
-                                        blue = int(220 - deviation * 40)
-                                        red_green = int(200 - deviation * 80)
-                                        return f"background-color: rgb({red_green}, {red_green}, {blue})"
-                                    else:
-                                        # ABOVE NORMAL - Red shades (pure red tones)
-                                        deviation = min((value - high) / range_size, 2)
-                                        # Light red to dark red
-                                        red = int(255 - deviation * 30)
-                                        green_blue = int(180 - deviation * 80)
-                                        return f"background-color: rgb({red}, {green_blue}, {green_blue})"
-                                except:
+                                except (ValueError, TypeError):
                                     return ""
+                                
+                                low, high = None, None
+                                
+                                # Extract min/max from reference info
+                                if isinstance(ref_info, dict) and ref_info:
+                                    low = ref_info.get('min')
+                                    high = ref_info.get('max')
+                                
+                                if low is None or high is None:
+                                    return ""
+                                
+                                try:
+                                    low, high = float(low), float(high)
+                                except (ValueError, TypeError):
+                                    return ""
+                                
+                                if high <= low:
+                                    return ""
+                                
+                                range_size = high - low
+                                
+                                if low <= value <= high:
+                                    # NORMAL - Pure GREEN shades
+                                    mid = (low + high) / 2
+                                    deviation = abs(value - mid) / (range_size / 2)
+                                    deviation = min(max(deviation, 0), 1)
+                                    # Light green (#90EE90) to medium green (#228B22)
+                                    # RGB: (144, 238, 144) to (34, 139, 34)
+                                    r = int(144 - deviation * 110)
+                                    g = int(238 - deviation * 99)
+                                    b = int(144 - deviation * 110)
+                                    return f"background-color: rgb({r}, {g}, {b})"
+                                elif value < low:
+                                    # BELOW NORMAL - Pure BLUE shades
+                                    deviation = (low - value) / range_size
+                                    deviation = min(max(deviation, 0), 2)  # Cap at 2x range
+                                    # Light blue (#ADD8E6) to dark blue (#00008B)
+                                    # RGB: (173, 216, 230) to (0, 0, 139)
+                                    intensity = min(deviation / 2, 1)  # Normalize to 0-1
+                                    r = int(173 - intensity * 173)
+                                    g = int(216 - intensity * 216)
+                                    b = int(230 - intensity * 91)
+                                    return f"background-color: rgb({r}, {g}, {b})"
+                                else:
+                                    # ABOVE NORMAL - Pure RED shades
+                                    deviation = (value - high) / range_size
+                                    deviation = min(max(deviation, 0), 2)  # Cap at 2x range
+                                    # Light red (#FFCCCB) to dark red (#8B0000)
+                                    # RGB: (255, 204, 203) to (139, 0, 0)
+                                    intensity = min(deviation / 2, 1)  # Normalize to 0-1
+                                    r = int(255 - intensity * 116)
+                                    g = int(204 - intensity * 204)
+                                    b = int(203 - intensity * 203)
+                                    return f"background-color: rgb({r}, {g}, {b})"
                             
                             # Display legend
                             st.write("**Color Legend:** 🟢 Green = Normal | 🔵 Blue = Below Normal | 🔴 Red = Above Normal")
