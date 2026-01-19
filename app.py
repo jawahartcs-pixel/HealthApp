@@ -4506,6 +4506,21 @@ def manage_data_page(db, user_id):
                                 deleted_entries = 0
                                 changes_list = []  # Track what was changed for reporting
                                 
+                                # Debug: Show comparison for first few items
+                                with st.expander("🔍 Debug: Value Comparison", expanded=True):
+                                    st.write("**Comparing edited values against stored database values:**")
+                                    debug_count = 0
+                                    for idx, row in edited_df.iterrows():
+                                        test_name = row['Test Name']
+                                        for date_col in unique_dates:
+                                            if date_col in row.index:
+                                                edited_val = row[date_col]
+                                                db_val = db_values.get(test_name, {}).get(date_col)
+                                                # Only show first 5 non-empty comparisons
+                                                if debug_count < 5 and not pd.isna(edited_val):
+                                                    st.write(f"• {test_name} ({date_col}): Edited={edited_val} (type: {type(edited_val).__name__}), DB={db_val} (type: {type(db_val).__name__ if db_val else 'None'})")
+                                                    debug_count += 1
+                                
                                 for idx, row in edited_df.iterrows():
                                     test_name = row['Test Name']
                                     for date_col in unique_dates:
