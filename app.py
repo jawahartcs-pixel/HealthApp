@@ -4489,22 +4489,28 @@ def manage_data_page(db, user_id):
                                 deleted_entries = 0
                                 changes_list = []  # Track what was changed for reporting
                                 
-                                # Debug: Show sample of what we're comparing
-                                with st.expander("🔍 Debug: Comparison Values", expanded=True):
-                                    st.write("**Sample comparison (first 3 tests with values):**")
-                                    sample_count = 0
+                                # Debug: Show ALL differences found
+                                with st.expander("🔍 Debug: Finding Differences", expanded=True):
+                                    st.write("**Scanning for differences between Editor and DB:**")
+                                    diff_count = 0
                                     for idx, row in edited_df.iterrows():
-                                        if sample_count >= 3:
-                                            break
                                         test_name = row['Test Name']
                                         for date_col in unique_dates:
-                                            if date_col in row.index and sample_count < 3:
+                                            if date_col in row.index:
                                                 edit_val = row[date_col]
                                                 db_val = pivot_data.get(test_name, {}).get(date_col)
-                                                if not pd.isna(edit_val):
-                                                    st.write(f"• **{test_name}** @ {date_col}: Editor={edit_val}, DB={db_val}")
-                                                    sample_count += 1
-                                                    break
+                                                # Check if there's a difference
+                                                edit_empty = pd.isna(edit_val) or (isinstance(edit_val, str) and str(edit_val).strip() == '')
+                                                db_empty = db_val is None or pd.isna(db_val)
+                                                if not edit_empty and not db_empty:
+                                                    try:
+                                                        if abs(float(edit_val) - float(db_val)) > 0.001:
+                                                            st.success(f"✅ DIFF FOUND: **{test_name}** @ {date_col}: Editor={edit_val}, DB={db_val}")
+                                                            diff_count += 1
+                                                    except:
+                                                        pass
+                                    if diff_count == 0:
+                                        st.warning("No differences found between Editor values and Database values")
                                 
                                 # Compare edited_df (from data_editor return) against pivot_data (current DB values)
                                 for idx, row in edited_df.iterrows():
