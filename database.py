@@ -798,6 +798,8 @@ class Database:
                           unit: str, test_date: date, reference_range: str = None) -> bool:
         """Update a specific test result by ID."""
         try:
+            import os
+            print(f"DEBUG update_test_result: db_path={self.db_path}, cwd={os.getcwd()}, result_id type={type(result_id)}")
             conn = sqlite3.connect(self.db_path)
             cursor = conn.cursor()
             
