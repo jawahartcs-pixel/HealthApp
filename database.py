@@ -798,15 +798,12 @@ class Database:
                           unit: str, test_date: date, reference_range: str = None) -> bool:
         """Update a specific test result by ID."""
         try:
-            import os
-            print(f"DEBUG update_test_result: db_path={self.db_path}, cwd={os.getcwd()}, result_id type={type(result_id)}")
+            # Convert numpy types to Python native types for SQLite compatibility
+            result_id = int(result_id)
+            value = float(value)
+            
             conn = sqlite3.connect(self.db_path)
             cursor = conn.cursor()
-            
-            # Debug: Check if record exists before update
-            cursor.execute('SELECT result_id, test_value FROM test_results WHERE result_id = ?', (result_id,))
-            existing = cursor.fetchone()
-            print(f"DEBUG update_test_result: result_id={result_id}, existing={existing}, new_value={value}")
             
             cursor.execute('''
                 UPDATE test_results 
@@ -815,15 +812,11 @@ class Database:
             ''', (test_type, value, unit, test_date, reference_range, result_id))
             
             rowcount = cursor.rowcount
-            print(f"DEBUG update_test_result: rowcount={rowcount}")
-            
             conn.commit()
             conn.close()
             return rowcount > 0
         except Exception as e:
             print(f"Error updating test result: {e}")
-            import traceback
-            traceback.print_exc()
             return False
     
     def delete_test_results_by_date(self, patient_name: str, test_date: date) -> bool:
