@@ -2427,7 +2427,7 @@ def patient_dashboard_page(db, visualization, alert_system, user_id):
         unique_test_types = sorted(df['Test Type'].unique())
         
         # Create main dashboard tabs - Filter tab first so it's visible on load
-        filter_tab, summary_tab, alerts_tab = st.tabs(["🗂️ Filter Reports and Tests", "📋 Report Summary & Events", "🚨 Active Alerts"])
+        filter_tab, summary_tab, alerts_tab, heatmap_tab = st.tabs(["🗂️ Filter Reports and Tests", "📋 Report Summary & Events", "🚨 Active Alerts", "📊 Heat Map & Data"])
         
         # Initialize session state for filters if not present
         filter_key_prefix = f"filter_{selected_patient}"
@@ -3244,27 +3244,315 @@ def patient_dashboard_page(db, visualization, alert_system, user_id):
         else:
             st.info("No test results available for visualization.")
         
-        # Link to data management page
-        st.subheader("📊 Data Management")
-        st.info(f"View and edit all test results for {selected_patient} in the 'Manage Data' page")
-        
-        # Quick summary of patient data
-        all_test_data = db.get_patient_test_results_with_ids(selected_patient)
-        if all_test_data:
-            edit_df = pd.DataFrame(all_test_data, columns=['ID', 'Date', 'Test Type', 'Value', 'Unit', 'Reference Range'])
+        # Heat Map & Data Tab content
+        with heatmap_tab:
+            st.subheader("📊 Heat Map & Data Editor")
             
-            # Add quick stats
-            col1, col2, col3 = st.columns(3)
-            with col1:
-                st.metric("Total Records", len(edit_df))
-            with col2:
-                unique_dates = edit_df['Date'].nunique()
-                st.metric("Test Dates", unique_dates)
-            with col3:
-                unique_types = edit_df['Test Type'].nunique()
-                st.metric("Test Types", unique_types)
-        else:
-            st.info("No test results found for this patient.")
+            # Get all test data with IDs
+            all_test_data = db.get_patient_test_results_with_ids(selected_patient)
+            
+            if all_test_data:
+                heatmap_edit_df = pd.DataFrame(all_test_data, columns=['ID', 'Date', 'Test Type', 'Value', 'Unit', 'Reference Range'])
+                heatmap_edit_df['Date'] = pd.to_datetime(heatmap_edit_df['Date'])
+                heatmap_edit_df['Value'] = pd.to_numeric(heatmap_edit_df['Value'], errors='coerce')
+                
+                # Get patient gender for reference ranges
+                patient_profile = db.get_patient_profile(selected_patient, user_id)
+                patient_gender = patient_profile.get('gender', '').lower() if patient_profile else ''
+                
+                # Get investigation standards
+                investigation_standards = InvestigationStandards(db)
+                all_standards = investigation_standards.get_all_standards()
+                
+                # Build test info mapping
+                test_info = {}
+                for standard in all_standards:
+                    if isinstance(standard, dict):
+                        test_name = standard.get('standard_name', '')
+                        aliases = standard.get('aliases', '')
+                        if patient_gender == 'male':
+                            range_min = standard.get('male_range_min')
+                            range_max = standard.get('male_range_max')
+                            unit = standard.get('male_unit', '')
+                        elif patient_gender == 'female':
+                            range_min = standard.get('female_range_min')
+                            range_max = standard.get('female_range_max')
+                            unit = standard.get('female_unit', '')
+                        else:
+                            range_min = standard.get('male_range_min')
+                            range_max = standard.get('male_range_max')
+                            unit = standard.get('male_unit', '')
+                        
+                        if test_name:
+                            test_info[test_name] = {'min': range_min, 'max': range_max, 'unit': unit}
+                            if aliases:
+                                for alias in aliases.split(','):
+                                    alias = alias.strip()
+                                    if alias:
+                                        test_info[alias] = test_info[test_name]
+                
+                # Stats
+                col1, col2, col3 = st.columns(3)
+                with col1:
+                    st.metric("Total Records", len(heatmap_edit_df))
+                with col2:
+                    st.metric("Test Dates", heatmap_edit_df['Date'].dt.date.nunique())
+                with col3:
+                    st.metric("Test Types", heatmap_edit_df['Test Type'].nunique())
+                
+                # Date format selection
+                date_format_hm = st.selectbox(
+                    "Date Format:",
+                    options=["UK (DD/MM/YYYY)", "US (MM/DD/YYYY)"],
+                    key="dashboard_heatmap_date_format"
+                )
+                
+                # Create pivot table for heat map display
+                pivot_data = {}
+                value_ids_map = {}
+                reference_ranges = {}
+                units_map = {}
+                
+                unique_tests_hm = sorted(heatmap_edit_df['Test Type'].unique(), key=lambda x: x.lower())
+                heatmap_edit_df_sorted = heatmap_edit_df.sort_values('Date', ascending=False)
+                
+                if date_format_hm == "UK (DD/MM/YYYY)":
+                    unique_dates_hm = heatmap_edit_df_sorted['Date'].dt.strftime('%d/%m/%Y').unique().tolist()
+                else:
+                    unique_dates_hm = heatmap_edit_df_sorted['Date'].dt.strftime('%m/%d/%Y').unique().tolist()
+                
+                for test in unique_tests_hm:
+                    pivot_data[test] = {}
+                    value_ids_map[test] = {}
+                    test_rows = heatmap_edit_df[heatmap_edit_df['Test Type'] == test]
+                    
+                    # Get reference range
+                    info = test_info.get(test)
+                    if info and info.get('min') is not None and info.get('max') is not None:
+                        try:
+                            reference_ranges[test] = {'min': float(info['min']), 'max': float(info['max'])}
+                            units_map[test] = info.get('unit', '')
+                        except (ValueError, TypeError):
+                            reference_ranges[test] = None
+                            units_map[test] = ''
+                    else:
+                        reference_ranges[test] = None
+                        units_map[test] = test_rows.iloc[0]['Unit'] if not test_rows.empty else ''
+                    
+                    for date_str in unique_dates_hm:
+                        try:
+                            if date_format_hm == "UK (DD/MM/YYYY)":
+                                date_obj = pd.to_datetime(date_str, format='%d/%m/%Y')
+                            else:
+                                date_obj = pd.to_datetime(date_str, format='%m/%d/%Y')
+                            date_rows = test_rows[test_rows['Date'].dt.date == date_obj.date()]
+                        except:
+                            date_rows = pd.DataFrame()
+                        
+                        if not date_rows.empty:
+                            pivot_data[test][date_str] = date_rows.iloc[0]['Value']
+                            value_ids_map[test][date_str] = int(date_rows.iloc[0]['ID'])
+                        else:
+                            pivot_data[test][date_str] = None
+                            value_ids_map[test][date_str] = None
+                
+                # Create pivot DataFrame
+                pivot_df_hm = pd.DataFrame(pivot_data).T
+                pivot_df_hm.index.name = 'Test Name'
+                
+                # Color function
+                def get_hm_color(value, ref_info):
+                    if value is None or pd.isna(value):
+                        return ""
+                    try:
+                        value = float(value)
+                    except:
+                        return ""
+                    
+                    if not isinstance(ref_info, dict) or ref_info.get('min') is None or ref_info.get('max') is None:
+                        return ""
+                    
+                    try:
+                        low, high = float(ref_info['min']), float(ref_info['max'])
+                    except:
+                        return ""
+                    
+                    if high <= low:
+                        return ""
+                    
+                    range_size = high - low
+                    if low <= value <= high:
+                        mid = (low + high) / 2
+                        deviation = abs(value - mid) / (range_size / 2)
+                        deviation = min(max(deviation, 0), 1)
+                        r = int(144 - deviation * 110)
+                        g = int(238 - deviation * 99)
+                        b = int(144 - deviation * 110)
+                        return f"background-color: rgb({r}, {g}, {b})"
+                    elif value < low:
+                        deviation = min((low - value) / range_size, 2)
+                        intensity = min(deviation / 2, 1)
+                        r = int(173 - intensity * 173)
+                        g = int(216 - intensity * 216)
+                        b = int(230 - intensity * 91)
+                        return f"background-color: rgb({r}, {g}, {b})"
+                    else:
+                        deviation = min((value - high) / range_size, 2)
+                        intensity = min(deviation / 2, 1)
+                        r = int(255 - intensity * 116)
+                        g = int(204 - intensity * 204)
+                        b = int(203 - intensity * 203)
+                        return f"background-color: rgb({r}, {g}, {b})"
+                
+                # Add Range column
+                range_column = {}
+                for test in unique_tests_hm:
+                    ref = reference_ranges.get(test)
+                    if ref:
+                        unit = units_map.get(test, '')
+                        range_column[test] = f"{ref['min']}-{ref['max']} {unit}".strip()
+                    else:
+                        range_column[test] = "N/A"
+                
+                enhanced_hm_df = pivot_df_hm.copy()
+                enhanced_hm_df.insert(0, 'Range', [range_column.get(t, 'N/A') for t in enhanced_hm_df.index])
+                
+                # Apply styling
+                date_columns = unique_dates_hm.copy()
+                def apply_hm_style(row):
+                    test_name = row.name
+                    ref_info = reference_ranges.get(test_name, None)
+                    styles = []
+                    for col in row.index:
+                        if col in date_columns:
+                            color = get_hm_color(row[col], ref_info)
+                            styles.append(color if color else "")
+                        else:
+                            styles.append("")
+                    return styles
+                
+                styled_hm = enhanced_hm_df.style.apply(apply_hm_style, axis=1).format(precision=2, na_rep="")
+                
+                # Color legend
+                st.markdown("""
+                <style>
+                .legend-container {display: flex; align-items: center; gap: 20px; padding: 10px; background: #f8f9fa; border-radius: 8px; margin-bottom: 10px;}
+                .legend-item {display: flex; align-items: center; gap: 8px;}
+                .legend-gradient {width: 80px; height: 20px; border-radius: 4px; border: 1px solid #ccc;}
+                .blue-gradient {background: linear-gradient(to right, #00008B, #ADD8E6);}
+                .green-gradient {background: linear-gradient(to right, #228B22, #90EE90, #228B22);}
+                .red-gradient {background: linear-gradient(to right, #FFCCCB, #8B0000);}
+                </style>
+                <div class="legend-container">
+                    <strong>Color Legend:</strong>
+                    <div class="legend-item"><div class="legend-gradient blue-gradient"></div><span>Below Normal</span></div>
+                    <div class="legend-item"><div class="legend-gradient green-gradient"></div><span>Normal Range</span></div>
+                    <div class="legend-item"><div class="legend-gradient red-gradient"></div><span>Above Normal</span></div>
+                </div>
+                """, unsafe_allow_html=True)
+                
+                if patient_gender:
+                    st.info(f"Using {patient_gender.title()} reference ranges")
+                
+                # Display heat map
+                with st.expander("📊 Heat Map View (Color-Coded)", expanded=True):
+                    st.dataframe(styled_hm, use_container_width=True, height=min(600, len(unique_tests_hm) * 35 + 80))
+                
+                st.divider()
+                
+                # Flat row-based editor (like Excel-Style editor - this works correctly)
+                st.subheader("✏️ Edit Test Results")
+                st.caption("Edit values directly. ID column shows the database record ID.")
+                
+                # Prepare flat editor DataFrame
+                flat_edit_df = heatmap_edit_df.copy()
+                flat_edit_df['Date'] = flat_edit_df['Date'].dt.strftime('%Y-%m-%d')
+                flat_edit_df = flat_edit_df.sort_values(['Date', 'Test Type'], ascending=[False, True])
+                
+                # Column config
+                flat_column_config = {
+                    'ID': st.column_config.NumberColumn('ID', disabled=True, help='Database record ID'),
+                    'Date': st.column_config.TextColumn('Date', disabled=True),
+                    'Test Type': st.column_config.TextColumn('Test Type', disabled=True),
+                    'Value': st.column_config.NumberColumn('Value', format="%.2f"),
+                    'Unit': st.column_config.TextColumn('Unit'),
+                    'Reference Range': st.column_config.TextColumn('Reference Range')
+                }
+                
+                edited_flat_df = st.data_editor(
+                    flat_edit_df,
+                    use_container_width=True,
+                    hide_index=True,
+                    num_rows="fixed",
+                    column_config=flat_column_config,
+                    key="dashboard_flat_editor"
+                )
+                
+                col_save1, col_save2 = st.columns([1, 3])
+                with col_save1:
+                    save_flat_btn = st.button("💾 Save Changes", key="save_dashboard_edits", type="primary")
+                with col_save2:
+                    if st.button("🔄 Refresh", key="refresh_dashboard_editor"):
+                        if 'dashboard_flat_editor' in st.session_state:
+                            del st.session_state['dashboard_flat_editor']
+                        st.rerun()
+                
+                if save_flat_btn:
+                    changes_count = 0
+                    errors_count = 0
+                    
+                    # Compare edited vs original
+                    for idx, edited_row in edited_flat_df.iterrows():
+                        result_id = int(edited_row['ID'])
+                        orig_row = heatmap_edit_df[heatmap_edit_df['ID'] == result_id]
+                        
+                        if orig_row.empty:
+                            continue
+                        
+                        orig_row = orig_row.iloc[0]
+                        
+                        # Check for value changes
+                        value_changed = False
+                        try:
+                            if abs(float(edited_row['Value']) - float(orig_row['Value'])) > 0.001:
+                                value_changed = True
+                        except:
+                            pass
+                        
+                        unit_changed = str(edited_row['Unit']) != str(orig_row['Unit'])
+                        ref_changed = str(edited_row['Reference Range']) != str(orig_row['Reference Range'])
+                        
+                        if value_changed or unit_changed or ref_changed:
+                            try:
+                                parsed_date = pd.to_datetime(edited_row['Date']).date()
+                                success = db.update_test_result(
+                                    result_id=result_id,
+                                    test_type=edited_row['Test Type'],
+                                    value=float(edited_row['Value']),
+                                    unit=str(edited_row['Unit']) if edited_row['Unit'] else '',
+                                    test_date=parsed_date,
+                                    reference_range=str(edited_row['Reference Range']) if edited_row['Reference Range'] else ''
+                                )
+                                if success:
+                                    changes_count += 1
+                                else:
+                                    errors_count += 1
+                                    st.error(f"Failed to update ID {result_id}")
+                            except Exception as e:
+                                errors_count += 1
+                                st.error(f"Error updating ID {result_id}: {e}")
+                    
+                    if changes_count > 0:
+                        st.success(f"✅ Saved {changes_count} changes!")
+                        if 'dashboard_flat_editor' in st.session_state:
+                            del st.session_state['dashboard_flat_editor']
+                        st.rerun()
+                    elif errors_count == 0:
+                        st.info("No changes detected.")
+                    else:
+                        st.error(f"Failed to save {errors_count} changes.")
+            else:
+                st.info("No test results found for this patient.")
 
 def search_filter_page(db, visualization, user_id):
     st.header("🔍 Search & Filter Results")
