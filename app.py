@@ -4276,63 +4276,267 @@ def manage_data_page(db, user_id):
                                     b = int(203 - intensity * 203)
                                     return f"background-color: rgb({r}, {g}, {b})"
                             
-                            # Display legend
-                            st.write("**Color Legend:** 🟢 Green = Normal | 🔵 Blue = Below Normal | 🔴 Red = Above Normal")
+                            # Display color gradient legend with actual color bars
+                            st.markdown("""
+                            <style>
+                            .legend-container {
+                                display: flex;
+                                align-items: center;
+                                gap: 20px;
+                                padding: 10px;
+                                background: #f8f9fa;
+                                border-radius: 8px;
+                                margin-bottom: 10px;
+                            }
+                            .legend-item {
+                                display: flex;
+                                align-items: center;
+                                gap: 8px;
+                            }
+                            .legend-gradient {
+                                width: 80px;
+                                height: 20px;
+                                border-radius: 4px;
+                                border: 1px solid #ccc;
+                            }
+                            .blue-gradient {
+                                background: linear-gradient(to right, #00008B, #ADD8E6);
+                            }
+                            .green-gradient {
+                                background: linear-gradient(to right, #228B22, #90EE90, #228B22);
+                            }
+                            .red-gradient {
+                                background: linear-gradient(to right, #FFCCCB, #8B0000);
+                            }
+                            </style>
+                            <div class="legend-container">
+                                <strong>Color Legend:</strong>
+                                <div class="legend-item">
+                                    <div class="legend-gradient blue-gradient"></div>
+                                    <span>Below Normal</span>
+                                </div>
+                                <div class="legend-item">
+                                    <div class="legend-gradient green-gradient"></div>
+                                    <span>Normal Range</span>
+                                </div>
+                                <div class="legend-item">
+                                    <div class="legend-gradient red-gradient"></div>
+                                    <span>Above Normal</span>
+                                </div>
+                            </div>
+                            """, unsafe_allow_html=True)
+                            
                             if patient_gender:
                                 st.info(f"Using {patient_gender.title()} reference ranges")
                             st.write(f"**{len(unique_tests)} tests × {len(unique_dates)} dates** (Latest date first)")
                             
-                            # Apply row styling
+                            # Calculate statistics for each test
+                            stats_data = {}
+                            for test in unique_tests:
+                                values = [v for v in pivot_data[test].values() if v is not None and not pd.isna(v)]
+                                if values:
+                                    try:
+                                        float_values = [float(v) for v in values]
+                                        stats_data[test] = {
+                                            'Count': len(float_values),
+                                            'Sum': round(sum(float_values), 2),
+                                            'Average': round(sum(float_values) / len(float_values), 2)
+                                        }
+                                    except:
+                                        stats_data[test] = {'Count': 0, 'Sum': 0, 'Average': 0}
+                                else:
+                                    stats_data[test] = {'Count': 0, 'Sum': 0, 'Average': 0}
+                            
+                            # Display statistics summary
+                            st.markdown("**Statistics Summary:**")
+                            stats_cols = st.columns(3)
+                            total_count = sum(s['Count'] for s in stats_data.values())
+                            total_sum = sum(s['Sum'] for s in stats_data.values())
+                            overall_avg = total_sum / total_count if total_count > 0 else 0
+                            with stats_cols[0]:
+                                st.metric("Total Values", total_count)
+                            with stats_cols[1]:
+                                st.metric("Total Sum", f"{total_sum:.2f}")
+                            with stats_cols[2]:
+                                st.metric("Overall Average", f"{overall_avg:.2f}")
+                            
+                            # Add Range column to pivot data
+                            range_column = {}
+                            for test in unique_tests:
+                                ref = reference_ranges.get(test)
+                                if ref and isinstance(ref, dict):
+                                    unit = units_map.get(test, '')
+                                    range_column[test] = f"{ref['min']}-{ref['max']} {unit}".strip()
+                                else:
+                                    range_column[test] = "N/A"
+                            
+                            # Create enhanced DataFrame with Range and Stats columns
+                            enhanced_pivot_df = pivot_df.copy()
+                            enhanced_pivot_df.insert(0, 'Range', [range_column.get(t, 'N/A') for t in enhanced_pivot_df.index])
+                            enhanced_pivot_df['Avg'] = [stats_data.get(t, {}).get('Average', 0) for t in enhanced_pivot_df.index]
+                            enhanced_pivot_df['Count'] = [stats_data.get(t, {}).get('Count', 0) for t in enhanced_pivot_df.index]
+                            enhanced_pivot_df['Sum'] = [stats_data.get(t, {}).get('Sum', 0) for t in enhanced_pivot_df.index]
+                            
+                            # Add summary row at the bottom showing per-date statistics
+                            summary_row = {'Range': 'SUMMARY'}
+                            for date_col in unique_dates:
+                                date_values = []
+                                for test in unique_tests:
+                                    val = pivot_data.get(test, {}).get(date_col)
+                                    if val is not None and not pd.isna(val):
+                                        try:
+                                            date_values.append(float(val))
+                                        except:
+                                            pass
+                                if date_values:
+                                    summary_row[date_col] = round(sum(date_values) / len(date_values), 2)
+                                else:
+                                    summary_row[date_col] = None
+                            summary_row['Avg'] = overall_avg
+                            summary_row['Count'] = total_count
+                            summary_row['Sum'] = total_sum
+                            
+                            # Create summary DataFrame and append to enhanced_pivot_df
+                            summary_df = pd.DataFrame([summary_row], index=['Average Per Date'])
+                            enhanced_pivot_df = pd.concat([enhanced_pivot_df, summary_df])
+                            
+                            # Apply row styling - only to date columns, not Range/Stats columns, and not summary row
+                            date_columns = unique_dates.copy()
+                            
                             def apply_row_style(row):
                                 test_name = row.name
+                                if test_name == 'Average Per Date':
+                                    # Style summary row with a different background
+                                    return ['background-color: #e8e8e8; font-weight: bold'] * len(row)
                                 ref_info = reference_ranges.get(test_name, "")
                                 styles = []
-                                for val in row:
-                                    color = get_deviation_color(val, ref_info)
-                                    styles.append(color if color else "")
+                                for col in row.index:
+                                    if col in date_columns:
+                                        color = get_deviation_color(row[col], ref_info)
+                                        styles.append(color if color else "")
+                                    else:
+                                        styles.append("")  # No color for Range/Stats columns
                                 return styles
                             
-                            styled_display = pivot_df.style.apply(apply_row_style, axis=1)
+                            styled_display = enhanced_pivot_df.style.apply(apply_row_style, axis=1)
                             styled_display = styled_display.format(precision=2, na_rep="")
+                            
+                            # CSS for frozen headers (best effort in Streamlit)
+                            st.markdown("""
+                            <style>
+                            /* Make table header sticky for vertical scrolling */
+                            div[data-testid="stDataFrame"] table thead tr th {
+                                position: sticky !important;
+                                top: 0 !important;
+                                background-color: #f0f2f6 !important;
+                                z-index: 100 !important;
+                            }
+                            </style>
+                            """, unsafe_allow_html=True)
+                            st.caption("Tip: Scroll horizontally to see all dates. Header row stays fixed when scrolling vertically.")
                             
                             # Show the colored heatmap view
                             with st.expander("📊 Heat Map View (Color-Coded)", expanded=True):
-                                st.dataframe(styled_display, use_container_width=True, height=min(500, len(unique_tests) * 35 + 50))
+                                st.dataframe(styled_display, use_container_width=True, height=min(600, len(unique_tests) * 35 + 80))
                             
-                            # Editable table section
+                            # Editable table section - store original values in session state for comparison
                             with st.expander("✏️ Editable Table", expanded=True):
-                                editable_df = pivot_df.reset_index()
+                                st.caption("Edit values directly in the table below. Click 'Save All Changes' to persist your edits. Stats columns (Avg, Count, Sum) are read-only.")
+                                
+                                # Prepare editable DataFrame with Range and Stats columns
+                                editable_df = pivot_df.copy()
+                                editable_df.insert(0, 'Range', [range_column.get(t, 'N/A') for t in editable_df.index])
+                                # Add stats columns to editable view (read-only)
+                                editable_df['Avg'] = [stats_data.get(t, {}).get('Average', 0) for t in editable_df.index]
+                                editable_df['Count'] = [stats_data.get(t, {}).get('Count', 0) for t in editable_df.index]
+                                editable_df['Sum'] = [stats_data.get(t, {}).get('Sum', 0) for t in editable_df.index]
+                                editable_df = editable_df.reset_index()
                                 editable_df = editable_df.rename(columns={'index': 'Test Name'})
+                                
+                                # Store original values for change detection
+                                original_values_key = f"orig_{selected_patient}"
+                                if 'heatmap_original_df' not in st.session_state:
+                                    st.session_state['heatmap_original_df'] = {}
+                                if original_values_key not in st.session_state['heatmap_original_df']:
+                                    st.session_state['heatmap_original_df'][original_values_key] = editable_df.copy()
+                                
+                                original_df = st.session_state['heatmap_original_df'][original_values_key]
+                                
+                                # Configure column settings - make non-value columns read-only
+                                column_config = {
+                                    'Test Name': st.column_config.TextColumn('Test Name', disabled=True),
+                                    'Range': st.column_config.TextColumn('Range', disabled=True),
+                                    'Avg': st.column_config.NumberColumn('Avg', disabled=True, format="%.2f"),
+                                    'Count': st.column_config.NumberColumn('Count', disabled=True),
+                                    'Sum': st.column_config.NumberColumn('Sum', disabled=True, format="%.2f")
+                                }
                                 
                                 edited_df = st.data_editor(
                                     editable_df,
                                     use_container_width=True,
                                     hide_index=True,
                                     num_rows="fixed",
+                                    column_config=column_config,
                                     key="heatmap_editor"
                                 )
                             
-                            # Save changes
-                            if st.button("💾 Save All Changes", key="save_heatmap_changes"):
+                            # Save changes - improved change detection using stored original DataFrame
+                            col_save1, col_save2 = st.columns([1, 3])
+                            with col_save1:
+                                save_btn = st.button("💾 Save All Changes", key="save_heatmap_changes", type="primary")
+                            with col_save2:
+                                if st.button("🔄 Refresh Data", key="refresh_heatmap"):
+                                    # Clear original values cache to force reload
+                                    if 'heatmap_original_df' in st.session_state:
+                                        del st.session_state['heatmap_original_df']
+                                    st.rerun()
+                            
+                            if save_btn:
                                 changes_made = 0
                                 errors = 0
                                 new_entries = 0
+                                deleted_entries = 0
                                 
                                 for idx, row in edited_df.iterrows():
                                     test_name = row['Test Name']
                                     for date_col in unique_dates:
+                                        # Skip non-date columns
+                                        if date_col not in row.index:
+                                            continue
+                                        
                                         new_value = row[date_col]
-                                        original_value = pivot_data.get(test_name, {}).get(date_col)
+                                        
+                                        # Get original value from stored DataFrame
+                                        orig_row = original_df[original_df['Test Name'] == test_name]
+                                        if not orig_row.empty and date_col in orig_row.columns:
+                                            original_value = orig_row.iloc[0][date_col]
+                                        else:
+                                            original_value = None
+                                        
                                         result_id = value_ids.get(test_name, {}).get(date_col)
                                         
-                                        if pd.isna(new_value) and original_value is None:
+                                        # Convert values for comparison
+                                        new_is_empty = pd.isna(new_value) or (isinstance(new_value, str) and str(new_value).strip() == '')
+                                        orig_is_empty = original_value is None or pd.isna(original_value) or (isinstance(original_value, str) and str(original_value).strip() == '')
+                                        
+                                        # Skip if both are empty
+                                        if new_is_empty and orig_is_empty:
                                             continue
-                                        if not pd.isna(new_value) and original_value is not None:
+                                        
+                                        # Check if value actually changed
+                                        value_changed = False
+                                        if new_is_empty != orig_is_empty:
+                                            value_changed = True
+                                        elif not new_is_empty and not orig_is_empty:
                                             try:
-                                                if float(new_value) == float(original_value):
-                                                    continue
-                                            except:
-                                                continue
+                                                # Compare as floats with tolerance
+                                                if abs(float(new_value) - float(original_value)) > 0.0001:
+                                                    value_changed = True
+                                            except (ValueError, TypeError):
+                                                value_changed = str(new_value) != str(original_value)
+                                        
+                                        if not value_changed:
+                                            continue
                                         
                                         try:
                                             if date_format == "UK (DD/MM/YYYY)":
@@ -4344,26 +4548,38 @@ def manage_data_page(db, user_id):
                                             ref_info = reference_ranges.get(test_name, '')
                                             ref_str = f"{ref_info['min']}-{ref_info['max']}" if isinstance(ref_info, dict) else str(ref_info)
                                             
+                                            # Validate numeric value before saving
+                                            if not new_is_empty:
+                                                try:
+                                                    numeric_value = float(new_value)
+                                                except (ValueError, TypeError):
+                                                    errors += 1
+                                                    st.error(f"Invalid number '{new_value}' for {test_name} on {date_col}. Please enter a valid number.")
+                                                    continue
+                                            
                                             if result_id is not None:
-                                                if pd.isna(new_value):
+                                                if new_is_empty:
+                                                    # Delete existing value
                                                     if db.delete_test_result(result_id):
-                                                        changes_made += 1
+                                                        deleted_entries += 1
                                                 else:
+                                                    # Update existing value
                                                     if db.update_test_result(
                                                         result_id=result_id,
                                                         test_type=test_name,
-                                                        value=float(new_value),
+                                                        value=numeric_value,
                                                         unit=unit,
                                                         test_date=parsed_date,
                                                         reference_range=ref_str
                                                     ):
                                                         changes_made += 1
                                             else:
-                                                if not pd.isna(new_value):
+                                                if not new_is_empty:
+                                                    # Add new value
                                                     if db.add_test_result(
                                                         patient_name=selected_patient,
                                                         test_type=test_name,
-                                                        value=float(new_value),
+                                                        value=numeric_value,
                                                         unit=unit,
                                                         test_date=parsed_date,
                                                         reference_range=ref_str
@@ -4371,14 +4587,26 @@ def manage_data_page(db, user_id):
                                                         new_entries += 1
                                         except Exception as e:
                                             errors += 1
+                                            st.error(f"Error saving {test_name} on {date_col}: {e}")
                                 
-                                if changes_made > 0 or new_entries > 0:
-                                    st.success(f"✅ Saved: {changes_made} updated, {new_entries} new entries")
+                                total_changes = changes_made + new_entries + deleted_entries
+                                if total_changes > 0:
+                                    msg_parts = []
+                                    if changes_made > 0:
+                                        msg_parts.append(f"{changes_made} updated")
+                                    if new_entries > 0:
+                                        msg_parts.append(f"{new_entries} new")
+                                    if deleted_entries > 0:
+                                        msg_parts.append(f"{deleted_entries} deleted")
+                                    st.success(f"✅ Saved: {', '.join(msg_parts)}")
+                                    # Clear cache and refresh
+                                    if 'heatmap_original_df' in st.session_state:
+                                        del st.session_state['heatmap_original_df']
                                     st.rerun()
                                 elif errors > 0:
                                     st.error(f"❌ {errors} errors occurred while saving")
                                 else:
-                                    st.info("No changes detected")
+                                    st.info("No changes detected. Edit values in the table above and click Save.")
                 
                 # Always show the complete data table at the bottom
                 st.subheader("📋 Complete Database Records")
