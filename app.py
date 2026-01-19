@@ -4439,39 +4439,18 @@ def manage_data_page(db, user_id):
                             with st.expander("📊 Heat Map View (Color-Coded)", expanded=True):
                                 st.dataframe(styled_display, use_container_width=True, height=min(600, len(unique_tests) * 35 + 80))
                             
-                            # Editable table section - compare edited values against database values
+                            # Editable table section - uses same filtered data as heat map
                             with st.expander("✏️ Editable Table", expanded=True):
                                 st.caption("Edit values directly in the table below. Click 'Save All Changes' to persist your edits. Stats columns (Avg, Count, Sum) are read-only.")
                                 
-                                # Prepare editable DataFrame with Range and Stats columns
+                                # Prepare editable DataFrame with Range and Stats columns (same data as heat map)
                                 editable_df = pivot_df.copy()
                                 editable_df.insert(0, 'Range', [range_column.get(t, 'N/A') for t in editable_df.index])
-                                # Add stats columns to editable view (read-only)
                                 editable_df['Avg'] = [stats_data.get(t, {}).get('Average', 0) for t in editable_df.index]
                                 editable_df['Count'] = [stats_data.get(t, {}).get('Count', 0) for t in editable_df.index]
                                 editable_df['Sum'] = [stats_data.get(t, {}).get('Sum', 0) for t in editable_df.index]
                                 editable_df = editable_df.reset_index()
                                 editable_df = editable_df.rename(columns={'index': 'Test Name'})
-                                
-                                # Store the DATABASE values for comparison - these are the "original" values
-                                db_values_key = f"db_values_{selected_patient}"
-                                if 'heatmap_db_values' not in st.session_state:
-                                    st.session_state['heatmap_db_values'] = {}
-                                if db_values_key not in st.session_state['heatmap_db_values']:
-                                    st.session_state['heatmap_db_values'][db_values_key] = {
-                                        test: {date: val for date, val in dates.items()} 
-                                        for test, dates in pivot_data.items()
-                                    }
-                                
-                                db_values = st.session_state['heatmap_db_values'][db_values_key]
-                                
-                                # Store editable_df in session state and use that for the editor
-                                # This ensures edits persist across page reruns (e.g., when Save button is clicked)
-                                editor_data_key = f"editor_data_{selected_patient}"
-                                if 'heatmap_editor_data' not in st.session_state:
-                                    st.session_state['heatmap_editor_data'] = {}
-                                if editor_data_key not in st.session_state['heatmap_editor_data']:
-                                    st.session_state['heatmap_editor_data'][editor_data_key] = editable_df.copy()
                                 
                                 # Configure column settings - make non-value columns read-only
                                 column_config = {
@@ -4482,32 +4461,25 @@ def manage_data_page(db, user_id):
                                     'Sum': st.column_config.NumberColumn('Sum', disabled=True, format="%.2f")
                                 }
                                 
-                                # Use session state data for the editor - this preserves edits across reruns
+                                # Display the data editor - Streamlit manages edits in session_state['heatmap_editor']
                                 edited_df = st.data_editor(
-                                    st.session_state['heatmap_editor_data'][editor_data_key],
+                                    editable_df,
                                     use_container_width=True,
                                     hide_index=True,
                                     num_rows="fixed",
                                     column_config=column_config,
                                     key="heatmap_editor"
                                 )
-                                
-                                # Update session state with any edits made
-                                st.session_state['heatmap_editor_data'][editor_data_key] = edited_df
                             
-                            # Save changes - improved change detection using stored original DataFrame
+                            # Save changes - compare edited values against current database values
                             col_save1, col_save2 = st.columns([1, 3])
                             with col_save1:
                                 save_btn = st.button("💾 Save All Changes", key="save_heatmap_changes", type="primary")
                             with col_save2:
                                 if st.button("🔄 Refresh Data", key="refresh_heatmap"):
-                                    # Clear all caches to force reload from database
-                                    if 'heatmap_original_df' in st.session_state:
-                                        del st.session_state['heatmap_original_df']
-                                    if 'heatmap_db_values' in st.session_state:
-                                        del st.session_state['heatmap_db_values']
-                                    if 'heatmap_editor_data' in st.session_state:
-                                        del st.session_state['heatmap_editor_data']
+                                    # Clear editor widget state to force reload from database
+                                    if 'heatmap_editor' in st.session_state:
+                                        del st.session_state['heatmap_editor']
                                     st.rerun()
                             
                             if save_btn:
@@ -4517,21 +4489,24 @@ def manage_data_page(db, user_id):
                                 deleted_entries = 0
                                 changes_list = []  # Track what was changed for reporting
                                 
-                                # Debug: Show comparison for first few items
-                                with st.expander("🔍 Debug: Value Comparison", expanded=True):
-                                    st.write("**Comparing edited values against stored database values:**")
-                                    debug_count = 0
+                                # Debug: Show sample of what we're comparing
+                                with st.expander("🔍 Debug: Comparison Values", expanded=True):
+                                    st.write("**Sample comparison (first 3 tests with values):**")
+                                    sample_count = 0
                                     for idx, row in edited_df.iterrows():
+                                        if sample_count >= 3:
+                                            break
                                         test_name = row['Test Name']
                                         for date_col in unique_dates:
-                                            if date_col in row.index:
-                                                edited_val = row[date_col]
-                                                db_val = db_values.get(test_name, {}).get(date_col)
-                                                # Only show first 5 non-empty comparisons
-                                                if debug_count < 5 and not pd.isna(edited_val):
-                                                    st.write(f"• {test_name} ({date_col}): Edited={edited_val} (type: {type(edited_val).__name__}), DB={db_val} (type: {type(db_val).__name__ if db_val else 'None'})")
-                                                    debug_count += 1
+                                            if date_col in row.index and sample_count < 3:
+                                                edit_val = row[date_col]
+                                                db_val = pivot_data.get(test_name, {}).get(date_col)
+                                                if not pd.isna(edit_val):
+                                                    st.write(f"• **{test_name}** @ {date_col}: Editor={edit_val}, DB={db_val}")
+                                                    sample_count += 1
+                                                    break
                                 
+                                # Compare edited_df (from data_editor return) against pivot_data (current DB values)
                                 for idx, row in edited_df.iterrows():
                                     test_name = row['Test Name']
                                     for date_col in unique_dates:
@@ -4541,8 +4516,8 @@ def manage_data_page(db, user_id):
                                         
                                         new_value = row[date_col]
                                         
-                                        # Get original value from database values dictionary
-                                        original_value = db_values.get(test_name, {}).get(date_col)
+                                        # Get original value directly from pivot_data (current database values)
+                                        original_value = pivot_data.get(test_name, {}).get(date_col)
                                         
                                         result_id = value_ids.get(test_name, {}).get(date_col)
                                         
@@ -4648,13 +4623,9 @@ def manage_data_page(db, user_id):
                                         with st.expander(f"View first 10 of {len(changes_list)} changes"):
                                             for change in changes_list[:10]:
                                                 st.write(f"• {change}")
-                                    # Clear all caches and refresh
-                                    if 'heatmap_original_df' in st.session_state:
-                                        del st.session_state['heatmap_original_df']
-                                    if 'heatmap_db_values' in st.session_state:
-                                        del st.session_state['heatmap_db_values']
-                                    if 'heatmap_editor_data' in st.session_state:
-                                        del st.session_state['heatmap_editor_data']
+                                    # Clear editor state and refresh to show updated values
+                                    if 'heatmap_editor' in st.session_state:
+                                        del st.session_state['heatmap_editor']
                                     st.rerun()
                                 elif errors > 0:
                                     st.error(f"❌ {errors} errors occurred while saving")
