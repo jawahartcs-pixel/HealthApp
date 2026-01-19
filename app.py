@@ -4552,43 +4552,58 @@ def manage_data_page(db, user_id):
                                             continue
                                         
                                         try:
-                                            if date_format == "UK (DD/MM/YYYY)":
-                                                parsed_date = pd.to_datetime(date_col, format='%d/%m/%Y').date()
-                                            else:
-                                                parsed_date = pd.to_datetime(date_col, format='%m/%d/%Y').date()
+                                            # Parse date - try both formats
+                                            try:
+                                                if date_format == "UK (DD/MM/YYYY)":
+                                                    parsed_date = pd.to_datetime(date_col, format='%d/%m/%Y').date()
+                                                else:
+                                                    parsed_date = pd.to_datetime(date_col, format='%m/%d/%Y').date()
+                                            except:
+                                                # Try alternative format
+                                                try:
+                                                    parsed_date = pd.to_datetime(date_col).date()
+                                                except Exception as date_err:
+                                                    st.error(f"Date parse error for {date_col}: {date_err}")
+                                                    errors += 1
+                                                    continue
                                             
                                             unit = units_map.get(test_name, '')
                                             ref_info = reference_ranges.get(test_name, '')
                                             ref_str = f"{ref_info['min']}-{ref_info['max']}" if isinstance(ref_info, dict) else str(ref_info)
                                             
-                                            # Validate numeric value before saving
+                                            # Validate numeric value
                                             if not new_is_empty:
                                                 try:
                                                     numeric_value = float(new_value)
                                                 except (ValueError, TypeError):
                                                     errors += 1
-                                                    st.error(f"Invalid number '{new_value}' for {test_name} on {date_col}. Please enter a valid number.")
+                                                    st.error(f"Invalid number '{new_value}' for {test_name}")
                                                     continue
+                                            
+                                            # Debug: Show what we're about to save
+                                            st.write(f"🔧 Saving: {test_name}, id={result_id}, value={numeric_value}, date={parsed_date}")
                                             
                                             if result_id is not None:
                                                 if new_is_empty:
-                                                    # Delete existing value
                                                     if db.delete_test_result(result_id):
                                                         deleted_entries += 1
+                                                        st.success(f"Deleted {test_name}")
                                                 else:
-                                                    # Update existing value
-                                                    if db.update_test_result(
+                                                    update_result = db.update_test_result(
                                                         result_id=result_id,
                                                         test_type=test_name,
                                                         value=numeric_value,
                                                         unit=unit,
                                                         test_date=parsed_date,
                                                         reference_range=ref_str
-                                                    ):
+                                                    )
+                                                    if update_result:
                                                         changes_made += 1
+                                                        st.success(f"Updated {test_name} to {numeric_value}")
+                                                    else:
+                                                        st.error(f"Update failed for {test_name} (id={result_id}) - returned False")
                                             else:
                                                 if not new_is_empty:
-                                                    # Add new value
                                                     if db.add_test_result(
                                                         patient_name=selected_patient,
                                                         test_type=test_name,
@@ -4598,9 +4613,10 @@ def manage_data_page(db, user_id):
                                                         reference_range=ref_str
                                                     ):
                                                         new_entries += 1
+                                                        st.success(f"Added {test_name}")
                                         except Exception as e:
                                             errors += 1
-                                            st.error(f"Error saving {test_name} on {date_col}: {e}")
+                                            st.error(f"Error saving {test_name}: {e}")
                                 
                                 total_changes = changes_made + new_entries + deleted_entries
                                 if total_changes > 0:
