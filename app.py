@@ -4439,7 +4439,7 @@ def manage_data_page(db, user_id):
                             with st.expander("📊 Heat Map View (Color-Coded)", expanded=True):
                                 st.dataframe(styled_display, use_container_width=True, height=min(600, len(unique_tests) * 35 + 80))
                             
-                            # Editable table section - store original values in session state for comparison
+                            # Editable table section - compare edited values against database values
                             with st.expander("✏️ Editable Table", expanded=True):
                                 st.caption("Edit values directly in the table below. Click 'Save All Changes' to persist your edits. Stats columns (Avg, Count, Sum) are read-only.")
                                 
@@ -4453,14 +4453,20 @@ def manage_data_page(db, user_id):
                                 editable_df = editable_df.reset_index()
                                 editable_df = editable_df.rename(columns={'index': 'Test Name'})
                                 
-                                # Store original values for change detection
-                                original_values_key = f"orig_{selected_patient}"
-                                if 'heatmap_original_df' not in st.session_state:
-                                    st.session_state['heatmap_original_df'] = {}
-                                if original_values_key not in st.session_state['heatmap_original_df']:
-                                    st.session_state['heatmap_original_df'][original_values_key] = editable_df.copy()
+                                # Store the DATABASE values (not editable_df) for comparison - these are the "original" values to compare against
+                                # We use pivot_data which contains the raw database values
+                                # IMPORTANT: Only set these values ONCE per editing session, not on every page load
+                                db_values_key = f"db_values_{selected_patient}"
+                                if 'heatmap_db_values' not in st.session_state:
+                                    st.session_state['heatmap_db_values'] = {}
+                                if db_values_key not in st.session_state['heatmap_db_values']:
+                                    # First load - store database values as baseline for comparison
+                                    st.session_state['heatmap_db_values'][db_values_key] = {
+                                        test: {date: val for date, val in dates.items()} 
+                                        for test, dates in pivot_data.items()
+                                    }
                                 
-                                original_df = st.session_state['heatmap_original_df'][original_values_key]
+                                db_values = st.session_state['heatmap_db_values'][db_values_key]
                                 
                                 # Configure column settings - make non-value columns read-only
                                 column_config = {
@@ -4486,9 +4492,11 @@ def manage_data_page(db, user_id):
                                 save_btn = st.button("💾 Save All Changes", key="save_heatmap_changes", type="primary")
                             with col_save2:
                                 if st.button("🔄 Refresh Data", key="refresh_heatmap"):
-                                    # Clear original values cache to force reload
+                                    # Clear all caches to force reload from database
                                     if 'heatmap_original_df' in st.session_state:
                                         del st.session_state['heatmap_original_df']
+                                    if 'heatmap_db_values' in st.session_state:
+                                        del st.session_state['heatmap_db_values']
                                     st.rerun()
                             
                             if save_btn:
@@ -4496,6 +4504,7 @@ def manage_data_page(db, user_id):
                                 errors = 0
                                 new_entries = 0
                                 deleted_entries = 0
+                                changes_list = []  # Track what was changed for reporting
                                 
                                 for idx, row in edited_df.iterrows():
                                     test_name = row['Test Name']
@@ -4506,12 +4515,8 @@ def manage_data_page(db, user_id):
                                         
                                         new_value = row[date_col]
                                         
-                                        # Get original value from stored DataFrame
-                                        orig_row = original_df[original_df['Test Name'] == test_name]
-                                        if not orig_row.empty and date_col in orig_row.columns:
-                                            original_value = orig_row.iloc[0][date_col]
-                                        else:
-                                            original_value = None
+                                        # Get original value from database values dictionary
+                                        original_value = db_values.get(test_name, {}).get(date_col)
                                         
                                         result_id = value_ids.get(test_name, {}).get(date_col)
                                         
@@ -4530,10 +4535,19 @@ def manage_data_page(db, user_id):
                                         elif not new_is_empty and not orig_is_empty:
                                             try:
                                                 # Compare as floats with tolerance
-                                                if abs(float(new_value) - float(original_value)) > 0.0001:
+                                                new_float = float(new_value)
+                                                orig_float = float(original_value)
+                                                if abs(new_float - orig_float) > 0.0001:
                                                     value_changed = True
+                                                    changes_list.append(f"{test_name} ({date_col}): {orig_float} → {new_float}")
                                             except (ValueError, TypeError):
-                                                value_changed = str(new_value) != str(original_value)
+                                                if str(new_value) != str(original_value):
+                                                    value_changed = True
+                                                    changes_list.append(f"{test_name} ({date_col}): {original_value} → {new_value}")
+                                        elif new_is_empty and not orig_is_empty:
+                                            changes_list.append(f"{test_name} ({date_col}): {original_value} → (deleted)")
+                                        elif not new_is_empty and orig_is_empty:
+                                            changes_list.append(f"{test_name} ({date_col}): (new) → {new_value}")
                                         
                                         if not value_changed:
                                             continue
@@ -4595,13 +4609,24 @@ def manage_data_page(db, user_id):
                                     if changes_made > 0:
                                         msg_parts.append(f"{changes_made} updated")
                                     if new_entries > 0:
-                                        msg_parts.append(f"{new_entries} new")
+                                        msg_parts.append(f"{new_entries} added")
                                     if deleted_entries > 0:
                                         msg_parts.append(f"{deleted_entries} deleted")
-                                    st.success(f"✅ Saved: {', '.join(msg_parts)}")
-                                    # Clear cache and refresh
+                                    st.success(f"✅ {total_changes} change(s) saved: {', '.join(msg_parts)}")
+                                    # Show details of first 10 changes
+                                    if changes_list and len(changes_list) <= 10:
+                                        with st.expander("View changes"):
+                                            for change in changes_list:
+                                                st.write(f"• {change}")
+                                    elif changes_list:
+                                        with st.expander(f"View first 10 of {len(changes_list)} changes"):
+                                            for change in changes_list[:10]:
+                                                st.write(f"• {change}")
+                                    # Clear all caches and refresh
                                     if 'heatmap_original_df' in st.session_state:
                                         del st.session_state['heatmap_original_df']
+                                    if 'heatmap_db_values' in st.session_state:
+                                        del st.session_state['heatmap_db_values']
                                     st.rerun()
                                 elif errors > 0:
                                     st.error(f"❌ {errors} errors occurred while saving")
