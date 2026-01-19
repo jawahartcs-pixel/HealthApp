@@ -3772,7 +3772,7 @@ def manage_data_page(db, user_id):
                     # Selection for editing
                     edit_mode = st.radio(
                         "Choose editing mode:",
-                        ["Edit individual results", "Delete multiple results", "Edit by date groups"],
+                        ["Edit individual results", "Delete multiple results", "Edit by date groups", "Heat Map Table View"],
                         key="edit_mode"
                     )
                     
@@ -3907,6 +3907,296 @@ def manage_data_page(db, user_id):
                                         st.rerun()
                                     else:
                                         st.error("❌ Failed to delete results")
+                    
+                    elif edit_mode == "Heat Map Table View":
+                        st.write("**Heat Map Table View - Tests vs Dates**")
+                        
+                        # Options row
+                        opt_col1, opt_col2, opt_col3 = st.columns(3)
+                        
+                        with opt_col1:
+                            date_format = st.selectbox(
+                                "Date Format:",
+                                options=["UK (DD/MM/YYYY)", "US (MM/DD/YYYY)"],
+                                key="heatmap_date_format"
+                            )
+                        
+                        with opt_col2:
+                            # Get test categories from investigation standards
+                            investigation_standards = InvestigationStandards(db)
+                            all_standards = investigation_standards.get_all_standards()
+                            
+                            # Build category mapping
+                            test_to_category = {}
+                            categories_set = set()
+                            for standard in all_standards:
+                                if isinstance(standard, dict):
+                                    category = standard.get('category', 'Other')
+                                    test_name = standard.get('standard_name', '')
+                                    aliases = standard.get('aliases', '')
+                                else:
+                                    if len(standard) > 4:
+                                        category = standard[4] if standard[4] else 'Other'
+                                        test_name = standard[1] if len(standard) > 1 else ''
+                                        aliases = standard[5] if len(standard) > 5 and standard[5] else ""
+                                    else:
+                                        continue
+                                
+                                if category and test_name:
+                                    categories_set.add(category)
+                                    test_to_category[test_name] = category
+                                    if aliases:
+                                        for alias in aliases.split(','):
+                                            alias = alias.strip()
+                                            if alias:
+                                                test_to_category[alias] = category
+                            
+                            category_filter = st.selectbox(
+                                "Filter by Test Group:",
+                                options=["All Groups"] + sorted(list(categories_set)),
+                                key="heatmap_category_filter"
+                            )
+                        
+                        with opt_col3:
+                            sort_tests = st.selectbox(
+                                "Sort Tests:",
+                                options=["Alphabetically", "By Category"],
+                                key="heatmap_sort_tests"
+                            )
+                        
+                        # Prepare pivot data
+                        heatmap_df = edit_df.copy()
+                        heatmap_df['Date_dt'] = pd.to_datetime(heatmap_df['Date'])
+                        
+                        # Format dates based on selection
+                        if date_format == "UK (DD/MM/YYYY)":
+                            heatmap_df['Date_Formatted'] = heatmap_df['Date_dt'].dt.strftime('%d/%m/%Y')
+                        else:
+                            heatmap_df['Date_Formatted'] = heatmap_df['Date_dt'].dt.strftime('%m/%d/%Y')
+                        
+                        # Apply category filter
+                        if category_filter != "All Groups":
+                            tests_in_category = [t for t, c in test_to_category.items() if c == category_filter]
+                            heatmap_df = heatmap_df[heatmap_df['Test Type'].isin(tests_in_category)]
+                        
+                        if heatmap_df.empty:
+                            st.warning("No data available for the selected filter.")
+                        else:
+                            # Get unique dates sorted chronologically
+                            unique_dates = heatmap_df.sort_values('Date_dt')['Date_Formatted'].unique().tolist()
+                            
+                            # Get unique test types
+                            unique_tests = heatmap_df['Test Type'].unique().tolist()
+                            
+                            # Sort tests
+                            if sort_tests == "Alphabetically":
+                                unique_tests = sorted(unique_tests, key=lambda x: x.lower())
+                            else:
+                                # Sort by category then alphabetically within category
+                                def get_category_sort_key(test):
+                                    cat = test_to_category.get(test, 'ZZZ_Other')
+                                    return (cat, test.lower())
+                                unique_tests = sorted(unique_tests, key=get_category_sort_key)
+                            
+                            # Create pivot table with test types as rows and dates as columns
+                            pivot_data = {}
+                            reference_ranges = {}
+                            value_ids = {}  # Store IDs for editing
+                            
+                            for test in unique_tests:
+                                pivot_data[test] = {}
+                                value_ids[test] = {}
+                                test_rows = heatmap_df[heatmap_df['Test Type'] == test]
+                                
+                                # Get reference range for this test
+                                if not test_rows.empty:
+                                    ref_range = test_rows.iloc[0]['Reference Range']
+                                    reference_ranges[test] = ref_range
+                                
+                                for date in unique_dates:
+                                    date_rows = test_rows[test_rows['Date_Formatted'] == date]
+                                    if not date_rows.empty:
+                                        pivot_data[test][date] = date_rows.iloc[0]['Value']
+                                        value_ids[test][date] = date_rows.iloc[0]['ID']
+                                    else:
+                                        pivot_data[test][date] = None
+                                        value_ids[test][date] = None
+                            
+                            # Create DataFrame for display
+                            pivot_df = pd.DataFrame(pivot_data).T
+                            pivot_df.index.name = 'Test Name'
+                            
+                            # Function to parse reference range and calculate deviation
+                            def get_deviation_color(value, ref_range):
+                                if value is None or pd.isna(value):
+                                    return ""
+                                
+                                try:
+                                    # Parse reference range (e.g., "3.5-5.5", "< 100", "> 10")
+                                    ref_range = str(ref_range) if ref_range else ""
+                                    low, high = None, None
+                                    
+                                    if '-' in ref_range:
+                                        parts = ref_range.replace(' ', '').split('-')
+                                        if len(parts) == 2:
+                                            try:
+                                                low = float(parts[0])
+                                                high = float(parts[1])
+                                            except:
+                                                pass
+                                    elif '<' in ref_range:
+                                        try:
+                                            high = float(ref_range.replace('<', '').replace(' ', ''))
+                                            low = 0
+                                        except:
+                                            pass
+                                    elif '>' in ref_range:
+                                        try:
+                                            low = float(ref_range.replace('>', '').replace(' ', ''))
+                                            high = low * 2
+                                        except:
+                                            pass
+                                    
+                                    if low is not None and high is not None:
+                                        mid = (low + high) / 2
+                                        range_size = high - low
+                                        
+                                        if range_size == 0:
+                                            return "background-color: #90EE90"  # Light green for exact match
+                                        
+                                        # Calculate deviation
+                                        if low <= value <= high:
+                                            # Normal range - green gradient (darker green = closer to middle)
+                                            deviation = abs(value - mid) / (range_size / 2)
+                                            green_intensity = int(144 + (1 - deviation) * 50)
+                                            return f"background-color: rgb(144, {green_intensity}, 144)"
+                                        elif value < low:
+                                            # Below normal - blue gradient
+                                            deviation = min((low - value) / range_size, 1)
+                                            blue_intensity = int(173 + deviation * 82)
+                                            return f"background-color: rgb({int(173 - deviation * 100)}, {int(216 - deviation * 100)}, {blue_intensity})"
+                                        else:
+                                            # Above normal - red gradient
+                                            deviation = min((value - high) / range_size, 1)
+                                            red_intensity = int(255 - deviation * 50)
+                                            return f"background-color: rgb({red_intensity}, {int(182 - deviation * 100)}, {int(193 - deviation * 100)})"
+                                    
+                                    return ""
+                                except:
+                                    return ""
+                            
+                            # Display legend
+                            st.write("**Color Legend:** 🟢 Normal | 🔵 Below Normal | 🔴 Above Normal")
+                            st.write(f"**{len(unique_tests)} tests × {len(unique_dates)} dates**")
+                            
+                            # Build styled dataframe for visualization
+                            styled_pivot = pivot_df.copy()
+                            
+                            # Apply styles row by row
+                            def apply_row_style(row):
+                                test_name = row.name
+                                ref_range = reference_ranges.get(test_name, "")
+                                styles = []
+                                for val in row:
+                                    color = get_deviation_color(val, ref_range)
+                                    styles.append(color if color else "")
+                                return styles
+                            
+                            styled_display = styled_pivot.style.apply(apply_row_style, axis=1)
+                            styled_display = styled_display.format(precision=2, na_rep="")
+                            
+                            # Show the colored heatmap view
+                            with st.expander("📊 Heat Map View (Color-Coded)", expanded=True):
+                                st.dataframe(styled_display, use_container_width=True, height=min(400, len(unique_tests) * 35 + 50))
+                            
+                            # Editable table section
+                            with st.expander("✏️ Editable Table", expanded=True):
+                                # Prepare for data editor - convert to editable format
+                                editable_df = pivot_df.reset_index()
+                                editable_df = editable_df.rename(columns={'index': 'Test Name'})
+                                
+                                # Use data_editor for editing
+                                edited_df = st.data_editor(
+                                    editable_df,
+                                    use_container_width=True,
+                                    hide_index=True,
+                                    num_rows="fixed",
+                                    key="heatmap_editor"
+                                )
+                            
+                            # Check for changes and save
+                            if st.button("💾 Save All Changes", key="save_heatmap_changes"):
+                                changes_made = 0
+                                errors = 0
+                                new_entries = 0
+                                
+                                for idx, row in edited_df.iterrows():
+                                    test_name = row['Test Name']
+                                    for date_col in unique_dates:
+                                        new_value = row[date_col]
+                                        original_value = pivot_data.get(test_name, {}).get(date_col)
+                                        result_id = value_ids.get(test_name, {}).get(date_col)
+                                        
+                                        # Skip if no change
+                                        if pd.isna(new_value) and original_value is None:
+                                            continue
+                                        if not pd.isna(new_value) and original_value is not None and float(new_value) == float(original_value):
+                                            continue
+                                        
+                                        try:
+                                            if result_id is not None:
+                                                # Update existing record
+                                                if pd.isna(new_value):
+                                                    # Delete if cleared
+                                                    if db.delete_test_result(result_id):
+                                                        changes_made += 1
+                                                else:
+                                                    # Parse the date back
+                                                    if date_format == "UK (DD/MM/YYYY)":
+                                                        parsed_date = pd.to_datetime(date_col, format='%d/%m/%Y').date()
+                                                    else:
+                                                        parsed_date = pd.to_datetime(date_col, format='%m/%d/%Y').date()
+                                                    
+                                                    if db.update_test_result(
+                                                        result_id=result_id,
+                                                        test_type=test_name,
+                                                        value=float(new_value),
+                                                        unit=heatmap_df[heatmap_df['Test Type'] == test_name].iloc[0]['Unit'] if not heatmap_df[heatmap_df['Test Type'] == test_name].empty else '',
+                                                        test_date=parsed_date,
+                                                        reference_range=reference_ranges.get(test_name, '')
+                                                    ):
+                                                        changes_made += 1
+                                            else:
+                                                # Add new entry if value provided for empty cell
+                                                if not pd.isna(new_value):
+                                                    if date_format == "UK (DD/MM/YYYY)":
+                                                        parsed_date = pd.to_datetime(date_col, format='%d/%m/%Y').date()
+                                                    else:
+                                                        parsed_date = pd.to_datetime(date_col, format='%m/%d/%Y').date()
+                                                    
+                                                    # Get unit from existing test data
+                                                    existing_test_data = heatmap_df[heatmap_df['Test Type'] == test_name]
+                                                    unit = existing_test_data.iloc[0]['Unit'] if not existing_test_data.empty else ''
+                                                    
+                                                    if db.add_test_result(
+                                                        patient_name=selected_patient,
+                                                        test_type=test_name,
+                                                        value=float(new_value),
+                                                        unit=unit,
+                                                        test_date=parsed_date,
+                                                        reference_range=reference_ranges.get(test_name, '')
+                                                    ):
+                                                        new_entries += 1
+                                        except Exception as e:
+                                            errors += 1
+                                
+                                if changes_made > 0 or new_entries > 0:
+                                    st.success(f"✅ Saved: {changes_made} updated, {new_entries} new entries")
+                                    st.rerun()
+                                elif errors > 0:
+                                    st.error(f"❌ {errors} errors occurred while saving")
+                                else:
+                                    st.info("No changes detected")
                 
                 # Always show the complete data table at the bottom
                 st.subheader("📋 Complete Database Records")
