@@ -4421,23 +4421,79 @@ def manage_data_page(db, user_id):
                             styled_display = enhanced_pivot_df.style.apply(apply_row_style, axis=1)
                             styled_display = styled_display.format(precision=2, na_rep="")
                             
-                            # CSS for frozen headers (best effort in Streamlit)
+                            # CSS for frozen headers and auto-fit column widths (applies to both dataframe and data_editor)
                             st.markdown("""
                             <style>
-                            /* Make table header sticky for vertical scrolling */
+                            /* Auto-fit column widths for st.dataframe */
+                            div[data-testid="stDataFrame"] > div {
+                                overflow-x: auto !important;
+                            }
+                            div[data-testid="stDataFrame"] table {
+                                width: auto !important;
+                                table-layout: auto !important;
+                            }
+                            div[data-testid="stDataFrame"] table th,
+                            div[data-testid="stDataFrame"] table td {
+                                white-space: nowrap !important;
+                                padding: 4px 8px !important;
+                            }
+                            /* Sticky header for st.dataframe */
                             div[data-testid="stDataFrame"] table thead tr th {
                                 position: sticky !important;
                                 top: 0 !important;
                                 background-color: #f0f2f6 !important;
                                 z-index: 100 !important;
                             }
+                            /* Freeze first column for st.dataframe */
+                            div[data-testid="stDataFrame"] table tbody tr td:first-child,
+                            div[data-testid="stDataFrame"] table thead tr th:first-child {
+                                position: sticky !important;
+                                left: 0 !important;
+                                background-color: #f0f2f6 !important;
+                                z-index: 99 !important;
+                            }
+                            div[data-testid="stDataFrame"] table thead tr th:first-child {
+                                z-index: 101 !important;
+                            }
+                            
+                            /* Auto-fit column widths for st.data_editor */
+                            div[data-testid="stDataEditor"] > div {
+                                overflow-x: auto !important;
+                            }
+                            div[data-testid="stDataEditor"] table {
+                                width: auto !important;
+                                table-layout: auto !important;
+                            }
+                            div[data-testid="stDataEditor"] table th,
+                            div[data-testid="stDataEditor"] table td {
+                                white-space: nowrap !important;
+                                padding: 4px 8px !important;
+                            }
+                            /* Sticky header for st.data_editor */
+                            div[data-testid="stDataEditor"] table thead tr th {
+                                position: sticky !important;
+                                top: 0 !important;
+                                background-color: #f0f2f6 !important;
+                                z-index: 100 !important;
+                            }
+                            /* Freeze first column for st.data_editor */
+                            div[data-testid="stDataEditor"] table tbody tr td:first-child,
+                            div[data-testid="stDataEditor"] table thead tr th:first-child {
+                                position: sticky !important;
+                                left: 0 !important;
+                                background-color: #f0f2f6 !important;
+                                z-index: 99 !important;
+                            }
+                            div[data-testid="stDataEditor"] table thead tr th:first-child {
+                                z-index: 101 !important;
+                            }
                             </style>
                             """, unsafe_allow_html=True)
-                            st.caption("Tip: Scroll horizontally to see all dates. Header row stays fixed when scrolling vertically.")
+                            st.caption("Tip: Scroll horizontally to see all dates. Test name column and header row stay fixed when scrolling.")
                             
                             # Show the colored heatmap view
                             with st.expander("📊 Heat Map View (Color-Coded)", expanded=True):
-                                st.dataframe(styled_display, use_container_width=True, height=min(600, len(unique_tests) * 35 + 80))
+                                st.dataframe(styled_display, use_container_width=False, height=min(600, len(unique_tests) * 35 + 80))
                             
                             # Editable table section - uses same filtered data as heat map
                             with st.expander("✏️ Editable Table", expanded=True):
@@ -4464,7 +4520,7 @@ def manage_data_page(db, user_id):
                                 # Display the data editor - Streamlit manages edits in session_state['heatmap_editor']
                                 edited_df = st.data_editor(
                                     editable_df,
-                                    use_container_width=True,
+                                    use_container_width=False,
                                     hide_index=True,
                                     num_rows="fixed",
                                     column_config=column_config,
