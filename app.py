@@ -4512,49 +4512,41 @@ def manage_data_page(db, user_id):
                                     if diff_count == 0:
                                         st.warning("No differences found between Editor values and Database values")
                                 
-                                # Compare edited_df (from data_editor return) against pivot_data (current DB values)
+                                # Compare edited_df against pivot_data and save changes
+                                save_attempts = []
                                 for idx, row in edited_df.iterrows():
                                     test_name = row['Test Name']
                                     for date_col in unique_dates:
-                                        # Skip non-date columns
                                         if date_col not in row.index:
                                             continue
                                         
                                         new_value = row[date_col]
-                                        
-                                        # Get original value directly from pivot_data (current database values)
                                         original_value = pivot_data.get(test_name, {}).get(date_col)
-                                        
                                         result_id = value_ids.get(test_name, {}).get(date_col)
                                         
-                                        # Convert values for comparison
+                                        # Check for changes
                                         new_is_empty = pd.isna(new_value) or (isinstance(new_value, str) and str(new_value).strip() == '')
-                                        orig_is_empty = original_value is None or pd.isna(original_value) or (isinstance(original_value, str) and str(original_value).strip() == '')
+                                        orig_is_empty = original_value is None or pd.isna(original_value)
                                         
-                                        # Skip if both are empty
                                         if new_is_empty and orig_is_empty:
                                             continue
                                         
-                                        # Check if value actually changed
+                                        # Detect change
                                         value_changed = False
                                         if new_is_empty != orig_is_empty:
                                             value_changed = True
                                         elif not new_is_empty and not orig_is_empty:
                                             try:
-                                                # Compare as floats with tolerance
                                                 new_float = float(new_value)
                                                 orig_float = float(original_value)
-                                                if abs(new_float - orig_float) > 0.0001:
+                                                if abs(new_float - orig_float) > 0.001:
                                                     value_changed = True
                                                     changes_list.append(f"{test_name} ({date_col}): {orig_float} → {new_float}")
+                                                    save_attempts.append(f"{test_name}@{date_col}: new={new_float}, old={orig_float}, id={result_id}")
                                             except (ValueError, TypeError):
                                                 if str(new_value) != str(original_value):
                                                     value_changed = True
                                                     changes_list.append(f"{test_name} ({date_col}): {original_value} → {new_value}")
-                                        elif new_is_empty and not orig_is_empty:
-                                            changes_list.append(f"{test_name} ({date_col}): {original_value} → (deleted)")
-                                        elif not new_is_empty and orig_is_empty:
-                                            changes_list.append(f"{test_name} ({date_col}): (new) → {new_value}")
                                         
                                         if not value_changed:
                                             continue
@@ -4636,7 +4628,14 @@ def manage_data_page(db, user_id):
                                 elif errors > 0:
                                     st.error(f"❌ {errors} errors occurred while saving")
                                 else:
+                                    # Show debug info about what was detected vs saved
                                     st.info("No changes detected. Edit values in the table above and click Save.")
+                                    if save_attempts:
+                                        st.warning(f"Debug: {len(save_attempts)} changes were detected but not saved:")
+                                        for attempt in save_attempts[:5]:
+                                            st.write(f"• {attempt}")
+                                    if changes_list:
+                                        st.warning(f"Debug: changes_list has {len(changes_list)} items but total_changes={total_changes}")
                 
                 # Always show the complete data table at the bottom
                 st.subheader("📋 Complete Database Records")
