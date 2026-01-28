@@ -4660,16 +4660,24 @@ def manage_data_page(db, user_id):
                                                         st.error(f"Update failed for {test_name} (id={result_id}) - returned False")
                                             else:
                                                 if not new_is_empty:
-                                                    if db.add_test_result(
-                                                        patient_name=selected_patient,
-                                                        test_type=test_name,
-                                                        value=numeric_value,
-                                                        unit=unit,
+                                                    patient_id = db.get_patient_id(selected_patient, user_id)
+                                                    if not patient_id:
+                                                        st.error(f"Could not find patient '{selected_patient}' - cannot add new test result")
+                                                        errors += 1
+                                                    elif db.add_test_result(
+                                                        patient_id=patient_id,
                                                         test_date=parsed_date,
-                                                        reference_range=ref_str
+                                                        test_type=test_name,
+                                                        test_value=numeric_value,
+                                                        unit=unit,
+                                                        reference_range=ref_str,
+                                                        user_id=user_id
                                                     ):
                                                         new_entries += 1
                                                         st.success(f"Added {test_name}")
+                                                    else:
+                                                        st.error(f"Failed to add {test_name}")
+                                                        errors += 1
                                         except Exception as e:
                                             errors += 1
                                             st.error(f"Error saving {test_name}: {e}")
