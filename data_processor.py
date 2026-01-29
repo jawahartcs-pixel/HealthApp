@@ -42,7 +42,7 @@ class DataProcessor:
                     reference_range = result.get('reference_range', '')
                     if not reference_range:
                         # Try to get reference range for the exact test type provided
-                        _, match_info = self.standards.standardize_test_name(test_type_to_save)
+                        _, match_info = self.standards.standardize_test_name(test_type_to_save, source_text=test_type_to_save)
                         if match_info:
                             reference_range = self.standards.get_reference_range(test_type_to_save, 'both')
                     
