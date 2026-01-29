@@ -508,18 +508,27 @@ class InvestigationStandards:
             print(f"Error deleting standard: {e}")
             return False
     
-    def find_best_match(self, test_name: str, unit: str = '', threshold: float = 0.6) -> Optional[Dict]:
-        """Find the best matching standard for a given test name and unit using fuzzy logic."""
+    def find_best_match(self, test_name: str, unit: str = '', threshold: float = 0.6, source_text: str = '') -> Optional[Dict]:
+        """Find the best matching standard for a given test name and unit using fuzzy logic.
+        
+        Args:
+            test_name: The test name to match
+            unit: The unit to help with matching
+            threshold: Minimum match score (0-1)
+            source_text: Original source text from document for exclusion checking
+        """
         test_name_clean = self._clean_test_name(test_name)
         test_name_lower = test_name.lower().strip()
+        # Use source_text for exclusion checking if provided, otherwise use test_name
+        exclusion_check_text = (source_text.lower().strip() if source_text else test_name_lower)
         standards = self.get_all_standards()
         
         best_match = None
         best_score = 0
         
         for standard in standards:
-            # Check exclusions first - if test name matches any exclusion, skip this standard
-            if self._matches_exclusion(test_name_lower, standard.get('exclusions', '')):
+            # Check exclusions first - check against source_text or test_name
+            if self._matches_exclusion(exclusion_check_text, standard.get('exclusions', '')):
                 continue
             
             # Check direct match with standard name
@@ -878,9 +887,15 @@ class InvestigationStandards:
         unit_lower = unit.lower()
         return any(med_unit in unit_lower for med_unit in medical_units)
     
-    def standardize_test_name(self, test_name: str, unit: str = '') -> Tuple[str, Optional[Dict]]:
-        """Standardize a test name and return the standard name and reference ranges."""
-        match = self.find_best_match(test_name, unit)
+    def standardize_test_name(self, test_name: str, unit: str = '', source_text: str = '') -> Tuple[str, Optional[Dict]]:
+        """Standardize a test name and return the standard name and reference ranges.
+        
+        Args:
+            test_name: The test name to standardize
+            unit: The unit to help with matching
+            source_text: Original source text from document for exclusion checking
+        """
+        match = self.find_best_match(test_name, unit, source_text=source_text)
         if match:
             return match['standard_name'], match
         else:

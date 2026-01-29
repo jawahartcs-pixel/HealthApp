@@ -5869,6 +5869,10 @@ def investigation_standards_page(investigation_standards):
                                 key=f"cat_{standard['id']}")
                             edit_description = st.text_area("Description", value=standard['description'] or '', key=f"desc_{standard['id']}")
                             edit_aliases = st.text_area("Aliases (comma-separated)", value=standard['aliases'] or '', key=f"alias_{standard['id']}")
+                            edit_exclusions = st.text_area("Exclusions (comma-separated)", 
+                                value=standard.get('exclusions', '') or '', 
+                                key=f"exclusions_{standard['id']}",
+                                help="Patterns that should NOT match this standard (e.g., 'magnesium hydroxide' to exclude from Magnesium)")
                         
                         with col2:
                             st.markdown("**🚹🚺 Reference Ranges**")
@@ -5903,6 +5907,7 @@ def investigation_standards_page(investigation_standards):
                                 update_data = {
                                     'standard_name': edit_name,
                                     'aliases': edit_aliases,
+                                    'exclusions': edit_exclusions,
                                     'male_range_min': male_min,
                                     'male_range_max': male_max,
                                     'male_unit': common_unit_edit,  # Use common unit for male

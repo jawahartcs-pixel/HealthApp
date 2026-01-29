@@ -939,6 +939,7 @@ class FileParser:
         for standard in all_standards:
             standard_name = standard['standard_name']
             aliases = standard.get('aliases', '')
+            exclusions = standard.get('exclusions', '')
             common_unit = standard.get('common_unit') or standard.get('male_unit', '')
             
             # Create search patterns from standard name and aliases
@@ -969,6 +970,22 @@ class FileParser:
                         try:
                             value = float(match.group(1))
                             extracted_unit = match.group(2).strip() if len(match.groups()) > 1 else ''
+                            
+                            # Get matched context (50 chars before and after match) for exclusion checking
+                            match_start = max(0, match.start() - 50)
+                            match_end = min(len(text), match.end() + 50)
+                            matched_context = text[match_start:match_end].lower()
+                            
+                            # Check exclusions - if any exclusion pattern is in the matched context, skip this match
+                            if exclusions:
+                                skip_match = False
+                                for exc in exclusions.split(','):
+                                    exc = exc.strip().lower()
+                                    if exc and exc in matched_context:
+                                        skip_match = True
+                                        break
+                                if skip_match:
+                                    continue
                             
                             # Clean up extracted unit
                             extracted_unit = re.sub(r'\s+', ' ', extracted_unit).strip()
