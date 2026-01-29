@@ -206,11 +206,39 @@ class InvestigationStandards:
         """Get all investigation standards."""
         with sqlite3.connect(self.db_path) as conn:
             cursor = conn.cursor()
-            # Check if common_unit column exists
             cursor.execute("PRAGMA table_info(investigation_standards)")
             columns = [column[1] for column in cursor.fetchall()]
             
-            if 'common_unit' in columns:
+            has_common_unit = 'common_unit' in columns
+            has_exclusions = 'exclusions' in columns
+            
+            if has_common_unit and has_exclusions:
+                cursor.execute('''
+                    SELECT id, standard_name, aliases, exclusions, male_range_min, male_range_max, male_unit,
+                           female_range_min, female_range_max, female_unit, description, category, common_unit
+                    FROM investigation_standards
+                    ORDER BY category, standard_name
+                ''')
+                
+                results = cursor.fetchall()
+                standards = []
+                for row in results:
+                    standards.append({
+                        'id': row[0],
+                        'standard_name': row[1],
+                        'aliases': row[2],
+                        'exclusions': row[3] or '',
+                        'male_range_min': row[4],
+                        'male_range_max': row[5],
+                        'male_unit': row[6],
+                        'female_range_min': row[7],
+                        'female_range_max': row[8],
+                        'female_unit': row[9],
+                        'description': row[10],
+                        'category': row[11],
+                        'common_unit': row[12]
+                    })
+            elif has_common_unit:
                 cursor.execute('''
                     SELECT id, standard_name, aliases, male_range_min, male_range_max, male_unit,
                            female_range_min, female_range_max, female_unit, description, category, common_unit
@@ -225,6 +253,7 @@ class InvestigationStandards:
                         'id': row[0],
                         'standard_name': row[1],
                         'aliases': row[2],
+                        'exclusions': '',
                         'male_range_min': row[3],
                         'male_range_max': row[4],
                         'male_unit': row[5],
@@ -236,7 +265,6 @@ class InvestigationStandards:
                         'common_unit': row[11]
                     })
             else:
-                # Fallback to old schema
                 cursor.execute('''
                     SELECT id, standard_name, aliases, male_range_min, male_range_max, male_unit,
                            female_range_min, female_range_max, female_unit, description, category
@@ -251,6 +279,7 @@ class InvestigationStandards:
                         'id': row[0],
                         'standard_name': row[1],
                         'aliases': row[2],
+                        'exclusions': '',
                         'male_range_min': row[3],
                         'male_range_max': row[4],
                         'male_unit': row[5],
@@ -259,7 +288,7 @@ class InvestigationStandards:
                         'female_unit': row[8],
                         'description': row[9],
                         'category': row[10],
-                        'common_unit': None  # Add for compatibility
+                        'common_unit': None
                     })
             return standards
     
@@ -284,7 +313,19 @@ class InvestigationStandards:
                 cursor.execute("PRAGMA table_info(investigation_standards)")
                 columns = [column[1] for column in cursor.fetchall()]
                 
-                if 'common_unit' in columns:
+                if 'common_unit' in columns and 'exclusions' in columns:
+                    cursor.execute('''
+                        INSERT INTO investigation_standards 
+                        (standard_name, aliases, exclusions, male_range_min, male_range_max, male_unit,
+                         female_range_min, female_range_max, female_unit, description, category, common_unit)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ''', (
+                        standard_data['standard_name'], standard_data['aliases'], standard_data.get('exclusions', ''),
+                        standard_data['male_range_min'], standard_data['male_range_max'], standard_data['male_unit'],
+                        standard_data['female_range_min'], standard_data['female_range_max'], standard_data['female_unit'],
+                        standard_data['description'], standard_data['category'], standard_data.get('common_unit', '')
+                    ))
+                elif 'common_unit' in columns:
                     cursor.execute('''
                         INSERT INTO investigation_standards 
                         (standard_name, aliases, male_range_min, male_range_max, male_unit,
@@ -297,7 +338,6 @@ class InvestigationStandards:
                         standard_data['description'], standard_data['category'], standard_data.get('common_unit', '')
                     ))
                 else:
-                    # Fallback to old schema
                     cursor.execute('''
                         INSERT INTO investigation_standards 
                         (standard_name, aliases, male_range_min, male_range_max, male_unit,
@@ -343,7 +383,21 @@ class InvestigationStandards:
                 cursor.execute("PRAGMA table_info(investigation_standards)")
                 columns = [column[1] for column in cursor.fetchall()]
                 
-                if 'common_unit' in columns:
+                if 'common_unit' in columns and 'exclusions' in columns:
+                    cursor.execute('''
+                        UPDATE investigation_standards 
+                        SET standard_name=?, aliases=?, exclusions=?, male_range_min=?, male_range_max=?, male_unit=?,
+                            female_range_min=?, female_range_max=?, female_unit=?, description=?, category=?,
+                            common_unit=?, updated_date=CURRENT_TIMESTAMP
+                        WHERE id=?
+                    ''', (
+                        standard_data['standard_name'], standard_data['aliases'], standard_data.get('exclusions', ''),
+                        standard_data['male_range_min'], standard_data['male_range_max'], standard_data['male_unit'],
+                        standard_data['female_range_min'], standard_data['female_range_max'], standard_data['female_unit'],
+                        standard_data['description'], standard_data['category'], standard_data.get('common_unit', ''),
+                        standard_id
+                    ))
+                elif 'common_unit' in columns:
                     cursor.execute('''
                         UPDATE investigation_standards 
                         SET standard_name=?, aliases=?, male_range_min=?, male_range_max=?, male_unit=?,
@@ -358,7 +412,6 @@ class InvestigationStandards:
                         standard_id
                     ))
                 else:
-                    # Fallback to old schema
                     cursor.execute('''
                         UPDATE investigation_standards 
                         SET standard_name=?, aliases=?, male_range_min=?, male_range_max=?, male_unit=?,
