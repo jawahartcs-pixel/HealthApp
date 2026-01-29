@@ -1094,7 +1094,12 @@ Extraction Method: {result.get('source', 'regex')}""")
                                             standard_names = [std['standard_name'] for std in all_standards]
                                             
                                             # Try to find fuzzy match for current test type (including unit)
-                                            standardized_name, match_info = investigation_standards.standardize_test_name(result['test_type'], result.get('unit', ''))
+                                            # Pass original test_type as source_text for exclusion checking
+                                            standardized_name, match_info = investigation_standards.standardize_test_name(
+                                                result['test_type'], 
+                                                result.get('unit', ''),
+                                                source_text=result['test_type']
+                                            )
                                             
                                             # Create the options list with option to use the text input
                                             options = ["(Use custom text below)"] + standard_names
@@ -4150,7 +4155,7 @@ def manage_data_page(db, user_id):
                                         units_map[test] = ''
                                 else:
                                     # Fallback: try to find matching standard by standardizing name
-                                    std_name, std_match = investigation_standards.standardize_test_name(test)
+                                    std_name, std_match = investigation_standards.standardize_test_name(test, source_text=test)
                                     if std_match:
                                         if patient_gender == 'male':
                                             range_min = std_match.get('male_range_min')
@@ -6062,7 +6067,7 @@ def investigation_standards_page(investigation_standards):
                 
                 results_data = []
                 for test_name in test_names:
-                    standardized_name, match_info = investigation_standards.standardize_test_name(test_name)
+                    standardized_name, match_info = investigation_standards.standardize_test_name(test_name, source_text=test_name)
                     
                     if match_info:
                         match_score = match_info.get('match_score', 0)
