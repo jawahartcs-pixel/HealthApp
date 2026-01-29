@@ -28,6 +28,7 @@ class InvestigationStandards:
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     standard_name TEXT UNIQUE NOT NULL,
                     aliases TEXT,
+                    exclusions TEXT,
                     male_range_min REAL,
                     male_range_max REAL,
                     male_unit TEXT,
@@ -47,7 +48,13 @@ class InvestigationStandards:
                 cursor.execute('ALTER TABLE investigation_standards ADD COLUMN common_unit TEXT')
                 conn.commit()
             except sqlite3.OperationalError:
-                # Column already exists
+                pass
+            
+            # Add exclusions column if it doesn't exist (migration)
+            try:
+                cursor.execute('ALTER TABLE investigation_standards ADD COLUMN exclusions TEXT')
+                conn.commit()
+            except sqlite3.OperationalError:
                 pass
     
     def populate_default_standards(self):
@@ -451,12 +458,17 @@ class InvestigationStandards:
     def find_best_match(self, test_name: str, unit: str = '', threshold: float = 0.6) -> Optional[Dict]:
         """Find the best matching standard for a given test name and unit using fuzzy logic."""
         test_name_clean = self._clean_test_name(test_name)
+        test_name_lower = test_name.lower().strip()
         standards = self.get_all_standards()
         
         best_match = None
         best_score = 0
         
         for standard in standards:
+            # Check exclusions first - if test name matches any exclusion, skip this standard
+            if self._matches_exclusion(test_name_lower, standard.get('exclusions', '')):
+                continue
+            
             # Check direct match with standard name
             standard_name_clean = self._clean_test_name(standard['standard_name'])
             text_score = self._calculate_similarity(test_name_clean, standard_name_clean)
@@ -490,6 +502,23 @@ class InvestigationStandards:
             best_match['match_score'] = best_score
         
         return best_match
+    
+    def _matches_exclusion(self, test_name: str, exclusions: str) -> bool:
+        """Check if test name matches any exclusion pattern (non-aliases)."""
+        if not exclusions:
+            return False
+        
+        exclusion_list = [exc.strip().lower() for exc in exclusions.split(',') if exc.strip()]
+        
+        for exclusion in exclusion_list:
+            # Check if exclusion pattern is contained in test name or vice versa
+            if exclusion in test_name or test_name in exclusion:
+                return True
+            # Also check fuzzy match for close matches
+            if SequenceMatcher(None, exclusion, test_name).ratio() >= 0.85:
+                return True
+        
+        return False
     
     def _clean_test_name(self, name: str) -> str:
         """Clean test name for better matching."""
