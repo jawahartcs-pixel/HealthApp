@@ -5691,6 +5691,7 @@ def investigation_standards_page(investigation_standards):
                     'female_range_min': 0.0,
                     'female_range_max': 0.0,
                     'aliases': '',
+                    'exclusions': '',
                     'description': ''
                 })
                 
@@ -5709,7 +5710,8 @@ def investigation_standards_page(investigation_standards):
                     'male_range_max': st.column_config.NumberColumn('Male Max', width='small', format="%.2f"),
                     'female_range_min': st.column_config.NumberColumn('Female Min', width='small', format="%.2f"),
                     'female_range_max': st.column_config.NumberColumn('Female Max', width='small', format="%.2f"),
-                    'aliases': st.column_config.TextColumn('Aliases', width='large', help="Comma-separated list"),
+                    'aliases': st.column_config.TextColumn('Aliases', width='large', help="Comma-separated list of names that should match this standard"),
+                    'exclusions': st.column_config.TextColumn('Exclusions', width='large', help="Comma-separated list of names that should NOT match this standard (non-aliases)"),
                     'description': st.column_config.TextColumn('Description', width='large')
                 }
                 
@@ -5717,7 +5719,7 @@ def investigation_standards_page(investigation_standards):
                 edit_columns = [
                     'id', 'standard_name', 'category', 'computed_unit',
                     'male_range_min', 'male_range_max', 'female_range_min', 'female_range_max',
-                    'aliases', 'description'
+                    'aliases', 'exclusions', 'description'
                 ]
                 
                 # Warning about unique names
@@ -5755,6 +5757,7 @@ def investigation_standards_page(investigation_standards):
                                 standard_data = {
                                     'standard_name': str(row['standard_name']).strip(),
                                     'aliases': row['aliases'] if pd.notna(row['aliases']) else '',
+                                    'exclusions': row['exclusions'] if pd.notna(row.get('exclusions')) else '',
                                     'male_range_min': row['male_range_min'] if pd.notna(row['male_range_min']) else 0.0,
                                     'male_range_max': row['male_range_max'] if pd.notna(row['male_range_max']) else 0.0,
                                     'female_range_min': row['female_range_min'] if pd.notna(row['female_range_min']) else 0.0,
@@ -5806,6 +5809,7 @@ def investigation_standards_page(investigation_standards):
                                 update_data = {
                                     'standard_name': edited_row['standard_name'],
                                     'aliases': edited_row['aliases'] if pd.notna(edited_row['aliases']) else '',
+                                    'exclusions': edited_row['exclusions'] if pd.notna(edited_row.get('exclusions')) else '',
                                     'male_range_min': edited_row['male_range_min'] if pd.notna(edited_row['male_range_min']) else 0.0,
                                     'male_range_max': edited_row['male_range_max'] if pd.notna(edited_row['male_range_max']) else 0.0,
                                     'female_range_min': edited_row['female_range_min'] if pd.notna(edited_row['female_range_min']) else 0.0,
