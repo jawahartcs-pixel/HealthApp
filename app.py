@@ -266,7 +266,7 @@ def upload_results_page(file_parser, data_processor, user_id):
                                             'Investigation': result['test_type'],
                                             'Value': result['value'],
                                             'Unit': result['unit'],
-                                            'Matched Term': result.get('matched_term', ''),
+                                            'Source Text': result.get('matched_term', ''),
                                         })
                                     
                                     # Display editable dataframe
@@ -625,7 +625,7 @@ def upload_results_page(file_parser, data_processor, user_id):
                                             'Investigation': result['test_type'],
                                             'Value': result['value'],
                                             'Unit': result['unit'],
-                                            'Matched Term': result.get('matched_term', ''),
+                                            'Source Text': result.get('matched_term', ''),
                                         })
                                     
                                     # Display editable dataframe

@@ -1005,13 +1005,21 @@ class FileParser:
                                 else:
                                     ref_range = f"{male_min}-{male_max}"
                             
+                            # Get the original source text from the document (the matched portion)
+                            source_text_start = max(0, match.start() - 30)
+                            source_text_end = min(len(text), match.end() + 10)
+                            original_source_text = text[source_text_start:source_text_end].strip()
+                            # Clean up the source text (remove extra whitespace)
+                            original_source_text = ' '.join(original_source_text.split())
+                            
                             result = {
                                 'test_type': standard_name,
                                 'value': value,
                                 'unit': extracted_unit,
                                 'reference_range': ref_range,
                                 'source': 'standards_scan',
-                                'matched_term': term,
+                                'matched_term': original_source_text,  # Now shows original source text
+                                'search_term': term,  # The term that was searched for
                                 'category': standard.get('category', ''),
                                 'description': standard.get('description', ''),
                                 'document_position': match.start()  # Track position in document
