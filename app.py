@@ -3931,7 +3931,7 @@ def manage_data_page(db, user_id):
                         for standard in all_standards:
                             if isinstance(standard, dict):
                                 category = standard.get('category', 'Other')
-                                test_name = standard.get('standard_name', '')
+                                test_name = standard.get('standard_name', '').strip()  # Trim whitespace
                                 aliases = standard.get('aliases', '')
                                 
                                 # Get gender-specific ranges
