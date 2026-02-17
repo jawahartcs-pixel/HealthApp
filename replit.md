@@ -18,7 +18,7 @@ User wants proper category grouping for visualizations using the investigation s
 ### Backend Architecture
 - **Language**: Python.
 - **Architecture Pattern**: Modular, component-based design.
-- **Core Components**: Database layer, file parser, data processor, visualization engine, and utility functions.
+- **Core Components**: Database layer, file parser, data processor, visualization engine, heat map view module, and utility functions.
 
 ### Data Storage Solution
 - **Database**: SQLite for local data storage.
