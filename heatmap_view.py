@@ -1,7 +1,11 @@
 import streamlit as st
 import pandas as pd
 import json
+import io
 from investigation_standards import InvestigationStandards
+from openpyxl import Workbook
+from openpyxl.styles import PatternFill, Font, Alignment, Border, Side
+from openpyxl.utils import get_column_letter
 
 
 def render_heatmap_view(db, selected_patient, user_id, edit_df, key_prefix="manage", editable=True):
@@ -534,6 +538,197 @@ def render_heatmap_view(db, selected_patient, user_id, edit_df, key_prefix="mana
 
         with st.expander("📊 Heat Map View (Color-Coded)", expanded=True):
             st.dataframe(styled_display, use_container_width=False, height=min(600, len(unique_tests) * 35 + 80))
+
+        def get_deviation_color_rgb(value, ref_info):
+            if value is None or pd.isna(value):
+                return None
+            try:
+                value = float(value)
+            except (ValueError, TypeError):
+                return None
+            low, high = None, None
+            if isinstance(ref_info, dict) and ref_info:
+                low = ref_info.get('min')
+                high = ref_info.get('max')
+            if low is None or high is None:
+                return None
+            try:
+                low, high = float(low), float(high)
+            except (ValueError, TypeError):
+                return None
+            if high <= low:
+                return None
+            range_size = high - low
+            if low <= value <= high:
+                mid = (low + high) / 2
+                deviation = abs(value - mid) / (range_size / 2)
+                deviation = min(max(deviation, 0), 1)
+                r = int(144 - deviation * 110)
+                g = int(238 - deviation * 99)
+                b = int(144 - deviation * 110)
+                return (r, g, b)
+            elif value < low:
+                deviation = (low - value) / range_size
+                deviation = min(max(deviation, 0), 2)
+                intensity = min(deviation / 2, 1)
+                r = int(173 - intensity * 173)
+                g = int(216 - intensity * 216)
+                b = int(230 - intensity * 91)
+                return (r, g, b)
+            else:
+                deviation = (value - high) / range_size
+                deviation = min(max(deviation, 0), 2)
+                intensity = min(deviation / 2, 1)
+                r = int(255 - intensity * 116)
+                g = int(204 - intensity * 204)
+                b = int(203 - intensity * 203)
+                return (r, g, b)
+
+        def generate_excel_heatmap():
+            wb = Workbook()
+            ws = wb.active
+            ws.title = "Heat Map"
+
+            header_fill = PatternFill(start_color="4472C4", end_color="4472C4", fill_type="solid")
+            header_font = Font(bold=True, color="FFFFFF", size=11)
+            summary_fill = PatternFill(start_color="E8E8E8", end_color="E8E8E8", fill_type="solid")
+            summary_font = Font(bold=True, size=11)
+            thin_border = Border(
+                left=Side(style='thin', color='D9D9D9'),
+                right=Side(style='thin', color='D9D9D9'),
+                top=Side(style='thin', color='D9D9D9'),
+                bottom=Side(style='thin', color='D9D9D9')
+            )
+            center_align = Alignment(horizontal='center', vertical='center')
+
+            headers = ['Test Name', 'Category', 'Range'] + list(unique_dates) + ['Avg', 'Count', 'Sum']
+            for col_idx, header in enumerate(headers, 1):
+                cell = ws.cell(row=1, column=col_idx, value=header)
+                cell.fill = header_fill
+                cell.font = header_font
+                cell.alignment = center_align
+                cell.border = thin_border
+
+            for row_idx, test in enumerate(unique_tests, 2):
+                info = test_info.get(test)
+                category = info['category'] if info else 'Other'
+                range_str = range_column.get(test, 'N/A')
+
+                ws.cell(row=row_idx, column=1, value=test).border = thin_border
+                ws.cell(row=row_idx, column=1).font = Font(bold=True, size=10)
+                ws.cell(row=row_idx, column=2, value=category).border = thin_border
+                ws.cell(row=row_idx, column=3, value=range_str).border = thin_border
+                ws.cell(row=row_idx, column=3).alignment = center_align
+
+                ref_info = reference_ranges.get(test)
+                for date_idx, date_col in enumerate(unique_dates):
+                    col_num = 4 + date_idx
+                    val = pivot_data.get(test, {}).get(date_col)
+                    cell = ws.cell(row=row_idx, column=col_num)
+                    cell.border = thin_border
+                    cell.alignment = center_align
+                    if val is not None and not pd.isna(val):
+                        try:
+                            cell.value = round(float(val), 2)
+                        except:
+                            cell.value = val
+                        rgb = get_deviation_color_rgb(val, ref_info)
+                        if rgb:
+                            hex_color = f"{rgb[0]:02X}{rgb[1]:02X}{rgb[2]:02X}"
+                            cell.fill = PatternFill(start_color=hex_color, end_color=hex_color, fill_type="solid")
+                            lum = (0.299 * rgb[0] + 0.587 * rgb[1] + 0.114 * rgb[2])
+                            text_color = "FFFFFF" if lum < 128 else "000000"
+                            cell.font = Font(color=text_color, size=10)
+
+                stats = stats_data.get(test, {})
+                stats_start = 4 + len(unique_dates)
+                for si, sv in enumerate([stats.get('Average', 0), stats.get('Count', 0), stats.get('Sum', 0)]):
+                    cell = ws.cell(row=row_idx, column=stats_start + si, value=sv)
+                    cell.border = thin_border
+                    cell.alignment = center_align
+
+            summary_row = len(unique_tests) + 2
+            ws.cell(row=summary_row, column=1, value="Average Per Date").font = summary_font
+            ws.cell(row=summary_row, column=1).fill = summary_fill
+            ws.cell(row=summary_row, column=1).border = thin_border
+            ws.cell(row=summary_row, column=2, value="").fill = summary_fill
+            ws.cell(row=summary_row, column=2).border = thin_border
+            ws.cell(row=summary_row, column=3, value="SUMMARY").fill = summary_fill
+            ws.cell(row=summary_row, column=3).border = thin_border
+            ws.cell(row=summary_row, column=3).alignment = center_align
+
+            for date_idx, date_col in enumerate(unique_dates):
+                col_num = 4 + date_idx
+                date_values = []
+                for test in unique_tests:
+                    val = pivot_data.get(test, {}).get(date_col)
+                    if val is not None and not pd.isna(val):
+                        try:
+                            date_values.append(float(val))
+                        except:
+                            pass
+                cell = ws.cell(row=summary_row, column=col_num)
+                cell.fill = summary_fill
+                cell.font = summary_font
+                cell.border = thin_border
+                cell.alignment = center_align
+                if date_values:
+                    cell.value = round(sum(date_values) / len(date_values), 2)
+
+            stats_start = 4 + len(unique_dates)
+            for si, sv in enumerate([overall_avg, total_count, total_sum]):
+                cell = ws.cell(row=summary_row, column=stats_start + si, value=round(sv, 2) if isinstance(sv, float) else sv)
+                cell.fill = summary_fill
+                cell.font = summary_font
+                cell.border = thin_border
+                cell.alignment = center_align
+
+            ws.column_dimensions['A'].width = 25
+            ws.column_dimensions['B'].width = 18
+            ws.column_dimensions['C'].width = 18
+            for col_idx in range(4, 4 + len(unique_dates)):
+                ws.column_dimensions[get_column_letter(col_idx)].width = 14
+            for col_idx in range(4 + len(unique_dates), 4 + len(unique_dates) + 3):
+                ws.column_dimensions[get_column_letter(col_idx)].width = 12
+
+            ws.freeze_panes = 'D2'
+
+            legend_ws = wb.create_sheet("Color Legend")
+            legend_ws.cell(row=1, column=1, value="Color Legend").font = Font(bold=True, size=14)
+            legend_ws.cell(row=3, column=1, value="Below Normal Range").font = Font(bold=True, size=11)
+            legend_ws.cell(row=3, column=2).fill = PatternFill(start_color="ADD8E6", end_color="ADD8E6", fill_type="solid")
+            legend_ws.cell(row=3, column=3, value="Light Blue → Dark Blue (further below)")
+            legend_ws.cell(row=4, column=2).fill = PatternFill(start_color="0000A0", end_color="0000A0", fill_type="solid")
+            legend_ws.cell(row=5, column=1, value="Normal Range").font = Font(bold=True, size=11)
+            legend_ws.cell(row=5, column=2).fill = PatternFill(start_color="90EE90", end_color="90EE90", fill_type="solid")
+            legend_ws.cell(row=5, column=3, value="Light Green → Dark Green (closer to boundary)")
+            legend_ws.cell(row=6, column=2).fill = PatternFill(start_color="228B22", end_color="228B22", fill_type="solid")
+            legend_ws.cell(row=7, column=1, value="Above Normal Range").font = Font(bold=True, size=11)
+            legend_ws.cell(row=7, column=2).fill = PatternFill(start_color="FFCCCB", end_color="FFCCCB", fill_type="solid")
+            legend_ws.cell(row=7, column=3, value="Light Red → Dark Red (further above)")
+            legend_ws.cell(row=8, column=2).fill = PatternFill(start_color="8B0000", end_color="8B0000", fill_type="solid")
+            legend_ws.column_dimensions['A'].width = 25
+            legend_ws.column_dimensions['B'].width = 10
+            legend_ws.column_dimensions['C'].width = 45
+            if patient_gender:
+                legend_ws.cell(row=10, column=1, value=f"Reference ranges: {patient_gender.title()}").font = Font(italic=True, size=11)
+
+            output = io.BytesIO()
+            wb.save(output)
+            output.seek(0)
+            return output
+
+        dl_col1, dl_col2 = st.columns([1, 3])
+        with dl_col1:
+            excel_data = generate_excel_heatmap()
+            safe_name = selected_patient.replace(' ', '_')
+            st.download_button(
+                label="📥 Download as Excel",
+                data=excel_data,
+                file_name=f"heatmap_{safe_name}.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                key=f"{key_prefix}_download_heatmap_excel"
+            )
 
         if editable:
             with st.expander("✏️ Editable Table", expanded=True):
