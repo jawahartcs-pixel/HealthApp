@@ -571,6 +571,8 @@ class Database:
                        test_value: float, unit: str = None, reference_range: str = None, user_id: int = None) -> bool:
         """Add a test result to the database."""
         try:
+            test_type = test_type.strip() if test_type else test_type
+            unit = unit.strip() if unit else unit
             with sqlite3.connect(self.db_path) as conn:
                 cursor = conn.cursor()
                 cursor.execute('''
@@ -801,6 +803,8 @@ class Database:
             # Convert numpy types to Python native types for SQLite compatibility
             result_id = int(result_id)
             value = float(value)
+            test_type = test_type.strip() if test_type else test_type
+            unit = unit.strip() if unit else unit
             
             conn = sqlite3.connect(self.db_path)
             cursor = conn.cursor()

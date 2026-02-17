@@ -306,6 +306,11 @@ class InvestigationStandards:
     def add_standard(self, standard_data: Dict) -> bool:
         """Add a new investigation standard."""
         try:
+            # Trim all string fields
+            for key in ['standard_name', 'aliases', 'exclusions', 'description', 'category', 'male_unit', 'female_unit', 'common_unit']:
+                if key in standard_data and isinstance(standard_data[key], str):
+                    standard_data[key] = standard_data[key].strip()
+            
             with sqlite3.connect(self.db_path) as conn:
                 cursor = conn.cursor()
                 
@@ -359,6 +364,11 @@ class InvestigationStandards:
     def update_standard(self, standard_id: int, standard_data: Dict) -> bool:
         """Update an existing investigation standard and sync changes to test results."""
         try:
+            # Trim all string fields
+            for key in ['standard_name', 'aliases', 'exclusions', 'description', 'category', 'male_unit', 'female_unit', 'common_unit']:
+                if key in standard_data and isinstance(standard_data[key], str):
+                    standard_data[key] = standard_data[key].strip()
+            
             with sqlite3.connect(self.db_path) as conn:
                 cursor = conn.cursor()
                 
