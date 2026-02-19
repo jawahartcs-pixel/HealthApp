@@ -3468,11 +3468,33 @@ def manage_data_page(db, user_id):
     # Management options
     management_type = st.selectbox(
         "Choose management type",
-        ["Select an option", "Excel-Style Data Editor", "View & Edit Patient Data", "Delete Individual Test Results", "Delete Report by Date", "Delete by Test Type", "Delete Patient Data", "Delete All Data"],
+        ["Select an option", "Heat Map Table View", "Excel-Style Data Editor", "View & Edit Patient Data", "Delete Individual Test Results", "Delete Report by Date", "Delete by Test Type", "Delete Patient Data", "Delete All Data"],
         index=0
     )
     
-    if management_type == "Excel-Style Data Editor":
+    if management_type == "Heat Map Table View":
+        st.subheader("🗺️ Heat Map Table View")
+        st.info("Visual heat map of test results with color-coded values, category grouping, and editable table")
+
+        patients = db.get_all_patients()
+        if not patients:
+            st.warning("No patients found. Upload some test results first.")
+            return
+
+        patient_names = [patient[1] for patient in patients]
+        selected_patient = st.selectbox("Select Patient", patient_names, index=None, placeholder="Choose a patient...", key="heatmap_manage_patient")
+
+        if selected_patient:
+            all_test_data = db.get_patient_test_results_with_ids(selected_patient)
+            if all_test_data:
+                edit_df = pd.DataFrame(all_test_data, columns=['ID', 'Date', 'Test Type', 'Value', 'Unit', 'Reference Range'])
+                edit_df['Date'] = pd.to_datetime(edit_df['Date']).dt.strftime('%Y-%m-%d')
+                edit_df['Value'] = pd.to_numeric(edit_df['Value'], errors='coerce')
+                render_heatmap_view(db, selected_patient, user_id, edit_df, key_prefix="manage", editable=True)
+            else:
+                st.info("No test results found for this patient.")
+
+    elif management_type == "Excel-Style Data Editor":
         st.subheader("📊 Excel-Style Data Editor")
         st.info("Add new test results or edit existing data in a spreadsheet-like interface")
         
@@ -3787,7 +3809,7 @@ def manage_data_page(db, user_id):
                     # Selection for editing
                     edit_mode = st.radio(
                         "Choose editing mode:",
-                        ["Edit individual results", "Delete multiple results", "Edit by date groups", "Heat Map Table View"],
+                        ["Edit individual results", "Delete multiple results", "Edit by date groups"],
                         key="edit_mode"
                     )
                     
@@ -3923,9 +3945,6 @@ def manage_data_page(db, user_id):
                                     else:
                                         st.error("❌ Failed to delete results")
                     
-                    elif edit_mode == "Heat Map Table View":
-                        st.write("**Heat Map Table View - Tests vs Dates**")
-                        render_heatmap_view(db, selected_patient, user_id, edit_df, key_prefix="manage", editable=True)
                 
                 # Always show the complete data table at the bottom
                 st.subheader("📋 Complete Database Records")

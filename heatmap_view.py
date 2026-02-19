@@ -386,6 +386,30 @@ def render_heatmap_view(db, selected_patient, user_id, edit_df, key_prefix="mana
         </div>
         """, unsafe_allow_html=True)
 
+        patient_id_for_events = db.get_patient_id(selected_patient, user_id)
+        patient_events = []
+        event_dates_map = {}
+        if patient_id_for_events:
+            patient_events = db.get_patient_events(patient_id_for_events, user_id)
+            for ev in patient_events:
+                ev_date = ev.get('event_date', '')
+                if ev_date:
+                    try:
+                        ev_dt = pd.to_datetime(ev_date).normalize()
+                        if date_format == "UK (DD/MM/YYYY)":
+                            ev_formatted = ev_dt.strftime('%d/%m/%Y')
+                        else:
+                            ev_formatted = ev_dt.strftime('%m/%d/%Y')
+                        if ev_formatted not in event_dates_map:
+                            event_dates_map[ev_formatted] = []
+                        event_dates_map[ev_formatted].append(ev.get('event_name', ''))
+                    except:
+                        pass
+
+        show_events = False
+        if patient_events:
+            show_events = st.toggle("Show Patient Events in Heat Map", value=False, key=f"{key_prefix}_show_events_toggle")
+
         if patient_gender:
             st.info(f"Using {patient_gender.title()} reference ranges")
         st.write(f"**{len(unique_tests)} tests × {len(unique_dates)} dates** (Latest date first)")
@@ -454,12 +478,28 @@ def render_heatmap_view(db, selected_patient, user_id, edit_df, key_prefix="mana
         summary_df = pd.DataFrame([summary_row], index=['Average Per Date'])
         enhanced_pivot_df = pd.concat([enhanced_pivot_df, summary_df])
 
+        if show_events and event_dates_map:
+            event_row = {'Range': 'EVENTS'}
+            for date_col in unique_dates:
+                events_on_date = event_dates_map.get(date_col, [])
+                if events_on_date:
+                    event_row[date_col] = ' | '.join(events_on_date)
+                else:
+                    event_row[date_col] = None
+            event_row['Avg'] = None
+            event_row['Count'] = None
+            event_row['Sum'] = None
+            event_df = pd.DataFrame([event_row], index=['Events'])
+            enhanced_pivot_df = pd.concat([enhanced_pivot_df, event_df])
+
         date_columns = unique_dates.copy()
 
         def apply_row_style(row):
             test_name = row.name
             if test_name == 'Average Per Date':
                 return ['background-color: #e8e8e8; font-weight: bold'] * len(row)
+            if test_name == 'Events':
+                return ['background-color: #FFF3CD; font-weight: bold; writing-mode: vertical-rl; text-orientation: mixed; font-size: 10px;'] * len(row)
             ref_info = reference_ranges.get(test_name, "")
             styles = []
             for col in row.index:
@@ -997,9 +1037,78 @@ def render_heatmap_view(db, selected_patient, user_id, edit_df, key_prefix="mana
 
         if editable:
             with st.expander("✏️ Editable Table", expanded=True):
-                st.caption("Edit values directly in the table below. Click 'Save All Changes' to persist your edits. Stats columns (Avg, Count, Sum) are read-only.")
+                st.caption("Edit values directly. Clear a cell to delete that value. Stats columns (Avg, Count, Sum) are read-only. Test Name column stays frozen when scrolling.")
 
-                editable_df = pivot_df.copy()
+                added_dates_key = f"{key_prefix}_added_dates_{selected_patient}"
+                added_tests_key = f"{key_prefix}_added_tests_{selected_patient}"
+                if added_dates_key not in st.session_state:
+                    st.session_state[added_dates_key] = []
+                if added_tests_key not in st.session_state:
+                    st.session_state[added_tests_key] = []
+
+                for ad in st.session_state[added_dates_key]:
+                    if ad not in unique_dates:
+                        unique_dates.append(ad)
+                        for test in unique_tests:
+                            if ad not in pivot_data.get(test, {}):
+                                pivot_data[test][ad] = None
+                                value_ids[test][ad] = None
+                for at in st.session_state[added_tests_key]:
+                    if at not in unique_tests:
+                        unique_tests.append(at)
+                        pivot_data[at] = {d: None for d in unique_dates}
+                        value_ids[at] = {d: None for d in unique_dates}
+
+                add_col1, add_col2 = st.columns(2)
+                with add_col1:
+                    with st.popover("➕ Add New Date Column"):
+                        new_date = st.date_input("New date:", key=f"{key_prefix}_new_date_input")
+                        if st.button("Add Date", key=f"{key_prefix}_add_date_btn"):
+                            if date_format == "UK (DD/MM/YYYY)":
+                                new_date_str = new_date.strftime('%d/%m/%Y')
+                            else:
+                                new_date_str = new_date.strftime('%m/%d/%Y')
+                            if new_date_str not in unique_dates:
+                                st.session_state[added_dates_key].append(new_date_str)
+                                st.success(f"Added date column: {new_date_str}")
+                                editor_key = f"{key_prefix}_heatmap_editor"
+                                if editor_key in st.session_state:
+                                    del st.session_state[editor_key]
+                                st.rerun()
+                            else:
+                                st.warning("This date already exists.")
+                with add_col2:
+                    with st.popover("➕ Add New Test Row"):
+                        all_standard_names = sorted([s.get('standard_name', '') for s in all_standards if isinstance(s, dict) and s.get('standard_name')], key=str.lower)
+                        existing_tests = set(unique_tests)
+                        available_tests = [t for t in all_standard_names if t not in existing_tests]
+                        if available_tests:
+                            new_test = st.selectbox("Select test from standards:", available_tests, index=None, placeholder="Choose a test...", key=f"{key_prefix}_new_test_select")
+                        else:
+                            new_test = None
+                            st.info("All standard tests are already in the table.")
+                        custom_test = st.text_input("Or enter custom test name:", key=f"{key_prefix}_custom_test_input")
+                        if st.button("Add Test", key=f"{key_prefix}_add_test_btn"):
+                            test_to_add = custom_test.strip() if custom_test.strip() else new_test
+                            if test_to_add and test_to_add not in existing_tests:
+                                st.session_state[added_tests_key].append(test_to_add)
+                                st.success(f"Added test row: {test_to_add}")
+                                editor_key = f"{key_prefix}_heatmap_editor"
+                                if editor_key in st.session_state:
+                                    del st.session_state[editor_key]
+                                st.rerun()
+                            elif test_to_add in existing_tests:
+                                st.warning("This test already exists in the table.")
+                            else:
+                                st.warning("Please select or enter a test name.")
+
+                editable_df = pd.DataFrame(pivot_data).T
+                editable_df.index.name = 'Test Name'
+                for d in unique_dates:
+                    if d not in editable_df.columns:
+                        editable_df[d] = None
+                editable_df = editable_df[unique_dates]
+
                 editable_df.insert(0, 'Range', [range_column.get(t, 'N/A') for t in editable_df.index])
                 editable_df['Avg'] = [stats_data.get(t, {}).get('Average', 0) for t in editable_df.index]
                 editable_df['Count'] = [stats_data.get(t, {}).get('Count', 0) for t in editable_df.index]
@@ -1007,13 +1116,20 @@ def render_heatmap_view(db, selected_patient, user_id, edit_df, key_prefix="mana
                 editable_df = editable_df.reset_index()
                 editable_df = editable_df.rename(columns={'index': 'Test Name'})
 
+                for date_col in unique_dates:
+                    if date_col in editable_df.columns:
+                        editable_df[date_col] = editable_df[date_col].astype(object)
+                        editable_df[date_col] = editable_df[date_col].where(editable_df[date_col].notna(), None)
+
                 column_config = {
-                    'Test Name': st.column_config.TextColumn('Test Name', disabled=True),
+                    'Test Name': st.column_config.TextColumn('Test Name', disabled=True, pinned=True),
                     'Range': st.column_config.TextColumn('Range', disabled=True),
                     'Avg': st.column_config.NumberColumn('Avg', disabled=True, format="%.2f"),
                     'Count': st.column_config.NumberColumn('Count', disabled=True),
                     'Sum': st.column_config.NumberColumn('Sum', disabled=True, format="%.2f")
                 }
+                for date_col in unique_dates:
+                    column_config[date_col] = st.column_config.NumberColumn(date_col, format="%.2f", required=False)
 
                 edited_df = st.data_editor(
                     editable_df,
@@ -1041,8 +1157,7 @@ def render_heatmap_view(db, selected_patient, user_id, edit_df, key_prefix="mana
                 deleted_entries = 0
                 changes_list = []
 
-                with st.expander("🔍 Debug: Finding Differences", expanded=True):
-                    st.write("**Scanning for differences between Editor and DB:**")
+                with st.expander("🔍 Changes Detected", expanded=False):
                     diff_count = 0
                     for idx, row in edited_df.iterrows():
                         test_name = row['Test Name']
@@ -1050,17 +1165,23 @@ def render_heatmap_view(db, selected_patient, user_id, edit_df, key_prefix="mana
                             if date_col in row.index:
                                 edit_val = row[date_col]
                                 db_val = pivot_data.get(test_name, {}).get(date_col)
-                                edit_empty = pd.isna(edit_val) or (isinstance(edit_val, str) and str(edit_val).strip() == '')
+                                edit_empty = pd.isna(edit_val) or (isinstance(edit_val, str) and str(edit_val).strip() == '') or edit_val is None
                                 db_empty = db_val is None or pd.isna(db_val)
-                                if not edit_empty and not db_empty:
+                                if edit_empty and not db_empty:
+                                    st.info(f"🗑️ DELETE: **{test_name}** @ {date_col}: {db_val} → (empty)")
+                                    diff_count += 1
+                                elif not edit_empty and db_empty:
+                                    st.success(f"➕ NEW: **{test_name}** @ {date_col}: → {edit_val}")
+                                    diff_count += 1
+                                elif not edit_empty and not db_empty:
                                     try:
                                         if abs(float(edit_val) - float(db_val)) > 0.001:
-                                            st.success(f"✅ DIFF FOUND: **{test_name}** @ {date_col}: Editor={edit_val}, DB={db_val}")
+                                            st.success(f"✏️ UPDATE: **{test_name}** @ {date_col}: {db_val} → {edit_val}")
                                             diff_count += 1
                                     except:
                                         pass
                     if diff_count == 0:
-                        st.warning("No differences found between Editor values and Database values")
+                        st.info("No changes detected")
 
                 save_attempts = []
                 for idx, row in edited_df.iterrows():
@@ -1073,8 +1194,17 @@ def render_heatmap_view(db, selected_patient, user_id, edit_df, key_prefix="mana
                         original_value = pivot_data.get(test_name, {}).get(date_col)
                         result_id = value_ids.get(test_name, {}).get(date_col)
 
-                        new_is_empty = pd.isna(new_value) or (isinstance(new_value, str) and str(new_value).strip() == '')
-                        orig_is_empty = original_value is None or pd.isna(original_value)
+                        def _is_empty(v):
+                            if v is None:
+                                return True
+                            if isinstance(v, str):
+                                return v.strip() == ''
+                            try:
+                                return pd.isna(v)
+                            except (TypeError, ValueError):
+                                return False
+                        new_is_empty = _is_empty(new_value)
+                        orig_is_empty = _is_empty(original_value)
 
                         if new_is_empty and orig_is_empty:
                             continue
@@ -1116,6 +1246,7 @@ def render_heatmap_view(db, selected_patient, user_id, edit_df, key_prefix="mana
                             ref_info = reference_ranges.get(test_name, '')
                             ref_str = f"{ref_info['min']}-{ref_info['max']}" if isinstance(ref_info, dict) else str(ref_info)
 
+                            numeric_value = None
                             if not new_is_empty:
                                 try:
                                     numeric_value = float(new_value)
@@ -1124,13 +1255,10 @@ def render_heatmap_view(db, selected_patient, user_id, edit_df, key_prefix="mana
                                     st.error(f"Invalid number '{new_value}' for {test_name}")
                                     continue
 
-                            st.write(f"🔧 Saving: {test_name}, id={result_id}, value={numeric_value}, date={parsed_date}")
-
                             if result_id is not None:
                                 if new_is_empty:
                                     if db.delete_test_result(result_id):
                                         deleted_entries += 1
-                                        st.success(f"Deleted {test_name}")
                                 else:
                                     update_result = db.update_test_result(
                                         result_id=result_id,
@@ -1190,6 +1318,12 @@ def render_heatmap_view(db, selected_patient, user_id, edit_df, key_prefix="mana
                     editor_key = f"{key_prefix}_heatmap_editor"
                     if editor_key in st.session_state:
                         del st.session_state[editor_key]
+                    added_dates_key = f"{key_prefix}_added_dates_{selected_patient}"
+                    added_tests_key = f"{key_prefix}_added_tests_{selected_patient}"
+                    if added_dates_key in st.session_state:
+                        del st.session_state[added_dates_key]
+                    if added_tests_key in st.session_state:
+                        del st.session_state[added_tests_key]
                     st.rerun()
                 elif errors > 0:
                     st.error(f"❌ {errors} errors occurred while saving")
