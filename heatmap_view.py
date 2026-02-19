@@ -590,15 +590,32 @@ def render_heatmap_view(db, selected_patient, user_id, edit_df, key_prefix="mana
                 b = int(203 - intensity * 203)
                 return (r, g, b)
 
+        def get_tests_grouped_by_category():
+            grouped = {}
+            for test in unique_tests:
+                info = test_info.get(test)
+                cat = info['category'] if info else 'Other'
+                if cat not in grouped:
+                    grouped[cat] = []
+                grouped[cat].append(test)
+            ordered = []
+            for cat in sorted(grouped.keys()):
+                for t in sorted(grouped[cat], key=lambda x: x.lower()):
+                    ordered.append(t)
+            return ordered
+
         def generate_excel_heatmap():
+            from openpyxl.worksheet.filters import AutoFilter
             wb = Workbook()
             ws = wb.active
             ws.title = "Heat Map"
 
             header_fill = PatternFill(start_color="4472C4", end_color="4472C4", fill_type="solid")
-            header_font = Font(bold=True, color="FFFFFF", size=11)
+            header_font = Font(bold=True, color="FFFFFF", size=9)
             summary_fill = PatternFill(start_color="E8E8E8", end_color="E8E8E8", fill_type="solid")
-            summary_font = Font(bold=True, size=11)
+            summary_font = Font(bold=True, size=9)
+            cat_separator_fill = PatternFill(start_color="D6E4F0", end_color="D6E4F0", fill_type="solid")
+            cat_separator_font = Font(bold=True, size=9, color="1F4E79")
             thin_border = Border(
                 left=Side(style='thin', color='D9D9D9'),
                 right=Side(style='thin', color='D9D9D9'),
@@ -606,31 +623,57 @@ def render_heatmap_view(db, selected_patient, user_id, edit_df, key_prefix="mana
                 bottom=Side(style='thin', color='D9D9D9')
             )
             center_align = Alignment(horizontal='center', vertical='center')
+            rotated_align = Alignment(horizontal='center', vertical='bottom', text_rotation=90)
 
             headers = ['Test Name', 'Category', 'Range'] + list(unique_dates) + ['Avg', 'Count', 'Sum']
             for col_idx, header in enumerate(headers, 1):
                 cell = ws.cell(row=1, column=col_idx, value=header)
                 cell.fill = header_fill
                 cell.font = header_font
-                cell.alignment = center_align
                 cell.border = thin_border
+                if col_idx >= 4 and col_idx < 4 + len(unique_dates):
+                    cell.alignment = rotated_align
+                else:
+                    cell.alignment = center_align
 
-            for row_idx, test in enumerate(unique_tests, 2):
+            ws.row_dimensions[1].height = 80
+
+            grouped_tests = get_tests_grouped_by_category()
+            current_row = 2
+            current_category = None
+
+            for test in grouped_tests:
                 info = test_info.get(test)
                 category = info['category'] if info else 'Other'
+
+                if category != current_category:
+                    current_category = category
+                    total_cols = 3 + len(unique_dates) + 3
+                    cell = ws.cell(row=current_row, column=1, value=f"▸ {category}")
+                    cell.font = cat_separator_font
+                    cell.fill = cat_separator_fill
+                    cell.border = thin_border
+                    for c in range(2, total_cols + 1):
+                        cell = ws.cell(row=current_row, column=c)
+                        cell.fill = cat_separator_fill
+                        cell.border = thin_border
+                    current_row += 1
+
                 range_str = range_column.get(test, 'N/A')
 
-                ws.cell(row=row_idx, column=1, value=test).border = thin_border
-                ws.cell(row=row_idx, column=1).font = Font(bold=True, size=10)
-                ws.cell(row=row_idx, column=2, value=category).border = thin_border
-                ws.cell(row=row_idx, column=3, value=range_str).border = thin_border
-                ws.cell(row=row_idx, column=3).alignment = center_align
+                ws.cell(row=current_row, column=1, value=test).border = thin_border
+                ws.cell(row=current_row, column=1).font = Font(size=8)
+                ws.cell(row=current_row, column=2, value=category).border = thin_border
+                ws.cell(row=current_row, column=2).font = Font(size=8)
+                ws.cell(row=current_row, column=3, value=range_str).border = thin_border
+                ws.cell(row=current_row, column=3).alignment = center_align
+                ws.cell(row=current_row, column=3).font = Font(size=8)
 
                 ref_info = reference_ranges.get(test)
                 for date_idx, date_col in enumerate(unique_dates):
                     col_num = 4 + date_idx
                     val = pivot_data.get(test, {}).get(date_col)
-                    cell = ws.cell(row=row_idx, column=col_num)
+                    cell = ws.cell(row=current_row, column=col_num)
                     cell.border = thin_border
                     cell.alignment = center_align
                     if val is not None and not pd.isna(val):
@@ -638,30 +681,36 @@ def render_heatmap_view(db, selected_patient, user_id, edit_df, key_prefix="mana
                             cell.value = round(float(val), 2)
                         except:
                             cell.value = val
+                        cell.number_format = '0.0'
                         rgb = get_deviation_color_rgb(val, ref_info)
                         if rgb:
                             hex_color = f"{rgb[0]:02X}{rgb[1]:02X}{rgb[2]:02X}"
                             cell.fill = PatternFill(start_color=hex_color, end_color=hex_color, fill_type="solid")
                             lum = (0.299 * rgb[0] + 0.587 * rgb[1] + 0.114 * rgb[2])
                             text_color = "FFFFFF" if lum < 128 else "000000"
-                            cell.font = Font(color=text_color, size=10)
+                            cell.font = Font(color=text_color, size=8)
 
                 stats = stats_data.get(test, {})
                 stats_start = 4 + len(unique_dates)
                 for si, sv in enumerate([stats.get('Average', 0), stats.get('Count', 0), stats.get('Sum', 0)]):
-                    cell = ws.cell(row=row_idx, column=stats_start + si, value=sv)
+                    cell = ws.cell(row=current_row, column=stats_start + si, value=sv)
                     cell.border = thin_border
                     cell.alignment = center_align
+                    cell.font = Font(size=8)
+                    if si != 1:
+                        cell.number_format = '0.0'
 
-            summary_row = len(unique_tests) + 2
-            ws.cell(row=summary_row, column=1, value="Average Per Date").font = summary_font
-            ws.cell(row=summary_row, column=1).fill = summary_fill
-            ws.cell(row=summary_row, column=1).border = thin_border
-            ws.cell(row=summary_row, column=2, value="").fill = summary_fill
-            ws.cell(row=summary_row, column=2).border = thin_border
-            ws.cell(row=summary_row, column=3, value="SUMMARY").fill = summary_fill
-            ws.cell(row=summary_row, column=3).border = thin_border
-            ws.cell(row=summary_row, column=3).alignment = center_align
+                current_row += 1
+
+            summary_row_num = current_row
+            ws.cell(row=summary_row_num, column=1, value="Average Per Date").font = summary_font
+            ws.cell(row=summary_row_num, column=1).fill = summary_fill
+            ws.cell(row=summary_row_num, column=1).border = thin_border
+            ws.cell(row=summary_row_num, column=2, value="").fill = summary_fill
+            ws.cell(row=summary_row_num, column=2).border = thin_border
+            ws.cell(row=summary_row_num, column=3, value="SUMMARY").fill = summary_fill
+            ws.cell(row=summary_row_num, column=3).border = thin_border
+            ws.cell(row=summary_row_num, column=3).alignment = center_align
 
             for date_idx, date_col in enumerate(unique_dates):
                 col_num = 4 + date_idx
@@ -673,31 +722,35 @@ def render_heatmap_view(db, selected_patient, user_id, edit_df, key_prefix="mana
                             date_values.append(float(val))
                         except:
                             pass
-                cell = ws.cell(row=summary_row, column=col_num)
+                cell = ws.cell(row=summary_row_num, column=col_num)
                 cell.fill = summary_fill
                 cell.font = summary_font
                 cell.border = thin_border
                 cell.alignment = center_align
                 if date_values:
                     cell.value = round(sum(date_values) / len(date_values), 2)
+                    cell.number_format = '0.0'
 
             stats_start = 4 + len(unique_dates)
             for si, sv in enumerate([overall_avg, total_count, total_sum]):
-                cell = ws.cell(row=summary_row, column=stats_start + si, value=round(sv, 2) if isinstance(sv, float) else sv)
+                cell = ws.cell(row=summary_row_num, column=stats_start + si, value=round(sv, 2) if isinstance(sv, float) else sv)
                 cell.fill = summary_fill
                 cell.font = summary_font
                 cell.border = thin_border
                 cell.alignment = center_align
 
-            ws.column_dimensions['A'].width = 25
-            ws.column_dimensions['B'].width = 18
-            ws.column_dimensions['C'].width = 18
+            ws.column_dimensions['A'].width = 18
+            ws.column_dimensions['B'].width = 14
+            ws.column_dimensions['C'].width = 12
             for col_idx in range(4, 4 + len(unique_dates)):
-                ws.column_dimensions[get_column_letter(col_idx)].width = 14
+                ws.column_dimensions[get_column_letter(col_idx)].width = 5.5
             for col_idx in range(4 + len(unique_dates), 4 + len(unique_dates) + 3):
-                ws.column_dimensions[get_column_letter(col_idx)].width = 12
+                ws.column_dimensions[get_column_letter(col_idx)].width = 6.5
 
             ws.freeze_panes = 'D2'
+
+            last_col_letter = get_column_letter(3 + len(unique_dates) + 3)
+            ws.auto_filter.ref = f"A1:{last_col_letter}{summary_row_num}"
 
             legend_ws = wb.create_sheet("Color Legend")
             legend_ws.cell(row=1, column=1, value="Color Legend").font = Font(bold=True, size=14)
@@ -725,19 +778,31 @@ def render_heatmap_view(db, selected_patient, user_id, edit_df, key_prefix="mana
             return output
 
         def generate_heatmap_image():
-            n_rows = len(unique_tests) + 1
+            grouped_tests = get_tests_grouped_by_category()
+            categories_in_order = []
+            seen_cats = set()
+            for test in grouped_tests:
+                info = test_info.get(test)
+                cat = info['category'] if info else 'Other'
+                if cat not in seen_cats:
+                    categories_in_order.append(cat)
+                    seen_cats.add(cat)
+
+            n_cat_separators = len(categories_in_order)
+            n_data_rows = len(unique_tests)
+            n_rows = n_data_rows + n_cat_separators + 1
             n_date_cols = len(unique_dates)
             n_stat_cols = 3
             fixed_cols = ['Test Name', 'Category', 'Range']
             n_fixed = len(fixed_cols)
             total_cols = n_fixed + n_date_cols + n_stat_cols
 
-            col_w_fixed = [2.8, 1.8, 1.5]
-            col_w_date = [0.55] * n_date_cols
-            col_w_stats = [0.6, 0.5, 0.6]
+            col_w_fixed = [2.0, 1.4, 1.2]
+            col_w_date = [0.50] * n_date_cols
+            col_w_stats = [0.55, 0.45, 0.55]
             col_widths = col_w_fixed + col_w_date + col_w_stats
-            fig_width = sum(col_widths) + 0.4
-            row_height = 0.28
+            fig_width = sum(col_widths) + 0.3
+            row_height = 0.26
             header_height = 1.8
             fig_height = header_height + n_rows * row_height + 0.5
 
@@ -762,87 +827,71 @@ def render_heatmap_view(db, selected_patient, user_id, edit_df, key_prefix="mana
                 cx = x_positions[col_idx] + col_widths[col_idx] / 2
                 if col_idx >= n_fixed and col_idx < n_fixed + n_date_cols:
                     ax.text(cx, header_y + 0.15, header, ha='center', va='bottom',
-                            fontsize=5, fontweight='bold', color='white', rotation=90,
+                            fontsize=4.5, fontweight='bold', color='white', rotation=90,
                             fontfamily='sans-serif')
                 else:
                     cy = header_y + header_height / 2
                     ax.text(cx, cy, header, ha='center', va='center',
-                            fontsize=5.5 if col_idx < n_fixed else 5, fontweight='bold', color='white',
+                            fontsize=5 if col_idx < n_fixed else 4.5, fontweight='bold', color='white',
                             fontfamily='sans-serif')
 
-            all_rows = list(unique_tests) + ['Average Per Date']
-            for row_idx, test in enumerate(all_rows):
-                y = total_height - header_height - (row_idx + 1) * row_height
-                is_summary = (test == 'Average Per Date')
+            visual_row = 0
+            current_category = None
+            cat_sep_color = '#D6E4F0'
+            cat_sep_text_color = '#1F4E79'
 
-                if is_summary:
-                    row_bg = '#E8E8E8'
-                else:
-                    row_bg = '#FFFFFF' if row_idx % 2 == 0 else '#F8F8F8'
+            for test in grouped_tests:
+                info_t = test_info.get(test)
+                category = info_t['category'] if info_t else 'Other'
 
+                if category != current_category:
+                    current_category = category
+                    y = total_height - header_height - (visual_row + 1) * row_height
+                    ax.add_patch(plt.Rectangle((0, y), sum(col_widths), row_height, facecolor=cat_sep_color, edgecolor='#D9D9D9', linewidth=0.3))
+                    ax.text(x_positions[0] + 0.06, y + row_height / 2, f"▸ {category}", ha='left', va='center',
+                            fontsize=4.5, fontweight='bold', color=cat_sep_text_color, fontfamily='sans-serif')
+                    visual_row += 1
+
+                y = total_height - header_height - (visual_row + 1) * row_height
+                row_bg = '#FFFFFF' if visual_row % 2 == 0 else '#F8F8F8'
                 ax.add_patch(plt.Rectangle((0, y), sum(col_widths), row_height, facecolor=row_bg, edgecolor='#D9D9D9', linewidth=0.3))
 
-                font_size = 4.5
-                fw = 'bold' if is_summary else 'normal'
+                range_str = range_column.get(test, 'N/A')
+                ax.text(x_positions[0] + 0.06, y + row_height / 2, test, ha='left', va='center', fontsize=4, fontfamily='sans-serif', clip_on=True)
+                ax.text(x_positions[1] + 0.04, y + row_height / 2, category, ha='left', va='center', fontsize=3.5, fontfamily='sans-serif', clip_on=True)
+                ax.text(x_positions[2] + col_widths[2] / 2, y + row_height / 2, range_str, ha='center', va='center', fontsize=3.5, fontfamily='sans-serif')
 
-                if is_summary:
-                    ax.text(x_positions[0] + 0.08, y + row_height / 2, 'Avg Per Date', ha='left', va='center', fontsize=font_size, fontweight='bold', fontfamily='sans-serif')
-                    ax.text(x_positions[1] + col_widths[1] / 2, y + row_height / 2, '', ha='center', va='center', fontsize=font_size, fontfamily='sans-serif')
-                    ax.text(x_positions[2] + col_widths[2] / 2, y + row_height / 2, 'SUMMARY', ha='center', va='center', fontsize=font_size, fontweight='bold', fontfamily='sans-serif')
-                else:
-                    info = test_info.get(test)
-                    category = info['category'] if info else 'Other'
-                    range_str = range_column.get(test, 'N/A')
-
-                    ax.text(x_positions[0] + 0.08, y + row_height / 2, test, ha='left', va='center', fontsize=font_size, fontweight='normal', fontfamily='sans-serif', clip_on=True)
-                    ax.text(x_positions[1] + 0.05, y + row_height / 2, category, ha='left', va='center', fontsize=3.8, fontfamily='sans-serif', clip_on=True)
-                    ax.text(x_positions[2] + col_widths[2] / 2, y + row_height / 2, range_str, ha='center', va='center', fontsize=3.8, fontfamily='sans-serif')
-
+                ref_info = reference_ranges.get(test)
                 for date_idx, date_col in enumerate(unique_dates):
                     col_num = n_fixed + date_idx
                     cx = x_positions[col_num] + col_widths[col_num] / 2
                     cell_x = x_positions[col_num]
                     cell_w = col_widths[col_num]
 
-                    if is_summary:
-                        date_values = []
-                        for t in unique_tests:
-                            val = pivot_data.get(t, {}).get(date_col)
-                            if val is not None and not pd.isna(val):
-                                try:
-                                    date_values.append(float(val))
-                                except:
-                                    pass
-                        if date_values:
-                            avg_val = sum(date_values) / len(date_values)
-                            display = f"{avg_val:.1f}" if avg_val >= 100 else f"{avg_val:.2f}"
-                            ax.text(cx, y + row_height / 2, display, ha='center', va='center', fontsize=3.8, fontweight='bold', fontfamily='sans-serif')
-                    else:
-                        val = pivot_data.get(test, {}).get(date_col)
-                        if val is not None and not pd.isna(val):
-                            try:
-                                fval = float(val)
-                            except:
-                                continue
-                            ref_info = reference_ranges.get(test)
-                            rgb = get_deviation_color_rgb(fval, ref_info)
-                            if rgb:
-                                norm_color = (rgb[0]/255, rgb[1]/255, rgb[2]/255)
-                                ax.add_patch(plt.Rectangle((cell_x + 0.02, y + 0.02), cell_w - 0.04, row_height - 0.04,
-                                    facecolor=norm_color, edgecolor='none', linewidth=0))
-                                lum = 0.299 * rgb[0] + 0.587 * rgb[1] + 0.114 * rgb[2]
-                                tc = 'white' if lum < 128 else 'black'
-                            else:
-                                tc = 'black'
-                            if fval >= 1000:
-                                display = f"{fval:.0f}"
-                            elif fval >= 100:
-                                display = f"{fval:.1f}"
-                            else:
-                                display = f"{fval:.2f}"
-                            ax.text(cx, y + row_height / 2, display, ha='center', va='center', fontsize=3.5, color=tc, fontfamily='sans-serif')
+                    val = pivot_data.get(test, {}).get(date_col)
+                    if val is not None and not pd.isna(val):
+                        try:
+                            fval = float(val)
+                        except:
+                            continue
+                        rgb = get_deviation_color_rgb(fval, ref_info)
+                        if rgb:
+                            norm_color = (rgb[0]/255, rgb[1]/255, rgb[2]/255)
+                            ax.add_patch(plt.Rectangle((cell_x + 0.02, y + 0.02), cell_w - 0.04, row_height - 0.04,
+                                facecolor=norm_color, edgecolor='none', linewidth=0))
+                            lum = 0.299 * rgb[0] + 0.587 * rgb[1] + 0.114 * rgb[2]
+                            tc = 'white' if lum < 128 else 'black'
+                        else:
+                            tc = 'black'
+                        if fval >= 1000:
+                            display = f"{fval:.0f}"
+                        elif fval >= 100:
+                            display = f"{fval:.1f}"
+                        else:
+                            display = f"{fval:.2f}"
+                        ax.text(cx, y + row_height / 2, display, ha='center', va='center', fontsize=3.2, color=tc, fontfamily='sans-serif')
 
-                stats = stats_data.get(test, {}) if not is_summary else {'Average': overall_avg, 'Count': total_count, 'Sum': total_sum}
+                stats = stats_data.get(test, {})
                 stat_values = [stats.get('Average', 0), stats.get('Count', 0), stats.get('Sum', 0)]
                 for si, sv in enumerate(stat_values):
                     col_num = n_fixed + n_date_cols + si
@@ -851,13 +900,46 @@ def render_heatmap_view(db, selected_patient, user_id, edit_df, key_prefix="mana
                         display = f"{sv:.1f}" if sv >= 100 else f"{sv:.2f}"
                     else:
                         display = str(sv)
-                    ax.text(cx, y + row_height / 2, display, ha='center', va='center', fontsize=3.8, fontweight=fw, fontfamily='sans-serif')
+                    ax.text(cx, y + row_height / 2, display, ha='center', va='center', fontsize=3.5, fontfamily='sans-serif')
+
+                visual_row += 1
+
+            y = total_height - header_height - (visual_row + 1) * row_height
+            ax.add_patch(plt.Rectangle((0, y), sum(col_widths), row_height, facecolor='#E8E8E8', edgecolor='#D9D9D9', linewidth=0.3))
+            ax.text(x_positions[0] + 0.06, y + row_height / 2, 'Avg Per Date', ha='left', va='center', fontsize=4, fontweight='bold', fontfamily='sans-serif')
+            ax.text(x_positions[2] + col_widths[2] / 2, y + row_height / 2, 'SUMMARY', ha='center', va='center', fontsize=3.5, fontweight='bold', fontfamily='sans-serif')
+
+            for date_idx, date_col in enumerate(unique_dates):
+                col_num = n_fixed + date_idx
+                cx = x_positions[col_num] + col_widths[col_num] / 2
+                date_values = []
+                for t in unique_tests:
+                    val = pivot_data.get(t, {}).get(date_col)
+                    if val is not None and not pd.isna(val):
+                        try:
+                            date_values.append(float(val))
+                        except:
+                            pass
+                if date_values:
+                    avg_val = sum(date_values) / len(date_values)
+                    display = f"{avg_val:.1f}" if avg_val >= 100 else f"{avg_val:.2f}"
+                    ax.text(cx, y + row_height / 2, display, ha='center', va='center', fontsize=3.2, fontweight='bold', fontfamily='sans-serif')
+
+            summary_stats = [overall_avg, total_count, total_sum]
+            for si, sv in enumerate(summary_stats):
+                col_num = n_fixed + n_date_cols + si
+                cx = x_positions[col_num] + col_widths[col_num] / 2
+                if isinstance(sv, float):
+                    display = f"{sv:.1f}" if sv >= 100 else f"{sv:.2f}"
+                else:
+                    display = str(sv)
+                ax.text(cx, y + row_height / 2, display, ha='center', va='center', fontsize=3.5, fontweight='bold', fontfamily='sans-serif')
 
             for col_idx in range(total_cols + 1):
                 x = x_positions[col_idx] if col_idx < len(x_positions) else sum(col_widths)
                 ax.plot([x, x], [0, total_height], color='#D9D9D9', linewidth=0.3)
-            for row_idx in range(n_rows + 1):
-                y_line = total_height - header_height - row_idx * row_height
+            for r in range(n_rows + 1):
+                y_line = total_height - header_height - r * row_height
                 ax.plot([0, sum(col_widths)], [y_line, y_line], color='#D9D9D9', linewidth=0.3)
 
             legend_y = -0.15
@@ -866,20 +948,20 @@ def render_heatmap_view(db, selected_patient, user_id, edit_df, key_prefix="mana
                 ('Normal Range', '#90EE90', '#228B22'),
                 ('Above Normal', '#FFCCCB', '#8B0000')
             ]
-            legend_x = 0.5
+            legend_x = 0.3
             for label, c1, c2 in legend_items:
-                ax.text(legend_x, legend_y, label + ': ', ha='left', va='center', fontsize=5, fontweight='bold', fontfamily='sans-serif', transform=ax.transData)
-                legend_x += 1.5
+                ax.text(legend_x, legend_y, label + ': ', ha='left', va='center', fontsize=4.5, fontweight='bold', fontfamily='sans-serif', transform=ax.transData)
+                legend_x += 1.3
                 for i in range(20):
                     t = i / 19
                     rc1 = mcolors.to_rgb(c1)
                     rc2 = mcolors.to_rgb(c2)
                     mixed = tuple(rc1[j] * (1-t) + rc2[j] * t for j in range(3))
-                    ax.add_patch(plt.Rectangle((legend_x + i * 0.06, legend_y - 0.06), 0.06, 0.12, facecolor=mixed, edgecolor='none'))
-                legend_x += 1.5 + 0.5
+                    ax.add_patch(plt.Rectangle((legend_x + i * 0.05, legend_y - 0.06), 0.05, 0.12, facecolor=mixed, edgecolor='none'))
+                legend_x += 1.3 + 0.3
 
             if patient_gender:
-                ax.text(sum(col_widths) - 0.1, legend_y, f"Ref ranges: {patient_gender.title()}", ha='right', va='center', fontsize=4.5, fontstyle='italic', fontfamily='sans-serif')
+                ax.text(sum(col_widths) - 0.1, legend_y, f"Ref ranges: {patient_gender.title()}", ha='right', va='center', fontsize=4, fontstyle='italic', fontfamily='sans-serif')
 
             ax.text(sum(col_widths) / 2, total_height + 0.15, f"Heat Map - {selected_patient} ({len(unique_tests)} tests × {len(unique_dates)} dates)",
                     ha='center', va='bottom', fontsize=7, fontweight='bold', fontfamily='sans-serif')
