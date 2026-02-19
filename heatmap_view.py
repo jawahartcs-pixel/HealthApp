@@ -478,32 +478,72 @@ def render_heatmap_view(db, selected_patient, user_id, edit_df, key_prefix="mana
         summary_df = pd.DataFrame([summary_row], index=['Average Per Date'])
         enhanced_pivot_df = pd.concat([enhanced_pivot_df, summary_df])
 
+        event_columns = set()
         if show_events and event_dates_map:
-            event_row = {'Range': 'EVENTS'}
-            for date_col in unique_dates:
-                events_on_date = event_dates_map.get(date_col, [])
-                if events_on_date:
-                    event_row[date_col] = ' | '.join(events_on_date)
-                else:
-                    event_row[date_col] = None
-            event_row['Avg'] = None
-            event_row['Count'] = None
-            event_row['Sum'] = None
-            event_df = pd.DataFrame([event_row], index=['Events'])
-            enhanced_pivot_df = pd.concat([enhanced_pivot_df, event_df])
+            all_date_objs = []
+            for d in unique_dates:
+                try:
+                    if date_format == "UK (DD/MM/YYYY)":
+                        dt = pd.to_datetime(d, format='%d/%m/%Y')
+                    else:
+                        dt = pd.to_datetime(d, format='%m/%d/%Y')
+                    all_date_objs.append((dt, d, 'data'))
+                except:
+                    all_date_objs.append((pd.Timestamp.min, d, 'data'))
 
-        date_columns = unique_dates.copy()
+            for ev_formatted, ev_names in event_dates_map.items():
+                if ev_formatted not in unique_dates:
+                    try:
+                        if date_format == "UK (DD/MM/YYYY)":
+                            ev_dt = pd.to_datetime(ev_formatted, format='%d/%m/%Y')
+                        else:
+                            ev_dt = pd.to_datetime(ev_formatted, format='%m/%d/%Y')
+                        all_date_objs.append((ev_dt, ev_formatted, 'event'))
+                    except:
+                        all_date_objs.append((pd.Timestamp.min, ev_formatted, 'event'))
+
+            all_date_objs.sort(key=lambda x: x[0], reverse=True)
+
+            event_col_labels = {}
+            for ev_formatted, ev_names in event_dates_map.items():
+                event_label = f"📌 {ev_formatted}"
+                event_col_labels[ev_formatted] = event_label
+
+            merged_columns = []
+            for dt_obj, formatted, dtype in all_date_objs:
+                if dtype == 'event' and formatted not in unique_dates:
+                    label = event_col_labels.get(formatted, f"📌 {formatted}")
+                    merged_columns.append(label)
+                    event_columns.add(label)
+                    event_name_str = ' | '.join(event_dates_map.get(formatted, []))
+                    enhanced_pivot_df[label] = event_name_str
+                else:
+                    merged_columns.append(formatted)
+                    if formatted in event_dates_map:
+                        label = event_col_labels.get(formatted, f"📌 {formatted}")
+                        if label not in merged_columns:
+                            idx = merged_columns.index(formatted)
+                            merged_columns.insert(idx + 1, label)
+                            event_columns.add(label)
+                            event_name_str = ' | '.join(event_dates_map.get(formatted, []))
+                            enhanced_pivot_df[label] = event_name_str
+
+            cols_order = ['Range'] + merged_columns + ['Avg', 'Count', 'Sum']
+            existing_cols = [c for c in cols_order if c in enhanced_pivot_df.columns]
+            enhanced_pivot_df = enhanced_pivot_df[existing_cols]
+
+        date_columns = [c for c in enhanced_pivot_df.columns if c in unique_dates]
 
         def apply_row_style(row):
             test_name = row.name
             if test_name == 'Average Per Date':
                 return ['background-color: #e8e8e8; font-weight: bold'] * len(row)
-            if test_name == 'Events':
-                return ['background-color: #FFF3CD; font-weight: bold; writing-mode: vertical-rl; text-orientation: mixed; font-size: 10px;'] * len(row)
             ref_info = reference_ranges.get(test_name, "")
             styles = []
             for col in row.index:
-                if col in date_columns:
+                if col in event_columns:
+                    styles.append('background-color: #FFF3CD; font-weight: bold; writing-mode: vertical-rl; text-orientation: mixed; font-size: 10px; color: #856404;')
+                elif col in date_columns:
                     color = get_deviation_color(row[col], ref_info)
                     styles.append(color if color else "")
                 else:
@@ -1157,145 +1197,154 @@ def render_heatmap_view(db, selected_patient, user_id, edit_df, key_prefix="mana
                 deleted_entries = 0
                 changes_list = []
 
-                with st.expander("🔍 Changes Detected", expanded=False):
-                    diff_count = 0
-                    for idx, row in edited_df.iterrows():
-                        test_name = row['Test Name']
-                        for date_col in unique_dates:
-                            if date_col in row.index:
-                                edit_val = row[date_col]
-                                db_val = pivot_data.get(test_name, {}).get(date_col)
-                                edit_empty = pd.isna(edit_val) or (isinstance(edit_val, str) and str(edit_val).strip() == '') or edit_val is None
-                                db_empty = db_val is None or pd.isna(db_val)
-                                if edit_empty and not db_empty:
-                                    st.info(f"🗑️ DELETE: **{test_name}** @ {date_col}: {db_val} → (empty)")
-                                    diff_count += 1
-                                elif not edit_empty and db_empty:
-                                    st.success(f"➕ NEW: **{test_name}** @ {date_col}: → {edit_val}")
-                                    diff_count += 1
-                                elif not edit_empty and not db_empty:
-                                    try:
-                                        if abs(float(edit_val) - float(db_val)) > 0.001:
-                                            st.success(f"✏️ UPDATE: **{test_name}** @ {date_col}: {db_val} → {edit_val}")
-                                            diff_count += 1
-                                    except:
-                                        pass
-                    if diff_count == 0:
-                        st.info("No changes detected")
+                def _is_empty(v):
+                    if v is None:
+                        return True
+                    if isinstance(v, str):
+                        return v.strip() == ''
+                    try:
+                        return pd.isna(v)
+                    except (TypeError, ValueError):
+                        return False
 
-                save_attempts = []
+                editor_state = st.session_state.get(f"{key_prefix}_heatmap_editor", {})
+                edited_rows = editor_state.get('edited_rows', {}) if isinstance(editor_state, dict) else {}
+
+                test_name_list = list(editable_df['Test Name'])
+
+                cells_to_save = []
+
+                for row_idx_str, col_changes in edited_rows.items():
+                    row_idx = int(row_idx_str)
+                    if row_idx < 0 or row_idx >= len(test_name_list):
+                        continue
+                    test_name = test_name_list[row_idx]
+                    for col_name, new_value in col_changes.items():
+                        if col_name in unique_dates:
+                            original_value = pivot_data.get(test_name, {}).get(col_name)
+                            result_id = value_ids.get(test_name, {}).get(col_name)
+                            cells_to_save.append((test_name, col_name, new_value, original_value, result_id))
+
                 for idx, row in edited_df.iterrows():
                     test_name = row['Test Name']
                     for date_col in unique_dates:
                         if date_col not in row.index:
                             continue
-
                         new_value = row[date_col]
                         original_value = pivot_data.get(test_name, {}).get(date_col)
                         result_id = value_ids.get(test_name, {}).get(date_col)
-
-                        def _is_empty(v):
-                            if v is None:
-                                return True
-                            if isinstance(v, str):
-                                return v.strip() == ''
-                            try:
-                                return pd.isna(v)
-                            except (TypeError, ValueError):
-                                return False
                         new_is_empty = _is_empty(new_value)
                         orig_is_empty = _is_empty(original_value)
-
                         if new_is_empty and orig_is_empty:
                             continue
-
                         value_changed = False
                         if new_is_empty != orig_is_empty:
                             value_changed = True
                         elif not new_is_empty and not orig_is_empty:
                             try:
-                                new_float = float(new_value)
-                                orig_float = float(original_value)
-                                if abs(new_float - orig_float) > 0.001:
+                                if abs(float(new_value) - float(original_value)) > 0.001:
                                     value_changed = True
-                                    changes_list.append(f"{test_name} ({date_col}): {orig_float} → {new_float}")
-                                    save_attempts.append(f"{test_name}@{date_col}: new={new_float}, old={orig_float}, id={result_id}")
                             except (ValueError, TypeError):
                                 if str(new_value) != str(original_value):
                                     value_changed = True
-                                    changes_list.append(f"{test_name} ({date_col}): {original_value} → {new_value}")
+                        if value_changed:
+                            already_tracked = any(c[0] == test_name and c[1] == date_col for c in cells_to_save)
+                            if not already_tracked:
+                                cells_to_save.append((test_name, date_col, new_value, original_value, result_id))
 
-                        if not value_changed:
-                            continue
+                with st.expander("🔍 Changes Detected", expanded=False):
+                    if cells_to_save:
+                        for test_name, date_col, new_value, original_value, result_id in cells_to_save:
+                            new_is_empty = _is_empty(new_value)
+                            orig_is_empty = _is_empty(original_value)
+                            if new_is_empty and not orig_is_empty:
+                                st.info(f"🗑️ DELETE: **{test_name}** @ {date_col}: {original_value} → (empty)")
+                            elif not new_is_empty and orig_is_empty:
+                                st.success(f"➕ NEW: **{test_name}** @ {date_col}: → {new_value}")
+                            elif not new_is_empty and not orig_is_empty:
+                                st.success(f"✏️ UPDATE: **{test_name}** @ {date_col}: {original_value} → {new_value}")
+                    else:
+                        st.info("No changes detected")
 
+                for test_name, date_col, new_value, original_value, result_id in cells_to_save:
+                    new_is_empty = _is_empty(new_value)
+                    orig_is_empty = _is_empty(original_value)
+
+                    if new_is_empty and orig_is_empty:
+                        continue
+
+                    try:
                         try:
-                            try:
-                                if date_format == "UK (DD/MM/YYYY)":
-                                    parsed_date = pd.to_datetime(date_col, format='%d/%m/%Y').date()
-                                else:
-                                    parsed_date = pd.to_datetime(date_col, format='%m/%d/%Y').date()
-                            except:
-                                try:
-                                    parsed_date = pd.to_datetime(date_col).date()
-                                except Exception as date_err:
-                                    st.error(f"Date parse error for {date_col}: {date_err}")
-                                    errors += 1
-                                    continue
-
-                            unit = units_map.get(test_name, '')
-                            ref_info = reference_ranges.get(test_name, '')
-                            ref_str = f"{ref_info['min']}-{ref_info['max']}" if isinstance(ref_info, dict) else str(ref_info)
-
-                            numeric_value = None
-                            if not new_is_empty:
-                                try:
-                                    numeric_value = float(new_value)
-                                except (ValueError, TypeError):
-                                    errors += 1
-                                    st.error(f"Invalid number '{new_value}' for {test_name}")
-                                    continue
-
-                            if result_id is not None:
-                                if new_is_empty:
-                                    if db.delete_test_result(result_id):
-                                        deleted_entries += 1
-                                else:
-                                    update_result = db.update_test_result(
-                                        result_id=result_id,
-                                        test_type=test_name,
-                                        value=numeric_value,
-                                        unit=unit,
-                                        test_date=parsed_date,
-                                        reference_range=ref_str
-                                    )
-                                    if update_result:
-                                        changes_made += 1
-                                        st.success(f"Updated {test_name} to {numeric_value}")
-                                    else:
-                                        st.error(f"Update failed for {test_name} (id={result_id}) - returned False")
+                            if date_format == "UK (DD/MM/YYYY)":
+                                parsed_date = pd.to_datetime(date_col, format='%d/%m/%Y').date()
                             else:
-                                if not new_is_empty:
-                                    patient_id = db.get_patient_id(selected_patient, user_id)
-                                    if not patient_id:
-                                        st.error(f"Could not find patient '{selected_patient}' - cannot add new test result")
-                                        errors += 1
-                                    elif db.add_test_result(
-                                        patient_id=patient_id,
-                                        test_date=parsed_date,
-                                        test_type=test_name,
-                                        test_value=numeric_value,
-                                        unit=unit,
-                                        reference_range=ref_str,
-                                        user_id=user_id
-                                    ):
-                                        new_entries += 1
-                                        st.success(f"Added {test_name}")
-                                    else:
-                                        st.error(f"Failed to add {test_name}")
-                                        errors += 1
-                        except Exception as e:
-                            errors += 1
-                            st.error(f"Error saving {test_name}: {e}")
+                                parsed_date = pd.to_datetime(date_col, format='%m/%d/%Y').date()
+                        except:
+                            try:
+                                parsed_date = pd.to_datetime(date_col).date()
+                            except Exception as date_err:
+                                st.error(f"Date parse error for {date_col}: {date_err}")
+                                errors += 1
+                                continue
+
+                        unit = units_map.get(test_name, '')
+                        ref_info = reference_ranges.get(test_name, '')
+                        ref_str = f"{ref_info['min']}-{ref_info['max']}" if isinstance(ref_info, dict) else str(ref_info)
+
+                        numeric_value = None
+                        if not new_is_empty:
+                            try:
+                                numeric_value = float(new_value)
+                            except (ValueError, TypeError):
+                                errors += 1
+                                st.error(f"Invalid number '{new_value}' for {test_name}")
+                                continue
+
+                        if result_id is not None:
+                            if new_is_empty:
+                                if db.delete_test_result(int(result_id)):
+                                    deleted_entries += 1
+                                    changes_list.append(f"{test_name} ({date_col}): {original_value} → deleted")
+                                else:
+                                    errors += 1
+                                    st.error(f"Failed to delete {test_name} @ {date_col}")
+                            else:
+                                update_result = db.update_test_result(
+                                    result_id=result_id,
+                                    test_type=test_name,
+                                    value=numeric_value,
+                                    unit=unit,
+                                    test_date=parsed_date,
+                                    reference_range=ref_str
+                                )
+                                if update_result:
+                                    changes_made += 1
+                                    changes_list.append(f"{test_name} ({date_col}): {original_value} → {numeric_value}")
+                                else:
+                                    st.error(f"Update failed for {test_name} (id={result_id})")
+                        else:
+                            if not new_is_empty:
+                                patient_id = db.get_patient_id(selected_patient, user_id)
+                                if not patient_id:
+                                    st.error(f"Could not find patient '{selected_patient}' - cannot add new test result")
+                                    errors += 1
+                                elif db.add_test_result(
+                                    patient_id=patient_id,
+                                    test_date=parsed_date,
+                                    test_type=test_name,
+                                    test_value=numeric_value,
+                                    unit=unit,
+                                    reference_range=ref_str,
+                                    user_id=user_id
+                                ):
+                                    new_entries += 1
+                                    changes_list.append(f"{test_name} ({date_col}): → {numeric_value}")
+                                else:
+                                    st.error(f"Failed to add {test_name}")
+                                    errors += 1
+                    except Exception as e:
+                        errors += 1
+                        st.error(f"Error saving {test_name}: {e}")
 
                 total_changes = changes_made + new_entries + deleted_entries
                 if total_changes > 0:
@@ -1329,9 +1378,3 @@ def render_heatmap_view(db, selected_patient, user_id, edit_df, key_prefix="mana
                     st.error(f"❌ {errors} errors occurred while saving")
                 else:
                     st.info("No changes detected. Edit values in the table above and click Save.")
-                    if save_attempts:
-                        st.warning(f"Debug: {len(save_attempts)} changes were detected but not saved:")
-                        for attempt in save_attempts[:5]:
-                            st.write(f"• {attempt}")
-                    if changes_list:
-                        st.warning(f"Debug: changes_list has {len(changes_list)} items but total_changes={total_changes}")
