@@ -2742,28 +2742,35 @@ def patient_dashboard_page(db, visualization, alert_system, user_id):
                         # Get investigation standards for reference ranges
                         investigation_standards = st.session_state.get('investigation_standards')
                         
-                        # Find common test types (or all test types if threshold is 0)
-                        if threshold_percentage == 0:
-                            # Show all tests from both reports
-                            common_test_types = set(report_1_data['Test Type'].unique()) | set(report_2_data['Test Type'].unique())
-                        else:
-                            common_test_types = set(report_1_data['Test Type'].unique()) & set(report_2_data['Test Type'].unique())
+                        # Find all test types from both reports (union)
+                        all_test_types = set(report_1_data['Test Type'].unique()) | set(report_2_data['Test Type'].unique())
                         
                         threshold_test_types = []
                         change_details = []
                         
-                        for test_type in common_test_types:
-                            # Get values from both reports (may be None if not in one report)
+                        for test_type in all_test_types:
                             value_1_data = report_1_data[report_1_data['Test Type'] == test_type]
                             value_2_data = report_2_data[report_2_data['Test Type'] == test_type]
                             
                             value_1 = value_1_data['Value'].iloc[0] if not value_1_data.empty else None
                             value_2 = value_2_data['Value'].iloc[0] if not value_2_data.empty else None
                             
-                            # Skip if either value is missing (except for threshold 0)
+                            baseline_date_used = str(threshold_report_1_date)
+                            
+                            if value_1 is None and value_2 is not None:
+                                earlier_data = df[
+                                    (df['Test Type'] == test_type) & 
+                                    (df['Date'].dt.date < threshold_report_2_date)
+                                ].sort_values('Date', ascending=False)
+                                if not earlier_data.empty:
+                                    value_1 = earlier_data['Value'].iloc[0]
+                                    fallback_date = earlier_data['Date'].iloc[0]
+                                    if hasattr(fallback_date, 'date'):
+                                        fallback_date = fallback_date.date()
+                                    baseline_date_used = str(fallback_date)
+                            
                             if value_1 is None or value_2 is None:
                                 if threshold_percentage == 0:
-                                    # For threshold 0, show even if one value is missing
                                     value_1_display = value_1 if value_1 is not None else "N/A"
                                     value_2_display = value_2 if value_2 is not None else "N/A"
                                     pct_change = 0
@@ -2772,7 +2779,6 @@ def patient_dashboard_page(db, visualization, alert_system, user_id):
                             else:
                                 value_1_display = value_1
                                 value_2_display = value_2
-                                # Calculate percentage change (avoid division by zero)
                                 if value_1 != 0:
                                     pct_change = abs((value_2 - value_1) / value_1) * 100
                                 else:
@@ -2832,7 +2838,8 @@ def patient_dashboard_page(db, visualization, alert_system, user_id):
                                     'pct_change': pct_change,
                                     'direction': direction,
                                     'range': ref_range if ref_range else "N/A",
-                                    'status': status if status else "N/A"
+                                    'status': status if status else "N/A",
+                                    'baseline_date': baseline_date_used
                                 })
                         
                         if threshold_test_types:
@@ -2852,17 +2859,22 @@ def patient_dashboard_page(db, visualization, alert_system, user_id):
                                 copy_lines.append("")  # Empty line after title
                                 
                                 for detail in sorted(change_details, key=lambda x: x['pct_change'], reverse=True):
-                                    preview_data.append({
+                                    row_data = {
                                         'Test': detail['test_type'],
-                                        f'Report 1 ({threshold_report_1_date})': detail['value_1'],
+                                        f'Baseline ({detail["baseline_date"]})': detail['value_1'],
                                         f'Report 2 ({threshold_report_2_date})': detail['value_2'],
                                         'Change %': f"{detail['direction']}{detail['pct_change']:.1f}%" if detail['pct_change'] > 0 else "0%",
                                         'Range': detail['range'],
                                         'Status': detail['status']
-                                    })
-                                    # Build copy line: "Test name" From "Value1" to "Value2" and "Status"
+                                    }
+                                    if detail['baseline_date'] != str(threshold_report_1_date):
+                                        row_data['Baseline Note'] = f"Used {detail['baseline_date']}"
+                                    else:
+                                        row_data['Baseline Note'] = ""
+                                    preview_data.append(row_data)
                                     status_text = detail['status'].replace("📈 ", "").replace("📉 ", "").replace("✅ ", "").replace("➡️ ", "")
-                                    copy_lines.append(f"{detail['test_type']}\tFrom\t{detail['value_1']}\tto\t{detail['value_2']}\tand\t{status_text}")
+                                    baseline_note = f" (baseline: {detail['baseline_date']})" if detail['baseline_date'] != str(threshold_report_1_date) else ""
+                                    copy_lines.append(f"{detail['test_type']}\tFrom\t{detail['value_1']}\tto\t{detail['value_2']}\tand\t{status_text}{baseline_note}")
                                 
                                 if preview_data:
                                     preview_df = pd.DataFrame(preview_data)
@@ -2900,11 +2912,18 @@ def patient_dashboard_page(db, visualization, alert_system, user_id):
         
         # Apply threshold filter if enabled (overrides other filters)
         if threshold_filter_enabled and threshold_test_types:
-            # When threshold filter is on, use only the two compared dates and threshold test types
             active_dates = [threshold_report_1_date, threshold_report_2_date]
+            for detail in change_details:
+                bd = detail.get('baseline_date', '')
+                if bd and bd != str(threshold_report_1_date):
+                    try:
+                        bd_date = pd.to_datetime(bd).date()
+                        if bd_date not in active_dates:
+                            active_dates.append(bd_date)
+                    except:
+                        pass
             active_test_types = threshold_test_types
             
-            # Filter events to only those within the date range of the two compared reports
             min_date = min(active_dates)
             max_date = max(active_dates)
             threshold_filtered_events = []

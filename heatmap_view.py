@@ -705,13 +705,54 @@ def render_heatmap_view(db, selected_patient, user_id, edit_df, key_prefix="mana
             center_align = Alignment(horizontal='center', vertical='center')
             rotated_align = Alignment(horizontal='center', vertical='bottom', text_rotation=90)
 
-            headers = ['Test Name', 'Category', 'Range'] + list(unique_dates) + ['Avg', 'Count', 'Sum']
+            excel_date_columns = list(unique_dates)
+            excel_event_col_map = {}
+            if show_events and event_dates_map:
+                all_date_objs_excel = []
+                for d in unique_dates:
+                    try:
+                        if date_format == "UK (DD/MM/YYYY)":
+                            dt = pd.to_datetime(d, format='%d/%m/%Y')
+                        else:
+                            dt = pd.to_datetime(d, format='%m/%d/%Y')
+                        all_date_objs_excel.append((dt, d, 'data'))
+                    except:
+                        all_date_objs_excel.append((pd.Timestamp.min, d, 'data'))
+                for ev_formatted, ev_names in event_dates_map.items():
+                    if ev_formatted not in unique_dates:
+                        try:
+                            if date_format == "UK (DD/MM/YYYY)":
+                                ev_dt = pd.to_datetime(ev_formatted, format='%d/%m/%Y')
+                            else:
+                                ev_dt = pd.to_datetime(ev_formatted, format='%m/%d/%Y')
+                            all_date_objs_excel.append((ev_dt, ev_formatted, 'event'))
+                        except:
+                            all_date_objs_excel.append((pd.Timestamp.min, ev_formatted, 'event'))
+                all_date_objs_excel.sort(key=lambda x: x[0], reverse=True)
+                excel_date_columns = []
+                for dt_obj, formatted, dtype in all_date_objs_excel:
+                    if dtype == 'event' and formatted not in unique_dates:
+                        event_label = f"Event: {formatted}"
+                        excel_date_columns.append(event_label)
+                        excel_event_col_map[event_label] = event_dates_map.get(formatted, [])
+                    else:
+                        excel_date_columns.append(formatted)
+                        if formatted in event_dates_map:
+                            event_label = f"Event: {formatted}"
+                            excel_date_columns.append(event_label)
+                            excel_event_col_map[event_label] = event_dates_map.get(formatted, [])
+
+            n_excel_date_cols = len(excel_date_columns)
+            event_fill = PatternFill(start_color="FFF3CD", end_color="FFF3CD", fill_type="solid")
+            event_font = Font(bold=True, size=8, color="856404")
+
+            headers = ['Test Name', 'Category', 'Range'] + excel_date_columns + ['Avg', 'Count', 'Sum']
             for col_idx, header in enumerate(headers, 1):
                 cell = ws.cell(row=1, column=col_idx, value=header)
                 cell.fill = header_fill
                 cell.font = header_font
                 cell.border = thin_border
-                if col_idx >= 4 and col_idx < 4 + len(unique_dates):
+                if col_idx >= 4 and col_idx < 4 + n_excel_date_cols:
                     cell.alignment = rotated_align
                 else:
                     cell.alignment = center_align
@@ -728,7 +769,7 @@ def render_heatmap_view(db, selected_patient, user_id, edit_df, key_prefix="mana
 
                 if category != current_category:
                     current_category = category
-                    total_cols = 3 + len(unique_dates) + 3
+                    total_cols = 3 + n_excel_date_cols + 3
                     cell = ws.cell(row=current_row, column=1, value=f"▸ {category}")
                     cell.font = cat_separator_font
                     cell.fill = cat_separator_fill
@@ -750,28 +791,34 @@ def render_heatmap_view(db, selected_patient, user_id, edit_df, key_prefix="mana
                 ws.cell(row=current_row, column=3).font = Font(size=8)
 
                 ref_info = reference_ranges.get(test)
-                for date_idx, date_col in enumerate(unique_dates):
+                for date_idx, date_col in enumerate(excel_date_columns):
                     col_num = 4 + date_idx
-                    val = pivot_data.get(test, {}).get(date_col)
                     cell = ws.cell(row=current_row, column=col_num)
                     cell.border = thin_border
                     cell.alignment = center_align
-                    if val is not None and not pd.isna(val):
-                        try:
-                            cell.value = round(float(val), 2)
-                        except:
-                            cell.value = val
-                        cell.number_format = '0.0'
-                        rgb = get_deviation_color_rgb(val, ref_info)
-                        if rgb:
-                            hex_color = f"{rgb[0]:02X}{rgb[1]:02X}{rgb[2]:02X}"
-                            cell.fill = PatternFill(start_color=hex_color, end_color=hex_color, fill_type="solid")
-                            lum = (0.299 * rgb[0] + 0.587 * rgb[1] + 0.114 * rgb[2])
-                            text_color = "FFFFFF" if lum < 128 else "000000"
-                            cell.font = Font(color=text_color, size=8)
+                    if date_col in excel_event_col_map:
+                        event_name_str = ' | '.join(excel_event_col_map[date_col])
+                        cell.value = event_name_str
+                        cell.fill = event_fill
+                        cell.font = event_font
+                    else:
+                        val = pivot_data.get(test, {}).get(date_col)
+                        if val is not None and not pd.isna(val):
+                            try:
+                                cell.value = round(float(val), 2)
+                            except:
+                                cell.value = val
+                            cell.number_format = '0.0'
+                            rgb = get_deviation_color_rgb(val, ref_info)
+                            if rgb:
+                                hex_color = f"{rgb[0]:02X}{rgb[1]:02X}{rgb[2]:02X}"
+                                cell.fill = PatternFill(start_color=hex_color, end_color=hex_color, fill_type="solid")
+                                lum = (0.299 * rgb[0] + 0.587 * rgb[1] + 0.114 * rgb[2])
+                                text_color = "FFFFFF" if lum < 128 else "000000"
+                                cell.font = Font(color=text_color, size=8)
 
                 stats = stats_data.get(test, {})
-                stats_start = 4 + len(unique_dates)
+                stats_start = 4 + n_excel_date_cols
                 for si, sv in enumerate([stats.get('Average', 0), stats.get('Count', 0), stats.get('Sum', 0)]):
                     cell = ws.cell(row=current_row, column=stats_start + si, value=sv)
                     cell.border = thin_border
@@ -792,26 +839,27 @@ def render_heatmap_view(db, selected_patient, user_id, edit_df, key_prefix="mana
             ws.cell(row=summary_row_num, column=3).border = thin_border
             ws.cell(row=summary_row_num, column=3).alignment = center_align
 
-            for date_idx, date_col in enumerate(unique_dates):
+            for date_idx, date_col in enumerate(excel_date_columns):
                 col_num = 4 + date_idx
-                date_values = []
-                for test in unique_tests:
-                    val = pivot_data.get(test, {}).get(date_col)
-                    if val is not None and not pd.isna(val):
-                        try:
-                            date_values.append(float(val))
-                        except:
-                            pass
                 cell = ws.cell(row=summary_row_num, column=col_num)
                 cell.fill = summary_fill
                 cell.font = summary_font
                 cell.border = thin_border
                 cell.alignment = center_align
-                if date_values:
-                    cell.value = round(sum(date_values) / len(date_values), 2)
-                    cell.number_format = '0.0'
+                if date_col not in excel_event_col_map:
+                    date_values = []
+                    for test in unique_tests:
+                        val = pivot_data.get(test, {}).get(date_col)
+                        if val is not None and not pd.isna(val):
+                            try:
+                                date_values.append(float(val))
+                            except:
+                                pass
+                    if date_values:
+                        cell.value = round(sum(date_values) / len(date_values), 2)
+                        cell.number_format = '0.0'
 
-            stats_start = 4 + len(unique_dates)
+            stats_start = 4 + n_excel_date_cols
             for si, sv in enumerate([overall_avg, total_count, total_sum]):
                 cell = ws.cell(row=summary_row_num, column=stats_start + si, value=round(sv, 2) if isinstance(sv, float) else sv)
                 cell.fill = summary_fill
@@ -822,14 +870,14 @@ def render_heatmap_view(db, selected_patient, user_id, edit_df, key_prefix="mana
             ws.column_dimensions['A'].width = 18
             ws.column_dimensions['B'].width = 14
             ws.column_dimensions['C'].width = 12
-            for col_idx in range(4, 4 + len(unique_dates)):
+            for col_idx in range(4, 4 + n_excel_date_cols):
                 ws.column_dimensions[get_column_letter(col_idx)].width = 5.5
-            for col_idx in range(4 + len(unique_dates), 4 + len(unique_dates) + 3):
+            for col_idx in range(4 + n_excel_date_cols, 4 + n_excel_date_cols + 3):
                 ws.column_dimensions[get_column_letter(col_idx)].width = 6.5
 
             ws.freeze_panes = 'D2'
 
-            last_col_letter = get_column_letter(3 + len(unique_dates) + 3)
+            last_col_letter = get_column_letter(3 + n_excel_date_cols + 3)
             ws.auto_filter.ref = f"A1:{last_col_letter}{summary_row_num}"
 
             legend_ws = wb.create_sheet("Color Legend")
@@ -868,17 +916,54 @@ def render_heatmap_view(db, selected_patient, user_id, edit_df, key_prefix="mana
                     categories_in_order.append(cat)
                     seen_cats.add(cat)
 
+            img_date_columns = list(unique_dates)
+            img_event_col_map = {}
+            if show_events and event_dates_map:
+                all_date_objs_img = []
+                for d in unique_dates:
+                    try:
+                        if date_format == "UK (DD/MM/YYYY)":
+                            dt = pd.to_datetime(d, format='%d/%m/%Y')
+                        else:
+                            dt = pd.to_datetime(d, format='%m/%d/%Y')
+                        all_date_objs_img.append((dt, d, 'data'))
+                    except:
+                        all_date_objs_img.append((pd.Timestamp.min, d, 'data'))
+                for ev_formatted, ev_names in event_dates_map.items():
+                    if ev_formatted not in unique_dates:
+                        try:
+                            if date_format == "UK (DD/MM/YYYY)":
+                                ev_dt = pd.to_datetime(ev_formatted, format='%d/%m/%Y')
+                            else:
+                                ev_dt = pd.to_datetime(ev_formatted, format='%m/%d/%Y')
+                            all_date_objs_img.append((ev_dt, ev_formatted, 'event'))
+                        except:
+                            all_date_objs_img.append((pd.Timestamp.min, ev_formatted, 'event'))
+                all_date_objs_img.sort(key=lambda x: x[0], reverse=True)
+                img_date_columns = []
+                for dt_obj, formatted, dtype in all_date_objs_img:
+                    if dtype == 'event' and formatted not in unique_dates:
+                        event_label = f"Ev: {formatted}"
+                        img_date_columns.append(event_label)
+                        img_event_col_map[event_label] = event_dates_map.get(formatted, [])
+                    else:
+                        img_date_columns.append(formatted)
+                        if formatted in event_dates_map:
+                            event_label = f"Ev: {formatted}"
+                            img_date_columns.append(event_label)
+                            img_event_col_map[event_label] = event_dates_map.get(formatted, [])
+
             n_cat_separators = len(categories_in_order)
             n_data_rows = len(unique_tests)
             n_rows = n_data_rows + n_cat_separators + 1
-            n_date_cols = len(unique_dates)
+            n_img_date_cols = len(img_date_columns)
             n_stat_cols = 3
-            fixed_cols = ['Test Name', 'Category', 'Range']
+            fixed_cols = ['Test Name', 'Range']
             n_fixed = len(fixed_cols)
-            total_cols = n_fixed + n_date_cols + n_stat_cols
+            total_cols = n_fixed + n_img_date_cols + n_stat_cols
 
-            col_w_fixed = [2.0, 1.4, 1.2]
-            col_w_date = [0.50] * n_date_cols
+            col_w_fixed = [2.0, 1.2]
+            col_w_date = [0.50] * n_img_date_cols
             col_w_stats = [0.55, 0.45, 0.55]
             col_widths = col_w_fixed + col_w_date + col_w_stats
             fig_width = sum(col_widths) + 0.3
@@ -902,12 +987,13 @@ def render_heatmap_view(db, selected_patient, user_id, edit_df, key_prefix="mana
             header_y = total_height - header_height
             ax.add_patch(plt.Rectangle((0, header_y), sum(col_widths), header_height, facecolor=header_color, edgecolor='#D9D9D9', linewidth=0.5))
 
-            all_headers = fixed_cols + list(unique_dates) + ['Avg', 'Count', 'Sum']
+            all_headers = fixed_cols + img_date_columns + ['Avg', 'Count', 'Sum']
             for col_idx, header in enumerate(all_headers):
                 cx = x_positions[col_idx] + col_widths[col_idx] / 2
-                if col_idx >= n_fixed and col_idx < n_fixed + n_date_cols:
+                if col_idx >= n_fixed and col_idx < n_fixed + n_img_date_cols:
+                    h_color = '#856404' if header in img_event_col_map else 'white'
                     ax.text(cx, header_y + 0.15, header, ha='center', va='bottom',
-                            fontsize=4.5, fontweight='bold', color='white', rotation=90,
+                            fontsize=4.5, fontweight='bold', color=h_color, rotation=90,
                             fontfamily='sans-serif')
                 else:
                     cy = header_y + header_height / 2
@@ -938,43 +1024,48 @@ def render_heatmap_view(db, selected_patient, user_id, edit_df, key_prefix="mana
 
                 range_str = range_column.get(test, 'N/A')
                 ax.text(x_positions[0] + 0.06, y + row_height / 2, test, ha='left', va='center', fontsize=4, fontfamily='sans-serif', clip_on=True)
-                ax.text(x_positions[1] + 0.04, y + row_height / 2, category, ha='left', va='center', fontsize=3.5, fontfamily='sans-serif', clip_on=True)
-                ax.text(x_positions[2] + col_widths[2] / 2, y + row_height / 2, range_str, ha='center', va='center', fontsize=3.5, fontfamily='sans-serif')
+                ax.text(x_positions[1] + col_widths[1] / 2, y + row_height / 2, range_str, ha='center', va='center', fontsize=3.5, fontfamily='sans-serif')
 
                 ref_info = reference_ranges.get(test)
-                for date_idx, date_col in enumerate(unique_dates):
+                for date_idx, date_col in enumerate(img_date_columns):
                     col_num = n_fixed + date_idx
                     cx = x_positions[col_num] + col_widths[col_num] / 2
                     cell_x = x_positions[col_num]
                     cell_w = col_widths[col_num]
 
-                    val = pivot_data.get(test, {}).get(date_col)
-                    if val is not None and not pd.isna(val):
-                        try:
-                            fval = float(val)
-                        except:
-                            continue
-                        rgb = get_deviation_color_rgb(fval, ref_info)
-                        if rgb:
-                            norm_color = (rgb[0]/255, rgb[1]/255, rgb[2]/255)
-                            ax.add_patch(plt.Rectangle((cell_x + 0.02, y + 0.02), cell_w - 0.04, row_height - 0.04,
-                                facecolor=norm_color, edgecolor='none', linewidth=0))
-                            lum = 0.299 * rgb[0] + 0.587 * rgb[1] + 0.114 * rgb[2]
-                            tc = 'white' if lum < 128 else 'black'
-                        else:
-                            tc = 'black'
-                        if fval >= 1000:
-                            display = f"{fval:.0f}"
-                        elif fval >= 100:
-                            display = f"{fval:.1f}"
-                        else:
-                            display = f"{fval:.2f}"
-                        ax.text(cx, y + row_height / 2, display, ha='center', va='center', fontsize=3.2, color=tc, fontfamily='sans-serif')
+                    if date_col in img_event_col_map:
+                        event_name_str = ' | '.join(img_event_col_map[date_col])
+                        ax.add_patch(plt.Rectangle((cell_x + 0.02, y + 0.02), cell_w - 0.04, row_height - 0.04,
+                            facecolor='#FFF3CD', edgecolor='none', linewidth=0))
+                        ax.text(cx, y + row_height / 2, event_name_str[:8], ha='center', va='center', fontsize=2.5, color='#856404', fontfamily='sans-serif', clip_on=True)
+                    else:
+                        val = pivot_data.get(test, {}).get(date_col)
+                        if val is not None and not pd.isna(val):
+                            try:
+                                fval = float(val)
+                            except:
+                                continue
+                            rgb = get_deviation_color_rgb(fval, ref_info)
+                            if rgb:
+                                norm_color = (rgb[0]/255, rgb[1]/255, rgb[2]/255)
+                                ax.add_patch(plt.Rectangle((cell_x + 0.02, y + 0.02), cell_w - 0.04, row_height - 0.04,
+                                    facecolor=norm_color, edgecolor='none', linewidth=0))
+                                lum = 0.299 * rgb[0] + 0.587 * rgb[1] + 0.114 * rgb[2]
+                                tc = 'white' if lum < 128 else 'black'
+                            else:
+                                tc = 'black'
+                            if fval >= 1000:
+                                display = f"{fval:.0f}"
+                            elif fval >= 100:
+                                display = f"{fval:.1f}"
+                            else:
+                                display = f"{fval:.2f}"
+                            ax.text(cx, y + row_height / 2, display, ha='center', va='center', fontsize=3.2, color=tc, fontfamily='sans-serif')
 
                 stats = stats_data.get(test, {})
                 stat_values = [stats.get('Average', 0), stats.get('Count', 0), stats.get('Sum', 0)]
                 for si, sv in enumerate(stat_values):
-                    col_num = n_fixed + n_date_cols + si
+                    col_num = n_fixed + n_img_date_cols + si
                     cx = x_positions[col_num] + col_widths[col_num] / 2
                     if isinstance(sv, float):
                         display = f"{sv:.1f}" if sv >= 100 else f"{sv:.2f}"
@@ -987,11 +1078,13 @@ def render_heatmap_view(db, selected_patient, user_id, edit_df, key_prefix="mana
             y = total_height - header_height - (visual_row + 1) * row_height
             ax.add_patch(plt.Rectangle((0, y), sum(col_widths), row_height, facecolor='#E8E8E8', edgecolor='#D9D9D9', linewidth=0.3))
             ax.text(x_positions[0] + 0.06, y + row_height / 2, 'Avg Per Date', ha='left', va='center', fontsize=4, fontweight='bold', fontfamily='sans-serif')
-            ax.text(x_positions[2] + col_widths[2] / 2, y + row_height / 2, 'SUMMARY', ha='center', va='center', fontsize=3.5, fontweight='bold', fontfamily='sans-serif')
+            ax.text(x_positions[1] + col_widths[1] / 2, y + row_height / 2, 'SUMMARY', ha='center', va='center', fontsize=3.5, fontweight='bold', fontfamily='sans-serif')
 
-            for date_idx, date_col in enumerate(unique_dates):
+            for date_idx, date_col in enumerate(img_date_columns):
                 col_num = n_fixed + date_idx
                 cx = x_positions[col_num] + col_widths[col_num] / 2
+                if date_col in img_event_col_map:
+                    continue
                 date_values = []
                 for t in unique_tests:
                     val = pivot_data.get(t, {}).get(date_col)
@@ -1007,7 +1100,7 @@ def render_heatmap_view(db, selected_patient, user_id, edit_df, key_prefix="mana
 
             summary_stats = [overall_avg, total_count, total_sum]
             for si, sv in enumerate(summary_stats):
-                col_num = n_fixed + n_date_cols + si
+                col_num = n_fixed + n_img_date_cols + si
                 cx = x_positions[col_num] + col_widths[col_num] / 2
                 if isinstance(sv, float):
                     display = f"{sv:.1f}" if sv >= 100 else f"{sv:.2f}"
