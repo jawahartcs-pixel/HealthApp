@@ -926,127 +926,258 @@ class FileParser:
         
         return unique_results
     
+    def _fuzzy_match_score(self, text_fragment: str, search_term: str) -> float:
+        """Calculate fuzzy match score between a text fragment and search term.
+        Returns 0.0 to 1.0 where 1.0 is exact match."""
+        if not text_fragment or not search_term:
+            return 0.0
+        t = text_fragment.lower().strip()
+        s = search_term.lower().strip()
+        if t == s:
+            return 1.0
+        if s in t:
+            return 0.95
+        if len(s) < 3:
+            return 1.0 if t == s else 0.0
+        t_clean = re.sub(r'[^a-z0-9]', '', t)
+        s_clean = re.sub(r'[^a-z0-9]', '', s)
+        if t_clean == s_clean:
+            return 0.95
+        if s_clean in t_clean:
+            return 0.9
+        if len(s_clean) >= 4 and len(t_clean) >= 4:
+            max_dist = max(1, len(s_clean) // 4)
+            dist = self._levenshtein_distance(t_clean, s_clean)
+            if dist <= max_dist:
+                return max(0.6, 1.0 - (dist / len(s_clean)))
+        return 0.0
+
+    def _levenshtein_distance(self, s1: str, s2: str) -> int:
+        """Calculate Levenshtein edit distance between two strings."""
+        if len(s1) < len(s2):
+            return self._levenshtein_distance(s2, s1)
+        if len(s2) == 0:
+            return len(s1)
+        prev_row = range(len(s2) + 1)
+        for i, c1 in enumerate(s1):
+            curr_row = [i + 1]
+            for j, c2 in enumerate(s2):
+                insertions = prev_row[j + 1] + 1
+                deletions = curr_row[j] + 1
+                substitutions = prev_row[j] + (c1 != c2)
+                curr_row.append(min(insertions, deletions, substitutions))
+            prev_row = curr_row
+        return prev_row[-1]
+
     def scan_text_against_standards(self, text: str, investigation_standards) -> List[Dict[str, Any]]:
-        """Scan document text against investigation standards table to find values."""
+        """Scan document text against investigation standards table to find values.
+        Uses a two-phase approach: first extract all lines with numeric values,
+        then match each line against investigation standards using fuzzy matching."""
         results = []
-        
+
         if not investigation_standards:
             return results
-            
-        # Get all standards from the database
+
         all_standards = investigation_standards.get_all_standards()
-        
+        if not all_standards:
+            return results
+
+        lines = text.split('\n')
+        all_lines = [(i, line.strip()) for i, line in enumerate(lines) if line.strip()]
+
+        candidate_lines = []
+        for line_idx, line_stripped in all_lines:
+            if len(line_stripped) < 3:
+                continue
+            numbers = re.findall(r'(?<![a-zA-Z])(\d+(?:\.\d+)?)(?![a-zA-Z\d])', line_stripped)
+            if numbers:
+                context_parts = [line_stripped]
+                idx_in_all = next((i for i, (li, _) in enumerate(all_lines) if li == line_idx), -1)
+                if idx_in_all > 0:
+                    context_parts.insert(0, all_lines[idx_in_all - 1][1])
+                if idx_in_all >= 0 and idx_in_all < len(all_lines) - 1:
+                    context_parts.append(all_lines[idx_in_all + 1][1])
+                context = ' '.join(context_parts)
+                candidate_lines.append((line_idx, line_stripped, numbers, context))
+
+        term_to_standards = {}
         for standard in all_standards:
             standard_name = standard['standard_name']
             aliases = standard.get('aliases', '')
-            exclusions = standard.get('exclusions', '')
-            common_unit = standard.get('common_unit') or standard.get('male_unit', '')
-            
-            # Create search patterns from standard name and aliases
             search_terms = [standard_name]
             if aliases:
                 search_terms.extend([alias.strip() for alias in aliases.split(',') if alias.strip()])
-            
-            # Look for each term in the document text
             for term in search_terms:
-                if not term:
+                if term:
+                    term_to_standards[term.lower()] = standard
+
+        found_standards = set()
+
+        for line_idx, line, numbers, context in candidate_lines:
+            line_lower = line.lower()
+            context_lower = context.lower()
+
+            best_match = None
+            best_score = 0.0
+            best_term = ''
+
+            for term, standard in term_to_standards.items():
+                std_name = standard['standard_name']
+                if std_name in found_standards:
                     continue
-                    
-                # Create flexible pattern to find test name and value
-                # Look for the term followed by value patterns
-                patterns = [
-                    # Pattern 1: Term : Value Unit
-                    rf'{re.escape(term)}\s*[:\-]?\s*(\d+(?:\.\d+)?)\s*([a-zA-Z/%×^²³⁰¹²³⁴⁵⁶⁷⁸⁹μµ/\-\s]*)',
-                    # Pattern 2: Term Value Unit (tabular format)
-                    rf'{re.escape(term)}\s+(\d+(?:\.\d+)?)\s*([a-zA-Z/%×^²³⁰¹²³⁴⁵⁶⁷⁸⁹μµ/\-\s]*)',
-                    # Pattern 3: Value near term (within 50 characters)
-                    rf'(?:{re.escape(term)}.{{0,50}}?)(\d+(?:\.\d+)?)\s*([a-zA-Z/%×^²³⁰¹²³⁴⁵⁶⁷⁸⁹μµ/\-\s]*)',
-                ]
-                
-                for pattern in patterns:
-                    matches = re.finditer(pattern, text, re.IGNORECASE)
-                    
-                    for match in matches:
-                        try:
-                            value = float(match.group(1))
-                            extracted_unit = match.group(2).strip() if len(match.groups()) > 1 else ''
-                            
-                            # Get matched context (50 chars before and after match) for exclusion checking
-                            match_start = max(0, match.start() - 50)
-                            match_end = min(len(text), match.end() + 50)
-                            matched_context = text[match_start:match_end].lower()
-                            
-                            # Check exclusions - if any exclusion pattern is in the matched context, skip this match
-                            if exclusions:
-                                skip_match = False
-                                for exc in exclusions.split(','):
-                                    exc = exc.strip().lower()
-                                    if exc and exc in matched_context:
-                                        skip_match = True
-                                        break
-                                if skip_match:
-                                    continue
-                            
-                            # Clean up extracted unit
-                            extracted_unit = re.sub(r'\s+', ' ', extracted_unit).strip()
-                            if not extracted_unit:
-                                extracted_unit = common_unit
-                            
-                            # Create reference range string
-                            male_min = standard.get('male_range_min', '')
-                            male_max = standard.get('male_range_max', '')
-                            female_min = standard.get('female_range_min', '')
-                            female_max = standard.get('female_range_max', '')
-                            
-                            ref_range = ''
-                            if male_min and male_max:
-                                if female_min and female_max and (male_min != female_min or male_max != female_max):
-                                    ref_range = f"M: {male_min}-{male_max}, F: {female_min}-{female_max}"
-                                else:
-                                    ref_range = f"{male_min}-{male_max}"
-                            
-                            # Get the original source text from the document (the matched portion)
-                            source_text_start = max(0, match.start() - 30)
-                            source_text_end = min(len(text), match.end() + 10)
-                            original_source_text = text[source_text_start:source_text_end].strip()
-                            # Clean up the source text (remove extra whitespace)
-                            original_source_text = ' '.join(original_source_text.split())
-                            
-                            result = {
-                                'test_type': standard_name,
-                                'value': value,
-                                'unit': extracted_unit,
-                                'reference_range': ref_range,
-                                'source': 'standards_scan',
-                                'matched_term': original_source_text,  # Now shows original source text
-                                'search_term': term,  # The term that was searched for
-                                'category': standard.get('category', ''),
-                                'description': standard.get('description', ''),
-                                'document_position': match.start()  # Track position in document
-                            }
-                            
-                            # Check for duplicates before adding
-                            is_duplicate = False
-                            for existing in results:
-                                if (existing['test_type'] == standard_name and 
-                                    abs(existing['value'] - value) < 0.01):
-                                    is_duplicate = True
-                                    break
-                            
-                            if not is_duplicate:
-                                results.append(result)
-                                break  # Found a match for this standard, move to next
-                            
-                        except (ValueError, IndexError):
+
+                is_short_term = len(term) <= 3
+                score = 0.0
+                escaped_term = re.escape(term)
+
+                if re.search(rf'\b{escaped_term}\b', line_lower):
+                    score = 1.0
+                elif re.search(rf'\b{escaped_term}\b', context_lower):
+                    score = 0.9
+                elif not is_short_term:
+                    if re.search(escaped_term, context_lower):
+                        score = 0.85
+                    else:
+                        search_text = context_lower
+                        words_in_text = re.split(r'[\s\t,|:;]+', search_text)
+                        term_words = term.lower().split()
+                        if len(term_words) == 1 and len(term) >= 4:
+                            for word in words_in_text:
+                                if len(word) >= 3:
+                                    fs = self._fuzzy_match_score(word, term)
+                                    if fs > score:
+                                        score = fs
+                        elif len(term_words) > 1:
+                            for i in range(len(words_in_text) - len(term_words) + 1):
+                                window = ' '.join(words_in_text[i:i + len(term_words)])
+                                fs = self._fuzzy_match_score(window, term)
+                                if fs > score:
+                                    score = fs
+
+                if score >= 0.6 and score > best_score:
+                    best_score = score
+                    best_match = standard
+                    best_term = term
+
+            if best_match and best_score >= 0.6:
+                standard = best_match
+                standard_name = standard['standard_name']
+                exclusions = standard.get('exclusions', '')
+                common_unit = standard.get('common_unit') or standard.get('male_unit', '')
+
+                if exclusions:
+                    skip_line = False
+                    for exc in exclusions.split(','):
+                        exc = exc.strip().lower()
+                        if exc and exc in line_lower:
+                            skip_line = True
+                            break
+                    if skip_line:
+                        continue
+
+                best_value = None
+                best_value_pos = -1
+                term_pos = line_lower.find(best_term.lower())
+                if term_pos < 0:
+                    term_pos = 0
+
+                for num_str in numbers:
+                    try:
+                        val = float(num_str)
+                        if val < 0 or val > 100000:
                             continue
-                    
-                    if results and results[-1]['test_type'] == standard_name:
-                        break  # Found a match for this standard, move to next standard
-        
-        # Sort results by document position to maintain original document order
+                        num_pos = line.find(num_str, term_pos)
+                        if num_pos < 0:
+                            num_pos = line.find(num_str)
+                        if num_pos >= 0:
+                            if best_value is None or num_pos < best_value_pos:
+                                best_value = val
+                                best_value_pos = num_pos
+                    except ValueError:
+                        continue
+
+                if best_value is not None:
+                    unit_match = re.search(
+                        re.escape(str(best_value)) + r'\s*([a-zA-Z/%×^²³⁰¹²³⁴⁵⁶⁷⁸⁹μµ]+(?:[/\s]*[a-zA-Z]+)*)',
+                        line, re.IGNORECASE
+                    )
+                    extracted_unit = unit_match.group(1).strip() if unit_match else ''
+                    extracted_unit = re.sub(r'\s+', ' ', extracted_unit).strip()
+                    if not extracted_unit or len(extracted_unit) > 20:
+                        extracted_unit = common_unit
+
+                    male_min = standard.get('male_range_min', '')
+                    male_max = standard.get('male_range_max', '')
+                    female_min = standard.get('female_range_min', '')
+                    female_max = standard.get('female_range_max', '')
+
+                    ref_range = ''
+                    if male_min and male_max:
+                        if female_min and female_max and (male_min != female_min or male_max != female_max):
+                            ref_range = f"M: {male_min}-{male_max}, F: {female_min}-{female_max}"
+                        else:
+                            ref_range = f"{male_min}-{male_max}"
+
+                    source_text = ' '.join(line.split())[:100]
+
+                    result = {
+                        'test_type': standard_name,
+                        'value': best_value,
+                        'unit': extracted_unit,
+                        'reference_range': ref_range,
+                        'source': 'standards_scan',
+                        'matched_term': source_text,
+                        'search_term': best_term,
+                        'category': standard.get('category', ''),
+                        'description': standard.get('description', ''),
+                        'document_position': line_idx,
+                        'match_confidence': best_score
+                    }
+
+                    is_duplicate = False
+                    for existing in results:
+                        if (existing['test_type'] == standard_name and
+                                abs(existing['value'] - best_value) < 0.01):
+                            is_duplicate = True
+                            break
+
+                    if not is_duplicate:
+                        results.append(result)
+                        found_standards.add(standard_name)
+
         results.sort(key=lambda x: x.get('document_position', float('inf')))
-        
+
         return results
+
+    def parse_pasted_text(self, text: str) -> str:
+        """Parse pasted text (CSV, tab-separated, or free-form) into a format
+        suitable for test data extraction. Returns the text as-is since it's
+        already in text form, but normalizes line endings and formatting."""
+        if not text or not text.strip():
+            return ""
+        text = text.replace('\r\n', '\n').replace('\r', '\n')
+        lines = text.strip().split('\n')
+        if not lines:
+            return ""
+        has_tabs = any('\t' in line for line in lines[:5])
+        has_commas = any(',' in line for line in lines[:5])
+        if has_tabs:
+            normalized_lines = []
+            for line in lines:
+                parts = [p.strip() for p in line.split('\t')]
+                normalized_lines.append('\t'.join(parts))
+            return '\n'.join(normalized_lines)
+        elif has_commas:
+            normalized_lines = []
+            for line in lines:
+                try:
+                    reader = csv.reader(io.StringIO(line))
+                    for row in reader:
+                        normalized_lines.append('\t'.join([cell.strip() for cell in row]))
+                except:
+                    normalized_lines.append(line)
+            return '\n'.join(normalized_lines)
+        return text
     
     def _is_medical_terminology(self, test_name: str) -> bool:
         """Check if test name is a valid medical terminology."""

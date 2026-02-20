@@ -155,28 +155,146 @@ def upload_results_page(file_parser, data_processor, user_id):
         
         return f"Could not locate '{test_name}' in document text"
     
-    # File upload
-    uploaded_files = st.file_uploader(
-        "Choose blood test result files",
-        type=['pdf', 'txt', 'docx', 'xlsx', 'xls', 'csv', 'xml', 'jpg', 'jpeg', 'png', 'bmp', 'tiff'],
-        accept_multiple_files=True,
-        help="Upload PDF, Word (.docx), Excel (.xlsx, .xls), CSV, XML, text files, or images (JPG, PNG, BMP, TIFF) containing blood test results"
-    )
-    
-    # Option to force OCR for difficult PDFs
-    force_ocr = st.checkbox(
-        "Force OCR extraction",
-        help="Use OCR (Optical Character Recognition) for image files and scanned documents. This automatically processes images and can help extract text from problematic PDFs."
-    )
-    
-    # Clear cache button for reprocessing
-    if st.button("🔄 Clear Cache & Reprocess Files", help="Clear cached extraction results and reprocess all files"):
-        # Clear all extraction cache
-        keys_to_remove = [key for key in st.session_state.keys() if key.startswith('extraction_')]
-        for key in keys_to_remove:
-            del st.session_state[key]
-        st.rerun()
-    
+    upload_tab, paste_tab = st.tabs(["📁 Upload Files", "📋 Paste Text"])
+
+    with upload_tab:
+        uploaded_files = st.file_uploader(
+            "Choose blood test result files",
+            type=['pdf', 'txt', 'docx', 'xlsx', 'xls', 'csv', 'xml', 'jpg', 'jpeg', 'png', 'bmp', 'tiff'],
+            accept_multiple_files=True,
+            help="Upload PDF, Word (.docx), Excel (.xlsx, .xls), CSV, XML, text files, or images (JPG, PNG, BMP, TIFF) containing blood test results"
+        )
+
+        force_ocr = st.checkbox(
+            "Force OCR extraction",
+            help="Use OCR (Optical Character Recognition) for image files and scanned documents. This automatically processes images and can help extract text from problematic PDFs."
+        )
+
+        if st.button("🔄 Clear Cache & Reprocess Files", help="Clear cached extraction results and reprocess all files"):
+            keys_to_remove = [key for key in st.session_state.keys() if key.startswith('extraction_')]
+            for key in keys_to_remove:
+                del st.session_state[key]
+            st.rerun()
+
+    with paste_tab:
+        st.markdown("Paste your blood test results below. Supported formats:")
+        st.markdown("- **Tab-separated**: `Test Name[TAB]Value[TAB]Unit`")
+        st.markdown("- **Comma-separated (CSV)**: `Test Name,Value,Unit`")
+        st.markdown("- **Free text**: Any text containing test names and values")
+
+        pasted_text = st.text_area(
+            "Paste test results here",
+            height=250,
+            placeholder="Example (tab or comma separated):\nHemoglobin\t13.5\tg/dL\nWBC\t7.2\tthousand/uL\nPlatelets\t250\tthousand/uL\n\nOr paste the full report text and the system will find matching tests.",
+            key="pasted_text_input"
+        )
+
+        paste_col1, paste_col2 = st.columns(2)
+        with paste_col1:
+            paste_patient_name = st.text_input("Patient Name", key="paste_patient_name", help="Enter the patient name for these results")
+        with paste_col2:
+            paste_test_date = st.date_input("Test Date", value=date.today(), key="paste_test_date", help="Date of these test results")
+
+        if pasted_text and pasted_text.strip():
+            if st.button("🔍 Process Pasted Text", type="primary", key="process_paste_btn"):
+                st.session_state['paste_processing'] = True
+
+            if st.session_state.get('paste_processing', False):
+                with st.spinner("Processing pasted text..."):
+                    parsed_text = file_parser.parse_pasted_text(pasted_text)
+
+                    investigation_standards = st.session_state.get('investigation_standards')
+                    paste_results = []
+                    if investigation_standards:
+                        paste_results = file_parser.scan_text_against_standards(parsed_text, investigation_standards)
+
+                    if not paste_results:
+                        test_data_paste = file_parser.extract_test_data(parsed_text)
+                        paste_results = test_data_paste.get('results', [])
+
+                if paste_results:
+                    st.success(f"Found {len(paste_results)} test results")
+
+                    df_data = []
+                    for result in paste_results:
+                        df_data.append({
+                            'Include': True,
+                            'Investigation': result['test_type'],
+                            'Value': result['value'],
+                            'Unit': result.get('unit', ''),
+                            'Source Text': result.get('matched_term', result.get('search_term', '')),
+                        })
+
+                    df = pd.DataFrame(df_data)
+                    column_config = {
+                        'Include': st.column_config.CheckboxColumn('Include', help='Check to include this test', default=True),
+                        'Investigation': st.column_config.TextColumn('Investigation', width='medium'),
+                        'Value': st.column_config.NumberColumn('Value', format='%.2f', width='small'),
+                        'Unit': st.column_config.TextColumn('Unit', width='small'),
+                        'Source Text': st.column_config.TextColumn('Source Text', width='medium'),
+                    }
+
+                    edited_paste_df = st.data_editor(
+                        df,
+                        column_config=column_config,
+                        use_container_width=True,
+                        num_rows="dynamic",
+                        key="paste_results_editor"
+                    )
+
+                    if st.button("💾 Save Pasted Results", type="primary", key="save_paste_btn"):
+                        if paste_patient_name:
+                            with st.spinner("Saving results..."):
+                                final_results = []
+                                for _, row in edited_paste_df.iterrows():
+                                    if row.get('Include', True):
+                                        final_results.append({
+                                            'test_type': row['Investigation'],
+                                            'value': row['Value'],
+                                            'unit': row.get('Unit', '')
+                                        })
+
+                                if final_results:
+                                    duplicates = data_processor.db.check_duplicate_test_results(
+                                        patient_name=paste_patient_name,
+                                        test_date=paste_test_date.strftime('%Y-%m-%d') if hasattr(paste_test_date, 'strftime') else str(paste_test_date),
+                                        test_results=final_results,
+                                        user_id=user_id
+                                    )
+
+                                    if duplicates:
+                                        st.warning(f"Found {len(duplicates)} duplicate test(s) already in database:")
+                                        for dup in duplicates:
+                                            st.write(f"  - **{dup['test_type']}**: {dup['value']} on {dup['date']}")
+                                        duplicate_keys = {(d['test_type'], d['value']) for d in duplicates}
+                                        final_results = [r for r in final_results
+                                                        if (r['test_type'], float(r['value']) if r['value'] else 0) not in duplicate_keys]
+
+                                    if final_results:
+                                        success = data_processor.save_test_results(
+                                            patient_name=paste_patient_name,
+                                            test_date=paste_test_date,
+                                            test_results=final_results,
+                                            user_id=user_id
+                                        )
+                                        if success:
+                                            st.success(f"Saved {len(final_results)} test results for {paste_patient_name}")
+                                            st.session_state['paste_processing'] = False
+                                            st.rerun()
+                                        else:
+                                            st.error("Failed to save results to database")
+                                    else:
+                                        st.info("All tests are duplicates. No new results to save.")
+                                else:
+                                    st.warning("No tests selected to save")
+                        else:
+                            st.warning("Please enter a patient name to save results")
+                else:
+                    st.warning("No test results found in the pasted text")
+                    st.info("Make sure the text contains test names and numeric values. The system matches against your investigation standards.")
+                    with st.expander("Show processed text"):
+                        st.text(parsed_text[:2000])
+
     if uploaded_files:
         st.subheader("Processing Files")
         
