@@ -28,7 +28,7 @@ User wants proper category grouping for visualizations using the investigation s
 
 ### Key Features & Technical Implementations
 - **Data Management**: CRUD operations for patients and test results, automatic table creation, and schema management.
-- **File Parsing**: Supports PDF, Word, Excel, CSV, XML, and various image formats (JPEG, PNG, BMP, TIFF) with OCR, including regex-based extraction and intelligent reference range parsing.
+- **File Parsing**: Supports PDF, Word, Excel, CSV, XML, and various image formats (JPEG, PNG, BMP, TIFF) with OCR, including fuzzy matching against investigation standards (Levenshtein distance), regex-based extraction, and intelligent reference range parsing. Includes a text paste option for CSV/tab-separated/free-text input as an alternative to file upload.
 - **Data Processing**: Validates patient information, test dates, and result values, incorporating business logic for patient management and result aggregation.
 - **Visualization**: Utilizes Plotly for interactive 2D charts (trend, comparison, grouped) with consistent color schemes, compact layouts, and annotations. Supports category grouping based on investigation standards and gender-specific reference ranges with visual indicators and event markers.
 - **Investigation Standards Management**: Manages predefined and user-defined test standards, including reference ranges, units, and aliases, with auto-synchronization and Excel-style editing.
