@@ -439,28 +439,42 @@ def upload_results_page(file_parser, data_processor, user_id):
             with st.spinner("Processing files…"):
                 for uf in tt_uploaded:
                     try:
-                        ck = f"extraction_{uf.name}_{uf.size}_{tt_force_ocr}"
+                        ck = f"tt_extraction_{uf.name}_{uf.size}_{tt_force_ocr}"
                         if ck not in st.session_state:
                             ext_text = file_parser.parse_file(uf, tt_force_ocr)
-                            td = file_parser.extract_test_data(ext_text)
-                            f_results = td.get('results', [])
-                            if not f_results and _inv_std:
-                                f_results = file_parser.scan_text_against_standards(ext_text, _inv_std)
-                            f_date = td.get('test_date', date.today())
-                            st.session_state[ck] = {'text': ext_text, 'test_data': td,
-                                                     'results': f_results, 'date': f_date}
+                            # Use multi-date extractor so one file can yield multiple columns
+                            multi = file_parser.extract_multi_date_results(ext_text)
+                            # If no results in any section, try standards-based scan on full text
+                            total_found = sum(len(r) for _, r in multi)
+                            if total_found == 0 and _inv_std:
+                                std_results = file_parser.scan_text_against_standards(ext_text, _inv_std)
+                                td_fallback = file_parser.extract_test_data(ext_text)
+                                if std_results:
+                                    multi = [(td_fallback.get('test_date', date.today()), std_results)]
+                            st.session_state[ck] = {'text': ext_text, 'multi': multi}
                         cached = st.session_state[ck]
-                        f_results = cached['results']
-                        f_date = cached.get('date', date.today())
-                        ds = _tt_fmt_date(f_date)
-                        if ds in date_counts:
-                            date_counts[ds] += 1
-                            ds = f"{ds} (v{date_counts[ds]})"
-                        else:
-                            date_counts[ds] = 1
-                        if f_results:
+                        multi = cached['multi']
+
+                        file_dates_added = 0
+                        for f_date, f_results in multi:
+                            if not f_results:
+                                continue
+                            ds = _tt_fmt_date(f_date)
+                            if ds in date_counts:
+                                date_counts[ds] += 1
+                                ds = f"{ds} (v{date_counts[ds]})"
+                            else:
+                                date_counts[ds] = 1
                             results_by_date.append((ds, f_results))
-                            st.success(f"✅ **{uf.name}**: {len(f_results)} tests · date {ds}")
+                            file_dates_added += 1
+
+                        if file_dates_added:
+                            date_labels = [_tt_fmt_date(d) for d, _ in multi if _]
+                            st.success(
+                                f"✅ **{uf.name}**: {sum(len(r) for _, r in multi)} tests "
+                                f"across {file_dates_added} date(s): "
+                                f"{', '.join(date_labels[:5])}"
+                            )
                         else:
                             st.warning(f"⚠️ **{uf.name}**: No tests found")
                     except Exception as e:
@@ -475,17 +489,39 @@ def upload_results_page(file_parser, data_processor, user_id):
             _inv_std = st.session_state.get('investigation_standards')
             with st.spinner("Processing pasted text…"):
                 parsed = file_parser.parse_pasted_text(tt_paste_text)
-                p_results = []
-                if _inv_std:
-                    p_results = file_parser.scan_text_against_standards(parsed, _inv_std)
-                if not p_results:
-                    td2 = file_parser.extract_test_data(parsed)
-                    p_results = td2.get('results', [])
-            if p_results:
-                ds = _tt_fmt_date(tt_paste_date)
-                np2, nu2, nd2, nt2 = _tt_build_pivot([(ds, p_results)])
+                # Try multi-date detection first
+                multi_paste = file_parser.extract_multi_date_results(parsed)
+                total_paste = sum(len(r) for _, r in multi_paste)
+                # Fall back to standards scan if nothing found
+                if total_paste == 0 and _inv_std:
+                    std_r = file_parser.scan_text_against_standards(parsed, _inv_std)
+                    if std_r:
+                        multi_paste = [(_tt_fmt_date(tt_paste_date), std_r)]
+                        total_paste = len(std_r)
+                # If multi gave only one section with auto-detected date, respect user-chosen date
+                if len(multi_paste) == 1:
+                    multi_paste = [(_tt_fmt_date(tt_paste_date), multi_paste[0][1])]
+
+            if total_paste > 0:
+                # Convert date objects to formatted strings
+                results_by_date_paste = []
+                paste_date_counts = {}
+                for pd_date, pd_results in multi_paste:
+                    ds = _tt_fmt_date(pd_date) if not isinstance(pd_date, str) else pd_date
+                    if ds in paste_date_counts:
+                        paste_date_counts[ds] += 1
+                        ds = f"{ds} (v{paste_date_counts[ds]})"
+                    else:
+                        paste_date_counts[ds] = 1
+                    results_by_date_paste.append((ds, pd_results))
+                np2, nu2, nd2, nt2 = _tt_build_pivot(results_by_date_paste)
                 _tt_merge_into_state(np2, nu2, nd2, nt2)
-                st.success(f"Found {len(p_results)} test results for {ds}")
+                n_dates = len(results_by_date_paste)
+                st.success(
+                    f"Found {total_paste} test results "
+                    f"across {n_dates} date(s): "
+                    f"{', '.join(ds for ds, _ in results_by_date_paste[:5])}"
+                )
                 st.rerun()
             else:
                 st.warning("No test results found in the pasted text. Try a different format.")
@@ -530,7 +566,8 @@ def upload_results_page(file_parser, data_processor, user_id):
                             st.warning("Date already exists.")
             with ctl2:
                 with st.popover("➕ Add New Test Row"):
-                    _tt_stds = st.session_state.get('investigation_standards') or []
+                    _tt_std_obj = st.session_state.get('investigation_standards')
+                    _tt_stds = _tt_std_obj.get_all_standards() if _tt_std_obj else []
                     _tt_snames = sorted(
                         [s.get('standard_name', '') for s in _tt_stds
                          if isinstance(s, dict) and s.get('standard_name')],

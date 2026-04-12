@@ -754,6 +754,54 @@ class FileParser:
         
         return date.today()  # Default to today if no date found
     
+    def extract_multi_date_results(self, text: str):
+        """
+        Extract test results from a document that may contain results for multiple dates.
+
+        Returns a list of (date_object, results_list) tuples — one entry per unique
+        date section found.  If the file contains only one (or no) date, this
+        behaves identically to calling extract_test_data().
+        """
+        # ── Step 1: find every date mention and its position in the raw text ──
+        all_matches = []
+        for pattern in self.date_patterns:
+            for m in re.finditer(pattern, text, re.IGNORECASE):
+                parsed = self._smart_date_parse(m.group(1))
+                if parsed:
+                    all_matches.append((m.start(), m.end(), parsed))
+
+        # ── Step 2: deduplicate — keep earliest occurrence per calendar date ──
+        by_date = {}  # {date_obj: (start, end)}
+        for start, end, d in sorted(all_matches, key=lambda x: x[0]):
+            if d not in by_date:
+                by_date[d] = (start, end)
+
+        # ── Step 3: single / no date → use existing full-text extraction ───────
+        if len(by_date) <= 1:
+            td = self.extract_test_data(text)
+            single_date = list(by_date.keys())[0] if by_date else td.get('test_date', date.today())
+            return [(single_date, td.get('results', []))]
+
+        # ── Step 4: multiple dates → split text at each date boundary ──────────
+        sorted_dates = sorted(by_date.items(), key=lambda x: x[1][0])  # by position
+        output = []
+        for i, (d, (start, _end)) in enumerate(sorted_dates):
+            # Include a small context window before the date line
+            section_start = max(0, start - 50)
+            section_end = sorted_dates[i + 1][1][0] if i + 1 < len(sorted_dates) else len(text)
+            section_text = text[section_start:section_end]
+            normalized = self._normalize_text(section_text)
+            section_results = self._extract_test_results(normalized)
+            if section_results:
+                output.append((d, section_results))
+
+        if not output:
+            # Nothing extracted per section — fall back to full-text extraction
+            td = self.extract_test_data(text)
+            return [(td.get('test_date', date.today()), td.get('results', []))]
+
+        return output
+
     def _parse_date_from_text(self, text: str) -> Optional[date]:
         """Parse date from text with robust year handling."""
         for pattern in self.date_patterns:
