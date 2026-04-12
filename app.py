@@ -5583,52 +5583,75 @@ def investigation_standards_page(investigation_standards, db=None, user_id=None)
     with tab2:
         st.subheader("Add New Investigation Standard")
 
-        # ── AI Auto-fill section ─────────────────────────────────────────────
-        with st.expander("🔍 Auto-fill with AI — type the test name and let AI fill the details", expanded=True):
-            st.markdown(
-                "Enter the test name, choose an AI service (requires API key configured on the "
-                "**🤖 AI Insights** page), and click **Auto-fill** to populate reference ranges, "
-                "description, and aliases automatically."
+        # ── Auto-fill section — AI or Web Search ─────────────────────────────
+        with st.expander("🔍 Auto-fill — type the test name to look up details automatically", expanded=True):
+
+            # Test name input shared by both methods
+            af_search = st.text_input(
+                "Test name to look up",
+                key="af_search_name",
+                placeholder="e.g., Total Bilirubin, TSH, HbA1c",
             )
 
-            af_col1, af_col2, af_col3 = st.columns([3, 2, 1])
-            with af_col1:
-                af_search = st.text_input(
-                    "Test name to look up",
-                    key="af_search_name",
-                    placeholder="e.g., Total Bilirubin",
-                )
-            with af_col2:
-                _stored_keys_af = db.get_all_ai_api_keys(user_id) if db else {}
-                _configured_af = [s for s in ai_mod.SERVICES if _stored_keys_af.get(s)]
+            st.markdown("**Choose lookup method:**")
+            method_col, btn_col = st.columns([5, 1])
+
+            _stored_keys_af = db.get_all_ai_api_keys(user_id) if db else {}
+            _configured_af = [s for s in ai_mod.SERVICES if _stored_keys_af.get(s)]
+
+            with method_col:
+                _method_options = []
                 if _configured_af:
-                    af_svc = st.selectbox(
-                        "AI service",
-                        options=_configured_af,
-                        key="af_svc",
-                        format_func=lambda s: f"{ai_mod.SERVICES[s]['icon']} {ai_mod.SERVICES[s]['label']}",
-                    )
-                else:
-                    af_svc = None
-                    st.warning("No AI keys configured. Go to **🤖 AI Insights** to add one.")
-            with af_col3:
-                st.markdown("<div style='margin-top:28px'></div>", unsafe_allow_html=True)
-                af_clicked = st.button("🔍 Auto-fill", key="do_autofill", type="primary", disabled=not af_svc)
+                    _method_options += [f"🤖 AI — {ai_mod.SERVICES[s]['label']}" for s in _configured_af]
+                _method_options.append("🌐 Web Search (no API key needed)")
+                chosen_method = st.selectbox(
+                    "Method",
+                    options=_method_options,
+                    key="af_method",
+                    label_visibility="collapsed",
+                )
+
+            with btn_col:
+                st.markdown("<div style='margin-top:4px'></div>", unsafe_allow_html=True)
+                af_clicked = st.button("🔍 Auto-fill", key="do_autofill", type="primary")
+
+            # Method notes
+            if chosen_method.startswith("🤖"):
+                st.caption("Uses your AI API key — high accuracy, structured results.")
+            else:
+                st.caption(
+                    "Searches DuckDuckGo, Wikipedia, and medical reference sites. "
+                    "No API key needed. Description and ranges may be partial — always verify."
+                )
 
             if af_clicked:
                 if not af_search.strip():
                     st.warning("Enter a test name first.")
-                elif not af_svc:
-                    st.warning("Configure an AI API key on the 🤖 AI Insights page first.")
                 else:
-                    with st.spinner(f"Looking up '{af_search}' using {ai_mod.SERVICES[af_svc]['label']}…"):
-                        _af_data, _af_err = ai_mod.fetch_test_standard_info(
-                            af_search.strip(), af_svc, _stored_keys_af[af_svc]
-                        )
+                    _is_web = chosen_method.startswith("🌐")
+
+                    if _is_web:
+                        with st.spinner(f"Searching the web for '{af_search}'…"):
+                            _af_data, _af_err = ai_mod.scrape_test_standard_info(af_search.strip())
+                    else:
+                        # Identify selected AI service from the label
+                        _af_svc = None
+                        for s in _configured_af:
+                            if ai_mod.SERVICES[s]['label'] in chosen_method:
+                                _af_svc = s
+                                break
+                        if not _af_svc:
+                            st.warning("Could not identify the selected AI service.")
+                            _af_data, _af_err = None, "No service"
+                        else:
+                            with st.spinner(f"Querying {ai_mod.SERVICES[_af_svc]['label']} for '{af_search}'…"):
+                                _af_data, _af_err = ai_mod.fetch_test_standard_info(
+                                    af_search.strip(), _af_svc, _stored_keys_af[_af_svc]
+                                )
+
                     if _af_err:
                         st.error(f"Auto-fill failed: {_af_err}")
                     else:
-                        # Populate session state for the form fields below
                         st.session_state['new_name'] = af_search.strip()
                         if _af_data.get('description'):
                             st.session_state['new_description'] = str(_af_data['description'])
@@ -5649,8 +5672,10 @@ def investigation_standards_page(investigation_standards, db=None, user_id=None)
                             pass
                         if _af_data.get('category'):
                             st.session_state['new_af_category'] = str(_af_data['category'])
+                        src_note = "from web search — please verify before saving" if _is_web else "from AI"
                         st.success(
-                            "✅ Auto-filled! Review and adjust the values below, then click **Add Standard**."
+                            f"✅ Auto-filled ({src_note})! Review and adjust the values below, "
+                            f"then click **Add Standard**."
                         )
                         st.rerun()
 
