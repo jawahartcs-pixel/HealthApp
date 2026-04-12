@@ -134,6 +134,53 @@ def query_perplexity(prompt, api_key):
     return resp.json()["choices"][0]["message"]["content"]
 
 
+_STANDARD_INFO_PROMPT = """For the blood test called '{test_name}', provide reference information.
+Respond ONLY with a single valid JSON object — no markdown, no explanation, no code fences.
+Use exactly these keys:
+{{
+  "male_min": <number or null>,
+  "male_max": <number or null>,
+  "female_min": <number or null>,
+  "female_max": <number or null>,
+  "unit": "<unit string, e.g. mg/dL>",
+  "description": "<1-2 sentence clinical description of what this test measures>",
+  "aliases": "<comma-separated list of common alternative names for this test>",
+  "category": "<one of: Haematology, Biochemistry, Lipid Profile, Liver Function, Renal Function, Thyroid Function, Diabetes & Metabolic, Cardiac Markers, Coagulation, Immunology, Tumour Markers, Hormones, Vitamins & Minerals, Electrolytes, Urinalysis, Other>"
+}}
+Use internationally recognised adult reference ranges. If male and female ranges are the same, repeat the values for both."""
+
+
+def fetch_test_standard_info(test_name, service_name, api_key):
+    """
+    Query an AI service to auto-populate investigation standard fields.
+    Returns (dict with keys male_min/male_max/female_min/female_max/unit/description/aliases/category, error_str).
+    """
+    prompt = _STANDARD_INFO_PROMPT.format(test_name=test_name)
+    text, err = query_service(service_name, prompt, api_key)
+    if err:
+        return None, err
+    # Parse JSON from the response (strip any accidental markdown fences)
+    import re as _re
+    json_text = text.strip()
+    # Remove markdown code fences if present
+    json_text = _re.sub(r'^```(?:json)?', '', json_text, flags=_re.MULTILINE)
+    json_text = _re.sub(r'```$', '', json_text, flags=_re.MULTILINE)
+    json_text = json_text.strip()
+    try:
+        data = json.loads(json_text)
+        return data, None
+    except json.JSONDecodeError:
+        # Try to extract JSON object with regex
+        match = _re.search(r'\{.*\}', json_text, _re.DOTALL)
+        if match:
+            try:
+                data = json.loads(match.group())
+                return data, None
+            except json.JSONDecodeError:
+                pass
+        return None, f"Could not parse AI response as JSON. Raw response:\n{text[:500]}"
+
+
 def query_service(service_name, prompt, api_key):
     """Dispatch query to the correct AI service. Returns (text, error)."""
     try:

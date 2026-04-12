@@ -106,7 +106,7 @@ def main():
     elif page == "Medication Reminders":
         medication_reminders_page(medication_reminder, db, current_user_id)
     elif page == "Investigation Standards":
-        investigation_standards_page(investigation_standards)
+        investigation_standards_page(investigation_standards, db, current_user_id)
     elif page == "Profile":
         auth_ui.user_profile_page()
 
@@ -5142,7 +5142,7 @@ def ai_insights_page(db, user_id):
             )
 
 
-def investigation_standards_page(investigation_standards):
+def investigation_standards_page(investigation_standards, db=None, user_id=None):
     """Investigation Standards Management Page."""
     st.header("🔬 Investigation Standards Management")
     st.markdown("Manage standardized investigation types with reference ranges for male and female patients")
@@ -5582,84 +5582,186 @@ def investigation_standards_page(investigation_standards):
     
     with tab2:
         st.subheader("Add New Investigation Standard")
-        
-        with st.form("add_standard_form"):
-            col1, col2 = st.columns(2)
-            
-            with col1:
-                new_name = st.text_input("Standard Name*", placeholder="e.g., Total Bilirubin", key="new_name")
-                existing_categories = list(set(
-                    [std.get('category', '') for std in investigation_standards.get_all_standards() if std.get('category')] +
-                    investigation_standards.get_predefined_categories()
-                ))
-                existing_categories.sort()
-                category_options = existing_categories + ["➕ Add New Category"]
-                selected_cat = st.selectbox("Category*", category_options, key="new_category")
-                if selected_cat == "➕ Add New Category":
-                    new_category = st.text_input("Enter New Category Name*", key="new_custom_category")
+
+        # ── AI Auto-fill section ─────────────────────────────────────────────
+        with st.expander("🔍 Auto-fill with AI — type the test name and let AI fill the details", expanded=True):
+            st.markdown(
+                "Enter the test name, choose an AI service (requires API key configured on the "
+                "**🤖 AI Insights** page), and click **Auto-fill** to populate reference ranges, "
+                "description, and aliases automatically."
+            )
+
+            af_col1, af_col2, af_col3 = st.columns([3, 2, 1])
+            with af_col1:
+                af_search = st.text_input(
+                    "Test name to look up",
+                    key="af_search_name",
+                    placeholder="e.g., Total Bilirubin",
+                )
+            with af_col2:
+                _stored_keys_af = db.get_all_ai_api_keys(user_id) if db else {}
+                _configured_af = [s for s in ai_mod.SERVICES if _stored_keys_af.get(s)]
+                if _configured_af:
+                    af_svc = st.selectbox(
+                        "AI service",
+                        options=_configured_af,
+                        key="af_svc",
+                        format_func=lambda s: f"{ai_mod.SERVICES[s]['icon']} {ai_mod.SERVICES[s]['label']}",
+                    )
                 else:
-                    new_category = selected_cat
-                new_description = st.text_area("Description", placeholder="Brief description of the test", key="new_description")
-                new_aliases = st.text_area("Aliases (comma-separated)", 
-                    placeholder="bilirubin, total bil, tbil", key="new_aliases")
-            
-            with col2:
-                st.markdown("**Reference Ranges**")
-                
-                # Common unit field
-                st.markdown("**Common Unit:**")
-                new_common_unit = st.text_input("Unit (for both ranges)", placeholder="mg/dL", key="new_common_unit")
-                
-                # Male ranges
-                st.markdown("**Male Range:**")
-                col_m1, col_m2 = st.columns(2)
-                with col_m1:
-                    new_male_min = st.number_input("Min Value", value=0.0, key="new_m_min")
-                with col_m2:
-                    new_male_max = st.number_input("Max Value", value=0.0, key="new_m_max")
-                
-                # Female ranges
-                st.markdown("**Female Range:**")
-                col_f1, col_f2 = st.columns(2)
-                with col_f1:
-                    new_female_min = st.number_input("Min Value", value=0.0, key="new_f_min")
-                with col_f2:
-                    new_female_max = st.number_input("Max Value", value=0.0, key="new_f_max")
-            
-            if st.form_submit_button("🔬 Add Standard"):
-                if new_name and new_category:
-                    new_standard = {
-                        'standard_name': new_name.strip(),
-                        'aliases': new_aliases.strip() if new_aliases else '',
-                        'male_range_min': new_male_min,
-                        'male_range_max': new_male_max,
-                        'male_unit': new_common_unit,  # Use common unit for male
-                        'female_range_min': new_female_min,
-                        'female_range_max': new_female_max,
-                        'female_unit': new_common_unit,  # Use common unit for female
-                        'common_unit': new_common_unit,
-                        'description': new_description,
-                        'category': new_category
-                    }
-                    
-                    if investigation_standards.add_standard(new_standard):
-                        st.success(f"✅ Successfully added '{new_name}' to investigation standards!")
-                        # Automatically sync to test results
-                        with st.spinner("Syncing new standard to existing test results..."):
-                            sync_counts = investigation_standards.sync_all_standards_to_test_results()
-                            if sync_counts['units'] > 0 or sync_counts['reference_ranges'] > 0:
-                                st.info(f"🔄 Auto-sync completed: {sync_counts['units']} units and {sync_counts['reference_ranges']} reference ranges updated in test results.")
-                        
-                        # Clear form by deleting session state keys
-                        form_keys = ["new_name", "new_category", "new_description", "new_aliases", "new_common_unit", "new_m_min", "new_m_max", "new_f_min", "new_f_max"]
-                        for key in form_keys:
-                            if key in st.session_state:
-                                del st.session_state[key]
-                        st.rerun()
+                    af_svc = None
+                    st.warning("No AI keys configured. Go to **🤖 AI Insights** to add one.")
+            with af_col3:
+                st.markdown("<div style='margin-top:28px'></div>", unsafe_allow_html=True)
+                af_clicked = st.button("🔍 Auto-fill", key="do_autofill", type="primary", disabled=not af_svc)
+
+            if af_clicked:
+                if not af_search.strip():
+                    st.warning("Enter a test name first.")
+                elif not af_svc:
+                    st.warning("Configure an AI API key on the 🤖 AI Insights page first.")
+                else:
+                    with st.spinner(f"Looking up '{af_search}' using {ai_mod.SERVICES[af_svc]['label']}…"):
+                        _af_data, _af_err = ai_mod.fetch_test_standard_info(
+                            af_search.strip(), af_svc, _stored_keys_af[af_svc]
+                        )
+                    if _af_err:
+                        st.error(f"Auto-fill failed: {_af_err}")
                     else:
-                        st.error("❌ Failed to add standard. Name might already exist.")
+                        # Populate session state for the form fields below
+                        st.session_state['new_name'] = af_search.strip()
+                        if _af_data.get('description'):
+                            st.session_state['new_description'] = str(_af_data['description'])
+                        if _af_data.get('aliases'):
+                            st.session_state['new_aliases'] = str(_af_data['aliases'])
+                        if _af_data.get('unit'):
+                            st.session_state['new_common_unit'] = str(_af_data['unit'])
+                        try:
+                            if _af_data.get('male_min') is not None:
+                                st.session_state['new_m_min'] = float(_af_data['male_min'])
+                            if _af_data.get('male_max') is not None:
+                                st.session_state['new_m_max'] = float(_af_data['male_max'])
+                            if _af_data.get('female_min') is not None:
+                                st.session_state['new_f_min'] = float(_af_data['female_min'])
+                            if _af_data.get('female_max') is not None:
+                                st.session_state['new_f_max'] = float(_af_data['female_max'])
+                        except (TypeError, ValueError):
+                            pass
+                        if _af_data.get('category'):
+                            st.session_state['new_af_category'] = str(_af_data['category'])
+                        st.success(
+                            "✅ Auto-filled! Review and adjust the values below, then click **Add Standard**."
+                        )
+                        st.rerun()
+
+        st.markdown("---")
+
+        # ── Standard Name ────────────────────────────────────────────────────
+        new_name = st.text_input(
+            "Standard Name *",
+            placeholder="e.g., Total Bilirubin",
+            key="new_name",
+        )
+
+        col1, col2 = st.columns(2)
+
+        with col1:
+            existing_categories = list(set(
+                [std.get('category', '') for std in investigation_standards.get_all_standards() if std.get('category')] +
+                investigation_standards.get_predefined_categories()
+            ))
+            existing_categories.sort()
+            category_options = existing_categories + ["➕ Add New Category"]
+
+            # Pre-select the AI-suggested category if it matches an option
+            _af_cat = st.session_state.get('new_af_category', '')
+            _cat_default_idx = 0
+            if _af_cat and _af_cat in category_options:
+                _cat_default_idx = category_options.index(_af_cat)
+
+            selected_cat = st.selectbox(
+                "Category *",
+                category_options,
+                index=_cat_default_idx,
+                key="new_category",
+            )
+            if selected_cat == "➕ Add New Category":
+                new_category = st.text_input("Enter New Category Name *", key="new_custom_category")
+            else:
+                new_category = selected_cat
+
+            new_description = st.text_area(
+                "Description",
+                placeholder="Brief description of the test",
+                key="new_description",
+            )
+            new_aliases = st.text_area(
+                "Aliases (comma-separated)",
+                placeholder="bilirubin, total bil, tbil",
+                key="new_aliases",
+            )
+
+        with col2:
+            st.markdown("**Reference Ranges**")
+            st.markdown("**Common Unit:**")
+            new_common_unit = st.text_input(
+                "Unit (for both ranges)", placeholder="mg/dL", key="new_common_unit"
+            )
+
+            st.markdown("**Male Range:**")
+            col_m1, col_m2 = st.columns(2)
+            with col_m1:
+                new_male_min = st.number_input("Min", value=0.0, format="%.4f", key="new_m_min")
+            with col_m2:
+                new_male_max = st.number_input("Max", value=0.0, format="%.4f", key="new_m_max")
+
+            st.markdown("**Female Range:**")
+            col_f1, col_f2 = st.columns(2)
+            with col_f1:
+                new_female_min = st.number_input("Min", value=0.0, format="%.4f", key="new_f_min")
+            with col_f2:
+                new_female_max = st.number_input("Max", value=0.0, format="%.4f", key="new_f_max")
+
+        st.markdown("")
+        if st.button("🔬 Add Standard", type="primary", key="do_add_standard"):
+            if new_name and new_category:
+                new_standard = {
+                    'standard_name': new_name.strip(),
+                    'aliases': new_aliases.strip() if new_aliases else '',
+                    'male_range_min': new_male_min,
+                    'male_range_max': new_male_max,
+                    'male_unit': new_common_unit,
+                    'female_range_min': new_female_min,
+                    'female_range_max': new_female_max,
+                    'female_unit': new_common_unit,
+                    'common_unit': new_common_unit,
+                    'description': new_description,
+                    'category': new_category
+                }
+
+                if investigation_standards.add_standard(new_standard):
+                    st.success(f"✅ Successfully added '{new_name}' to investigation standards!")
+                    with st.spinner("Syncing new standard to existing test results..."):
+                        sync_counts = investigation_standards.sync_all_standards_to_test_results()
+                        if sync_counts['units'] > 0 or sync_counts['reference_ranges'] > 0:
+                            st.info(
+                                f"🔄 Auto-sync completed: {sync_counts['units']} units and "
+                                f"{sync_counts['reference_ranges']} reference ranges updated."
+                            )
+                    # Clear form
+                    form_keys = [
+                        "new_name", "new_category", "new_description", "new_aliases",
+                        "new_common_unit", "new_m_min", "new_m_max", "new_f_min", "new_f_max",
+                        "new_af_category", "af_search_name",
+                    ]
+                    for _k in form_keys:
+                        if _k in st.session_state:
+                            del st.session_state[_k]
+                    st.rerun()
                 else:
-                    st.error("❌ Please fill in at least the Standard Name and Category.")
+                    st.error("❌ Failed to add standard. Name might already exist.")
+            else:
+                st.error("❌ Please fill in at least the Standard Name and Category.")
     
     with tab3:
         st.subheader("Test Standardization Preview")
