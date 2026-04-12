@@ -442,15 +442,11 @@ def upload_results_page(file_parser, data_processor, user_id):
                         ck = f"tt_extraction_{uf.name}_{uf.size}_{tt_force_ocr}"
                         if ck not in st.session_state:
                             ext_text = file_parser.parse_file(uf, tt_force_ocr)
-                            # Use multi-date extractor so one file can yield multiple columns
-                            multi = file_parser.extract_multi_date_results(ext_text)
-                            # If no results in any section, try standards-based scan on full text
-                            total_found = sum(len(r) for _, r in multi)
-                            if total_found == 0 and _inv_std:
-                                std_results = file_parser.scan_text_against_standards(ext_text, _inv_std)
-                                td_fallback = file_parser.extract_test_data(ext_text)
-                                if std_results:
-                                    multi = [(td_fallback.get('test_date', date.today()), std_results)]
+                            # Multi-date extraction with standards merged in per section
+                            multi = file_parser.extract_multi_date_results(
+                                ext_text,
+                                investigation_standards=_inv_std
+                            )
                             st.session_state[ck] = {'text': ext_text, 'multi': multi}
                         cached = st.session_state[ck]
                         multi = cached['multi']
@@ -489,16 +485,13 @@ def upload_results_page(file_parser, data_processor, user_id):
             _inv_std = st.session_state.get('investigation_standards')
             with st.spinner("Processing pasted text…"):
                 parsed = file_parser.parse_pasted_text(tt_paste_text)
-                # Try multi-date detection first
-                multi_paste = file_parser.extract_multi_date_results(parsed)
+                # Multi-date extraction with standards merged in per section
+                multi_paste = file_parser.extract_multi_date_results(
+                    parsed,
+                    investigation_standards=_inv_std
+                )
                 total_paste = sum(len(r) for _, r in multi_paste)
-                # Fall back to standards scan if nothing found
-                if total_paste == 0 and _inv_std:
-                    std_r = file_parser.scan_text_against_standards(parsed, _inv_std)
-                    if std_r:
-                        multi_paste = [(_tt_fmt_date(tt_paste_date), std_r)]
-                        total_paste = len(std_r)
-                # If multi gave only one section with auto-detected date, respect user-chosen date
+                # If only one section was detected, honour the user's manually chosen date
                 if len(multi_paste) == 1:
                     multi_paste = [(_tt_fmt_date(tt_paste_date), multi_paste[0][1])]
 
