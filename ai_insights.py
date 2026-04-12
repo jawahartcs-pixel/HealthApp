@@ -252,7 +252,8 @@ _SCRAPE_HEADERS = {
 def scrape_test_standard_info(test_name):
     """
     Search the web (no API key needed) to gather blood test reference information.
-    Returns (dict, error_str).  The dict has the same keys as fetch_test_standard_info.
+    Returns (dict_or_None, error_str_or_None, debug_info_dict).
+    debug_info is always returned so callers can show what was fetched.
     """
     result = dict(
         male_min=None, male_max=None,
@@ -260,76 +261,116 @@ def scrape_test_standard_info(test_name):
         unit='', description='', aliases='', category='Other'
     )
     collected_text = ''
+    debug = {
+        'queries': [],       # list of dicts: {source, query_url, chars_collected}
+        'collected_text': '' # will be filled at end
+    }
 
     # ── 1. DuckDuckGo Instant Answer API ─────────────────────────────────────
+    ia_query = f'{test_name} blood test'
+    ia_url = f'https://api.duckduckgo.com/?q={urllib.parse.quote(ia_query)}&format=json&no_html=1&skip_disambig=1'
     try:
-        ia_resp = requests.get(
-            'https://api.duckduckgo.com/',
-            params={'q': f'{test_name} blood test', 'format': 'json',
-                    'no_html': '1', 'skip_disambig': '1'},
-            headers=_SCRAPE_HEADERS, timeout=10
-        )
+        ia_resp = requests.get(ia_url, headers=_SCRAPE_HEADERS, timeout=10)
         ia_data = ia_resp.json()
         abstract = ia_data.get('AbstractText') or ia_data.get('Answer') or ''
         if abstract:
             result['description'] = abstract[:500]
             collected_text += ' ' + abstract
-    except Exception:
-        pass
+        debug['queries'].append({
+            'source': 'DuckDuckGo Instant Answer API',
+            'url': ia_url,
+            'status': ia_resp.status_code,
+            'chars': len(abstract),
+            'got': abstract[:300] if abstract else '(empty — no AbstractText or Answer)',
+        })
+    except Exception as e:
+        debug['queries'].append({'source': 'DuckDuckGo Instant Answer API', 'url': ia_url, 'error': str(e)})
 
     # ── 2. Wikipedia summary API ──────────────────────────────────────────────
+    slug = test_name.replace(' ', '_')
+    wiki_url = f'https://en.wikipedia.org/api/rest_v1/page/summary/{urllib.parse.quote(slug)}'
     try:
-        slug = test_name.replace(' ', '_')
-        wiki_resp = requests.get(
-            f'https://en.wikipedia.org/api/rest_v1/page/summary/{urllib.parse.quote(slug)}',
-            headers=_SCRAPE_HEADERS, timeout=10
-        )
+        wiki_resp = requests.get(wiki_url, headers=_SCRAPE_HEADERS, timeout=10)
         if wiki_resp.status_code == 200:
             wiki_data = wiki_resp.json()
             wiki_extract = wiki_data.get('extract', '')
             if wiki_extract and not result['description']:
                 result['description'] = wiki_extract[:500]
             collected_text += ' ' + wiki_extract
-    except Exception:
-        pass
-
-    # ── 3. DuckDuckGo HTML search for reference range snippets ────────────────
-    try:
-        search_resp = requests.get(
-            'https://html.duckduckgo.com/html/',
-            params={'q': f'{test_name} blood test reference range normal adult male female'},
-            headers=_SCRAPE_HEADERS, timeout=15
-        )
-        search_text = _clean_html(search_resp.text)
-        # Keep a manageable chunk near mentions of the test name
-        test_lower = test_name.lower()
-        chunks = []
-        pos = 0
-        while True:
-            idx = search_text.lower().find(test_lower, pos)
-            if idx == -1:
-                break
-            chunks.append(search_text[max(0, idx - 100): idx + 400])
-            pos = idx + len(test_lower)
-        collected_text += ' ' + ' '.join(chunks[:10])
+            debug['queries'].append({
+                'source': 'Wikipedia summary API',
+                'url': wiki_url,
+                'status': 200,
+                'chars': len(wiki_extract),
+                'got': wiki_extract[:300] if wiki_extract else '(empty)',
+            })
+        else:
+            debug['queries'].append({
+                'source': 'Wikipedia summary API',
+                'url': wiki_url,
+                'status': wiki_resp.status_code,
+                'chars': 0,
+                'got': f'HTTP {wiki_resp.status_code} — no article found',
+            })
     except Exception as e:
-        if not collected_text.strip():
-            return None, f"Web search failed: {e}"
+        debug['queries'].append({'source': 'Wikipedia summary API', 'url': wiki_url, 'error': str(e)})
 
-    # ── 4. Try to fetch a MedlinePlus or labtestsonline result page ───────────
-    _targeted_sites = [
-        f'https://medlineplus.gov/lab-tests/{test_name.lower().replace(" ", "-")}-test/',
-        f'https://www.labtestsonline.org.uk/tests/{test_name.lower().replace(" ", "-")}',
+    # ── 3. DuckDuckGo HTML search ─────────────────────────────────────────────
+    ddg_q = f'{test_name} blood test reference range normal adult male female'
+    ddg_url = f'https://html.duckduckgo.com/html/?q={urllib.parse.quote(ddg_q)}'
+    try:
+        search_resp = requests.get(ddg_url, headers=_SCRAPE_HEADERS, timeout=15)
+        search_text = _clean_html(search_resp.text)
+        # Collect chunks near any mention of the test name (also try without spaces, e.g. "crp")
+        search_terms = list({test_name.lower(), test_name.lower().replace(' ', ''), test_name.split()[0].lower()})
+        chunks = []
+        for term in search_terms:
+            pos = 0
+            while True:
+                idx = search_text.lower().find(term, pos)
+                if idx == -1:
+                    break
+                chunks.append(search_text[max(0, idx - 150): idx + 500])
+                pos = idx + max(len(term), 1)
+        collected_text += ' ' + ' '.join(chunks[:15])
+        debug['queries'].append({
+            'source': 'DuckDuckGo HTML search',
+            'url': ddg_url,
+            'status': search_resp.status_code,
+            'chars': len(' '.join(chunks[:15])),
+            'got': (' '.join(chunks[:3]))[:400] if chunks else '(test name not found in results)',
+        })
+    except Exception as e:
+        debug['queries'].append({'source': 'DuckDuckGo HTML search', 'url': ddg_url, 'error': str(e)})
+        if not collected_text.strip():
+            debug['collected_text'] = collected_text
+            return None, f"Web search failed: {e}", debug
+
+    # ── 4. Targeted medical reference pages ───────────────────────────────────
+    slug_dash = test_name.lower().replace(' ', '-')
+    targeted = [
+        f'https://medlineplus.gov/lab-tests/{slug_dash}-test/',
+        f'https://www.labtestsonline.org.uk/tests/{slug_dash}',
     ]
-    for url in _targeted_sites:
+    for t_url in targeted:
         try:
-            r = requests.get(url, headers=_SCRAPE_HEADERS, timeout=10)
+            r = requests.get(t_url, headers=_SCRAPE_HEADERS, timeout=10)
             if r.status_code == 200:
                 page_text = _clean_html(r.text)
-                collected_text += ' ' + page_text[:3000]
+                snippet = page_text[:3000]
+                collected_text += ' ' + snippet
+                debug['queries'].append({
+                    'source': f'Medical reference page ({t_url.split("/")[2]})',
+                    'url': t_url,
+                    'status': 200,
+                    'chars': len(snippet),
+                    'got': snippet[:300],
+                })
                 break
-        except Exception:
-            pass
+            else:
+                debug['queries'].append({'source': f'Medical reference page ({t_url.split("/")[2]})', 'url': t_url, 'status': r.status_code, 'got': f'HTTP {r.status_code}'})
+        except Exception as e:
+            debug['queries'].append({'source': f'Medical reference page', 'url': t_url, 'error': str(e)})
 
     # ── 5. Parse ranges from everything collected ─────────────────────────────
     male_min, male_max, female_min, female_max, unit = _extract_ranges(collected_text)
@@ -343,13 +384,88 @@ def scrape_test_standard_info(test_name):
     # ── 6. Guess category ─────────────────────────────────────────────────────
     result['category'] = _guess_category(test_name, collected_text[:1000])
 
-    if not result['description'] and not result['male_min']:
+    debug['collected_text'] = collected_text[:4000]
+
+    if not result['description'] and result['male_min'] is None:
         return None, (
             f"Could not find reference data for '{test_name}' from web search. "
-            "Try a more specific name or use an AI API key for better results."
-        )
+            "Review the debug info below to see what was fetched."
+        ), debug
 
-    return result, None
+    return result, None, debug
+
+
+def scrape_test_explanation(test_name, value, unit, ref_min=None, ref_max=None, gender=''):
+    """
+    Search the web for a plain-language explanation of a blood test result.
+    Returns (text_or_None, error_str_or_None, debug_info_dict).
+    """
+    debug = {'queries': [], 'collected_text': ''}
+    parts = [test_name, 'blood test']
+    if value not in (None, ''):
+        parts.append(str(value))
+    if unit:
+        parts.append(unit)
+    parts += ['meaning', 'clinical significance']
+    ddg_q = ' '.join(parts)
+    ddg_url = f'https://html.duckduckgo.com/html/?q={urllib.parse.quote(ddg_q)}'
+
+    collected = ''
+    try:
+        resp = requests.get(ddg_url, headers=_SCRAPE_HEADERS, timeout=15)
+        full_text = _clean_html(resp.text)
+        search_terms = list({test_name.lower(), test_name.lower().replace(' ', ''), test_name.split()[0].lower()})
+        chunks = []
+        for term in search_terms:
+            pos = 0
+            while True:
+                idx = full_text.lower().find(term, pos)
+                if idx == -1:
+                    break
+                chunks.append(full_text[max(0, idx - 100): idx + 600])
+                pos = idx + max(len(term), 1)
+        collected = ' '.join(chunks[:12])
+        debug['queries'].append({
+            'source': 'DuckDuckGo HTML search',
+            'url': ddg_url,
+            'status': resp.status_code,
+            'chars': len(collected),
+            'got': collected[:400] if collected else '(no snippets found)',
+        })
+    except Exception as e:
+        debug['queries'].append({'source': 'DuckDuckGo HTML search', 'url': ddg_url, 'error': str(e)})
+        return None, f"Search failed: {e}", debug
+
+    # Also try Wikipedia
+    wiki_url = f'https://en.wikipedia.org/api/rest_v1/page/summary/{urllib.parse.quote(test_name.replace(" ", "_"))}'
+    try:
+        wr = requests.get(wiki_url, headers=_SCRAPE_HEADERS, timeout=10)
+        if wr.status_code == 200:
+            wiki_extract = wr.json().get('extract', '')
+            collected = wiki_extract[:1500] + '\n\n' + collected
+            debug['queries'].append({'source': 'Wikipedia', 'url': wiki_url, 'status': 200, 'chars': len(wiki_extract), 'got': wiki_extract[:200]})
+    except Exception:
+        pass
+
+    debug['collected_text'] = collected[:4000]
+
+    if not collected.strip():
+        return None, "No results found. Try a more specific test name.", debug
+
+    # Format a compact summary from snippets
+    ref_line = ''
+    if ref_min is not None and ref_max is not None:
+        ref_line = f"Reference range: {ref_min}–{ref_max} {unit}. "
+    gender_line = f"Patient gender: {gender}. " if gender else ''
+
+    summary = (
+        f"**Web search results for: {test_name}** ({value} {unit})\n"
+        f"{ref_line}{gender_line}\n\n"
+        "---\n"
+        "*Extracted snippets from web search (unfiltered — always verify with a clinician):*\n\n"
+        + collected[:3000]
+    )
+    return summary, None, debug
 
 
 _STANDARD_INFO_PROMPT = """For the blood test called '{test_name}', provide reference information.

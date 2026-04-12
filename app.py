@@ -5600,10 +5600,9 @@ def investigation_standards_page(investigation_standards, db=None, user_id=None)
             _configured_af = [s for s in ai_mod.SERVICES if _stored_keys_af.get(s)]
 
             with method_col:
-                _method_options = []
+                _method_options = ["🌐 Web Search (no API key needed)"]
                 if _configured_af:
                     _method_options += [f"🤖 AI — {ai_mod.SERVICES[s]['label']}" for s in _configured_af]
-                _method_options.append("🌐 Web Search (no API key needed)")
                 chosen_method = st.selectbox(
                     "Method",
                     options=_method_options,
@@ -5630,9 +5629,10 @@ def investigation_standards_page(investigation_standards, db=None, user_id=None)
                 else:
                     _is_web = chosen_method.startswith("🌐")
 
+                    _af_debug = None
                     if _is_web:
                         with st.spinner(f"Searching the web for '{af_search}'…"):
-                            _af_data, _af_err = ai_mod.scrape_test_standard_info(af_search.strip())
+                            _af_data, _af_err, _af_debug = ai_mod.scrape_test_standard_info(af_search.strip())
                     else:
                         # Identify selected AI service from the label
                         _af_svc = None
@@ -5651,6 +5651,23 @@ def investigation_standards_page(investigation_standards, db=None, user_id=None)
 
                     if _af_err:
                         st.error(f"Auto-fill failed: {_af_err}")
+                        if _af_debug:
+                            with st.expander("🔎 Debug — what was searched and what came back", expanded=True):
+                                for q in _af_debug.get('queries', []):
+                                    st.markdown(f"**{q.get('source', '?')}**")
+                                    st.code(q.get('url', ''), language=None)
+                                    if 'error' in q:
+                                        st.error(f"Error: {q['error']}")
+                                    else:
+                                        st.markdown(
+                                            f"HTTP {q.get('status','?')} · "
+                                            f"{q.get('chars', 0)} chars collected"
+                                        )
+                                        st.text(q.get('got', '(nothing)'))
+                                    st.markdown("---")
+                                if _af_debug.get('collected_text'):
+                                    st.markdown("**Full collected text (first 4000 chars):**")
+                                    st.text(_af_debug['collected_text'])
                     else:
                         st.session_state['new_name'] = af_search.strip()
                         if _af_data.get('description'):
@@ -5677,6 +5694,23 @@ def investigation_standards_page(investigation_standards, db=None, user_id=None)
                             f"✅ Auto-filled ({src_note})! Review and adjust the values below, "
                             f"then click **Add Standard**."
                         )
+                        if _is_web and _af_debug:
+                            with st.expander("🔎 Debug — what was searched and what came back", expanded=False):
+                                for q in _af_debug.get('queries', []):
+                                    st.markdown(f"**{q.get('source', '?')}**")
+                                    st.code(q.get('url', ''), language=None)
+                                    if 'error' in q:
+                                        st.error(f"Error: {q['error']}")
+                                    else:
+                                        st.markdown(
+                                            f"HTTP {q.get('status','?')} · "
+                                            f"{q.get('chars', 0)} chars collected"
+                                        )
+                                        st.text(q.get('got', '(nothing)'))
+                                    st.markdown("---")
+                                if _af_debug.get('collected_text'):
+                                    st.markdown("**Full collected text (first 4000 chars):**")
+                                    st.text(_af_debug['collected_text'])
                         st.rerun()
 
         st.markdown("---")
