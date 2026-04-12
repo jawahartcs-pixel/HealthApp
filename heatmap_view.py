@@ -3,6 +3,7 @@ import pandas as pd
 import json
 import io
 import matplotlib
+import ai_insights as ai_mod
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import matplotlib.colors as mcolors
@@ -624,6 +625,103 @@ def render_heatmap_view(db, selected_patient, user_id, edit_df, key_prefix="mana
 
         with st.expander("📊 Heat Map View (Color-Coded)", expanded=True):
             st.dataframe(styled_display, use_container_width=False, height=min(600, len(unique_tests) * 35 + 80))
+
+        # ── AI Search Panel ──────────────────────────────────────────────────
+        with st.expander("🤖 AI Analysis — Search a Test Result", expanded=False):
+            stored_keys = db.get_all_ai_api_keys(user_id)
+            configured_svcs = [s for s in ai_mod.SERVICES if stored_keys.get(s)]
+
+            st.markdown(
+                "Select a test and date from the heatmap to query an AI for an explanation. "
+                "You can also open any AI service directly in your browser."
+            )
+            col_t, col_d = st.columns(2)
+            with col_t:
+                sel_test_ai = st.selectbox(
+                    "Test", options=unique_tests, key=f"{key_prefix}_ai_test"
+                )
+            with col_d:
+                sel_date_ai = st.selectbox(
+                    "Date", options=unique_dates, key=f"{key_prefix}_ai_date"
+                )
+
+            # Look up the value for the selected cell
+            cell_value = None
+            if sel_test_ai and sel_date_ai:
+                raw = pivot_data.get(sel_test_ai, {}).get(sel_date_ai)
+                if raw is not None and not pd.isna(raw):
+                    try:
+                        cell_value = float(raw)
+                    except (ValueError, TypeError):
+                        cell_value = None
+
+            ref_info = reference_ranges.get(sel_test_ai, {})
+            ref_min = ref_info.get('min') if isinstance(ref_info, dict) else None
+            ref_max = ref_info.get('max') if isinstance(ref_info, dict) else None
+            unit = units_map.get(sel_test_ai, '')
+            age = patient_profile.get('age') if patient_profile else None
+            gender = patient_gender or ''
+
+            if cell_value is not None:
+                ref_part = f" (ref: {ref_min}–{ref_max} {unit})" if ref_min is not None else ""
+                st.info(f"**{sel_test_ai}** on {sel_date_ai}: **{cell_value} {unit}**{ref_part}")
+            else:
+                st.warning("No value recorded for this test on the selected date.")
+
+            prompt = ai_mod.build_test_prompt(
+                selected_patient,
+                age,
+                gender,
+                sel_test_ai,
+                cell_value if cell_value is not None else "not recorded",
+                unit,
+                ref_min,
+                ref_max,
+            )
+
+            with st.expander("📋 View prompt", expanded=False):
+                st.text(prompt)
+
+            st.markdown("**Query via API** *(uses stored API keys)*")
+            if configured_svcs:
+                sel_svcs = st.multiselect(
+                    "Select AI(s) to query",
+                    options=configured_svcs,
+                    default=configured_svcs[:1],
+                    key=f"{key_prefix}_ai_svcs",
+                    format_func=lambda s: f"{ai_mod.SERVICES[s]['icon']} {ai_mod.SERVICES[s]['label']}",
+                )
+                if st.button("🚀 Get AI Analysis", key=f"{key_prefix}_ai_run", type="primary", disabled=not sel_svcs or cell_value is None):
+                    for svc in sel_svcs:
+                        api_key = stored_keys.get(svc, "")
+                        icon = ai_mod.SERVICES[svc]["icon"]
+                        label = ai_mod.SERVICES[svc]["label"]
+                        st.markdown(f"#### {icon} {label}")
+                        with st.spinner(f"Querying {label}…"):
+                            response, err = ai_mod.query_service(svc, prompt, api_key)
+                        if err:
+                            st.error(f"Error: {err}")
+                        else:
+                            st.markdown(response)
+                        st.markdown("---")
+            else:
+                st.warning("No API keys configured. Add them on the **🤖 AI Insights** page.")
+
+            st.markdown("**Open in Browser** *(use your existing login)*")
+            open_cols = st.columns(len(ai_mod.SERVICES))
+            for i, (svc, info) in enumerate(ai_mod.SERVICES.items()):
+                url = ai_mod.get_quick_open_url(svc, prompt)
+                note = " ✓ prompt auto-filled" if info["supports_url_query"] else ""
+                with open_cols[i]:
+                    st.markdown(
+                        f'<a href="{url}" target="_blank" style="text-decoration:none;">'
+                        f'<button style="background:{info["color"]};color:white;border:none;'
+                        f'padding:7px 12px;border-radius:5px;font-size:13px;cursor:pointer;width:100%;">'
+                        f'{info["icon"]} {svc}</button></a>',
+                        unsafe_allow_html=True,
+                    )
+                    if note:
+                        st.caption(note)
 
         def get_deviation_color_rgb(value, ref_info):
             if value is None or pd.isna(value):

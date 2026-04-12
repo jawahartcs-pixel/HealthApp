@@ -17,6 +17,7 @@ from utils import validate_date, format_test_value
 from image_snippet_extractor import ImageSnippetExtractor
 from investigation_standards import InvestigationStandards
 from heatmap_view import render_heatmap_view
+import ai_insights as ai_mod
 from pdf_report_generator import PDFReportGenerator
 from medication_reminder import MedicationReminder
 from test_categories import categorize_test_types, get_category_colors
@@ -73,7 +74,7 @@ def main():
     auth_ui.sidebar_user_info()
     
     # Page selection
-    pages = ["Upload Results", "View Patients", "Patient Dashboard", "Medication Reminders", "Manage Data", "Investigation Standards", "Search & Filter", "Export Data", "Alert Dashboard", "AI Anomaly Detection"]
+    pages = ["Upload Results", "View Patients", "Patient Dashboard", "Medication Reminders", "Manage Data", "Investigation Standards", "Search & Filter", "Export Data", "Alert Dashboard", "AI Anomaly Detection", "🤖 AI Insights"]
     
     # Add profile page for logged-in users
     if st.session_state.get('user_id'):
@@ -100,6 +101,8 @@ def main():
         alert_dashboard_page(alert_system, current_user_id)
     elif page == "AI Anomaly Detection":
         ai_anomaly_detection_page(anomaly_detector, current_user_id)
+    elif page == "🤖 AI Insights":
+        ai_insights_page(db, current_user_id)
     elif page == "Medication Reminders":
         medication_reminders_page(medication_reminder, db, current_user_id)
     elif page == "Investigation Standards":
@@ -4912,6 +4915,232 @@ def display_trends_analysis(results):
     
     else:
         st.info("No trend data available for the selected period.")
+
+def ai_insights_page(db, user_id):
+    """AI Insights page — API key management, quick-open links, and direct AI querying."""
+    st.header("🤖 AI Insights")
+    st.markdown("Query AI services about blood test results, or open them directly in your browser.")
+
+    tab_keys, tab_query, tab_links = st.tabs(["🔑 API Keys", "💬 Query AI", "🌐 Quick Open"])
+
+    # ── Tab 1: API Key Management ────────────────────────────────────────────
+    with tab_keys:
+        st.subheader("Store Your API Keys")
+        st.info(
+            "API keys are stored permanently in the local database and used to query AI services "
+            "directly within this app. Keys are never sent anywhere except to the respective AI service."
+        )
+        stored_keys = db.get_all_ai_api_keys(user_id)
+
+        for svc, info in ai_mod.SERVICES.items():
+            with st.expander(f"{info['icon']} {info['label']}", expanded=False):
+                current = stored_keys.get(svc, "")
+                masked = ("*" * 20 + current[-4:]) if len(current) > 4 else ("Set" if current else "Not set")
+                if current:
+                    st.success(f"Key stored: {masked}")
+                else:
+                    st.warning("No API key stored yet.")
+
+                col_inp, col_save, col_del = st.columns([5, 1, 1])
+                with col_inp:
+                    new_key = st.text_input(
+                        "API Key",
+                        value="",
+                        type="password",
+                        placeholder="Paste your API key here…",
+                        key=f"api_key_input_{svc}",
+                        label_visibility="collapsed",
+                    )
+                with col_save:
+                    if st.button("Save", key=f"save_key_{svc}", type="primary"):
+                        if new_key.strip():
+                            if db.save_ai_api_key(svc, new_key.strip(), user_id):
+                                st.success("Saved!")
+                                st.rerun()
+                            else:
+                                st.error("Save failed.")
+                        else:
+                            st.warning("Enter a key first.")
+                with col_del:
+                    if current and st.button("Delete", key=f"del_key_{svc}"):
+                        db.delete_ai_api_key(svc, user_id)
+                        st.success("Deleted.")
+                        st.rerun()
+
+                # Where to get the key
+                links = {
+                    "ChatGPT": "https://platform.openai.com/api-keys",
+                    "Gemini": "https://aistudio.google.com/app/apikey",
+                    "Grok": "https://console.x.ai/",
+                    "Perplexity": "https://www.perplexity.ai/settings/api",
+                }
+                st.caption(f"Get your key: [{links[svc]}]({links[svc]})")
+
+    # ── Tab 2: Direct AI Query ───────────────────────────────────────────────
+    with tab_query:
+        st.subheader("Ask AI About a Test Result")
+        stored_keys = db.get_all_ai_api_keys(user_id)
+        configured = [s for s in ai_mod.SERVICES if stored_keys.get(s)]
+
+        if not configured:
+            st.warning("No API keys configured yet. Go to the **API Keys** tab to add them.")
+        else:
+            # Patient + test selector
+            patients = db.get_patients(user_id) or []
+            patient_names = [p[1] if isinstance(p, (list, tuple)) else p.get('patient_name', '') for p in patients]
+
+            col1, col2 = st.columns(2)
+            with col1:
+                sel_patient = st.selectbox("Patient (optional)", ["— Manual entry —"] + patient_names, key="ai_q_patient")
+            with col2:
+                sel_services = st.multiselect(
+                    "Query in",
+                    options=configured,
+                    default=configured[:1],
+                    key="ai_q_services",
+                    format_func=lambda s: f"{ai_mod.SERVICES[s]['icon']} {ai_mod.SERVICES[s]['label']}",
+                )
+
+            # If patient selected, load their tests for quick-fill
+            test_name_val, value_val, unit_val, ref_min_val, ref_max_val = "", "", "", None, None
+            age_val, gender_val = "", ""
+            if sel_patient != "— Manual entry —":
+                profile = db.get_patient_profile(sel_patient, user_id) or {}
+                age_val = str(profile.get('age', '')) if profile.get('age') else ""
+                gender_val = profile.get('gender', '') or ""
+                results = db.get_test_results(sel_patient, user_id) or []
+                test_types = sorted(set(r[3] if isinstance(r, (list, tuple)) else r.get('test_type', '') for r in results))
+                sel_test = st.selectbox("Select test", ["— choose —"] + test_types, key="ai_q_test")
+                if sel_test != "— choose —":
+                    test_name_val = sel_test
+                    test_results_for = [
+                        r for r in results
+                        if (r[3] if isinstance(r, (list, tuple)) else r.get('test_type', '')) == sel_test
+                    ]
+                    if test_results_for:
+                        latest = sorted(
+                            test_results_for,
+                            key=lambda r: r[2] if isinstance(r, (list, tuple)) else r.get('test_date', ''),
+                            reverse=True,
+                        )[0]
+                        value_val = str(latest[4] if isinstance(latest, (list, tuple)) else latest.get('test_value', ''))
+                        unit_val = latest[5] if isinstance(latest, (list, tuple)) else latest.get('unit', '') or ''
+
+            st.markdown("**Fill in test details:**")
+            row1 = st.columns(3)
+            with row1[0]:
+                patient_name_in = st.text_input("Patient name", value=sel_patient if sel_patient != "— Manual entry —" else "", key="ai_q_pname")
+            with row1[1]:
+                age_in = st.text_input("Age", value=age_val, key="ai_q_age")
+            with row1[2]:
+                gender_in = st.text_input("Gender", value=gender_val, key="ai_q_gender")
+
+            row2 = st.columns(3)
+            with row2[0]:
+                test_in = st.text_input("Test name", value=test_name_val, key="ai_q_testname")
+            with row2[1]:
+                value_in = st.text_input("Result value", value=value_val, key="ai_q_value")
+            with row2[2]:
+                unit_in = st.text_input("Unit", value=unit_val, key="ai_q_unit")
+
+            row3 = st.columns(2)
+            with row3[0]:
+                ref_min_in = st.text_input("Reference min", value="", key="ai_q_refmin")
+            with row3[1]:
+                ref_max_in = st.text_input("Reference max", value="", key="ai_q_refmax")
+
+            try:
+                ref_min_v = float(ref_min_in) if ref_min_in.strip() else None
+                ref_max_v = float(ref_max_in) if ref_max_in.strip() else None
+            except ValueError:
+                ref_min_v = ref_max_v = None
+
+            prompt = ai_mod.build_test_prompt(
+                patient_name_in or "Patient",
+                age_in or None,
+                gender_in or None,
+                test_in or "Unknown test",
+                value_in or "?",
+                unit_in or "",
+                ref_min_v,
+                ref_max_v,
+            )
+
+            with st.expander("📋 View prompt that will be sent"):
+                st.text(prompt)
+
+            if st.button("🚀 Query Selected AIs", type="primary", key="ai_q_run", disabled=not sel_services):
+                for svc in sel_services:
+                    key = stored_keys.get(svc, "")
+                    icon = ai_mod.SERVICES[svc]["icon"]
+                    label = ai_mod.SERVICES[svc]["label"]
+                    st.markdown(f"### {icon} {label}")
+                    with st.spinner(f"Querying {label}…"):
+                        response, err = ai_mod.query_service(svc, prompt, key)
+                    if err:
+                        st.error(f"Error: {err}")
+                    else:
+                        st.markdown(response)
+                    st.markdown("---")
+
+    # ── Tab 3: Quick Open in Browser ────────────────────────────────────────
+    with tab_links:
+        st.subheader("Open AI Services in Your Browser")
+        st.markdown(
+            "Click a button to open the AI service in a new tab where you are already logged in. "
+            "For **Perplexity**, the prompt is auto-filled. For others, copy the prompt and paste it."
+        )
+
+        # Optional: build a quick prompt from a test result
+        stored_keys2 = db.get_all_ai_api_keys(user_id)
+        patients2 = db.get_patients(user_id) or []
+        patient_names2 = [p[1] if isinstance(p, (list, tuple)) else p.get('patient_name', '') for p in patients2]
+
+        with st.expander("🔧 Build a prompt for a test result (optional)", expanded=False):
+            col_p, col_t = st.columns(2)
+            with col_p:
+                lnk_patient = st.selectbox("Patient", ["— none —"] + patient_names2, key="lnk_patient")
+            with col_t:
+                lnk_test = st.selectbox("Test", ["— none —"], key="lnk_test")  # populated below
+
+            lnk_prompt = ""
+            if lnk_patient != "— none —":
+                profile2 = db.get_patient_profile(lnk_patient, user_id) or {}
+                results2 = db.get_test_results(lnk_patient, user_id) or []
+                test_types2 = sorted(set(r[3] if isinstance(r, (list, tuple)) else r.get('test_type', '') for r in results2))
+                lnk_test_sel = st.selectbox("Select test", ["— choose —"] + test_types2, key="lnk_test2")
+                if lnk_test_sel != "— choose —":
+                    latest2 = sorted(
+                        [r for r in results2 if (r[3] if isinstance(r, (list, tuple)) else r.get('test_type', '')) == lnk_test_sel],
+                        key=lambda r: r[2] if isinstance(r, (list, tuple)) else r.get('test_date', ''),
+                        reverse=True,
+                    )
+                    if latest2:
+                        lr = latest2[0]
+                        lnk_prompt = ai_mod.build_test_prompt(
+                            lnk_patient,
+                            profile2.get('age'),
+                            profile2.get('gender', ''),
+                            lnk_test_sel,
+                            lr[4] if isinstance(lr, (list, tuple)) else lr.get('test_value', ''),
+                            lr[5] if isinstance(lr, (list, tuple)) else (lr.get('unit', '') or ''),
+                            None, None,
+                        )
+            if lnk_prompt:
+                st.text_area("Prompt (copy this):", value=lnk_prompt, height=180, key="lnk_prompt_box")
+
+        st.markdown("---")
+        for svc, info in ai_mod.SERVICES.items():
+            url = ai_mod.get_quick_open_url(svc, lnk_prompt) if lnk_prompt else info["url"]
+            note = " *(prompt auto-filled)*" if info["supports_url_query"] and lnk_prompt else " *(paste prompt after opening)*"
+            st.markdown(
+                f'<a href="{url}" target="_blank" style="text-decoration:none;">'
+                f'<button style="background:{info["color"]};color:white;border:none;padding:10px 20px;'
+                f'border-radius:6px;font-size:15px;cursor:pointer;margin:4px 0;">'
+                f'{info["icon"]} Open {info["label"]}</button></a>{note}',
+                unsafe_allow_html=True,
+            )
+
 
 def investigation_standards_page(investigation_standards):
     """Investigation Standards Management Page."""

@@ -246,7 +246,20 @@ class Database:
             cursor.execute('''
                 CREATE INDEX IF NOT EXISTS idx_user_prefs ON user_preferences(user_id, patient_name, preference_key)
             ''')
-            
+
+            # Create ai_api_keys table for storing AI service API keys
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS ai_api_keys (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id INTEGER,
+                    service_name TEXT NOT NULL,
+                    api_key TEXT NOT NULL,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    UNIQUE(user_id, service_name)
+                )
+            ''')
+
             # Create indexes after columns are added
             cursor.execute('''
                 CREATE INDEX IF NOT EXISTS idx_user_id ON patients(user_id)
@@ -1199,4 +1212,66 @@ class Database:
                 return True
         except Exception as e:
             print(f"Error deleting user preference: {e}")
+            return False
+
+    def save_ai_api_key(self, service_name: str, api_key: str, user_id: int = None) -> bool:
+        """Save or update an AI service API key."""
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+                cursor.execute('''
+                    INSERT INTO ai_api_keys (user_id, service_name, api_key, updated_at)
+                    VALUES (?, ?, ?, CURRENT_TIMESTAMP)
+                    ON CONFLICT(user_id, service_name) DO UPDATE SET
+                        api_key = excluded.api_key,
+                        updated_at = CURRENT_TIMESTAMP
+                ''', (user_id, service_name, api_key))
+                conn.commit()
+                return True
+        except Exception as e:
+            print(f"Error saving AI API key: {e}")
+            return False
+
+    def get_ai_api_key(self, service_name: str, user_id: int = None) -> Optional[str]:
+        """Retrieve an AI service API key."""
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+                cursor.execute(
+                    'SELECT api_key FROM ai_api_keys WHERE service_name = ? AND user_id IS ?',
+                    (service_name, user_id)
+                )
+                result = cursor.fetchone()
+                return result[0] if result else None
+        except Exception as e:
+            print(f"Error getting AI API key: {e}")
+            return None
+
+    def get_all_ai_api_keys(self, user_id: int = None) -> dict:
+        """Retrieve all stored AI service API keys as {service_name: api_key}."""
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+                cursor.execute(
+                    'SELECT service_name, api_key FROM ai_api_keys WHERE user_id IS ?',
+                    (user_id,)
+                )
+                return {row[0]: row[1] for row in cursor.fetchall()}
+        except Exception as e:
+            print(f"Error getting all AI API keys: {e}")
+            return {}
+
+    def delete_ai_api_key(self, service_name: str, user_id: int = None) -> bool:
+        """Delete a stored AI service API key."""
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+                cursor.execute(
+                    'DELETE FROM ai_api_keys WHERE service_name = ? AND user_id IS ?',
+                    (service_name, user_id)
+                )
+                conn.commit()
+                return True
+        except Exception as e:
+            print(f"Error deleting AI API key: {e}")
             return False
