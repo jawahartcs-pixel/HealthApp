@@ -550,51 +550,38 @@ def upload_results_page(file_parser, data_processor, user_id):
                 with st.popover("➕ Add New Date Column"):
                     new_tt_d = st.date_input("New date:", key="tt_new_date_input")
                     if st.button("Add Date", key="tt_add_date_btn"):
-                        if tt_date_fmt == "UK (DD/MM/YYYY)":
-                            nds = new_tt_d.strftime('%d/%m/%Y')
-                        else:
-                            nds = new_tt_d.strftime('%m/%d/%Y')
+                        nds = new_tt_d.strftime('%d/%m/%Y') if tt_date_fmt == "UK (DD/MM/YYYY)" else new_tt_d.strftime('%m/%d/%Y')
                         if nds not in tt_dates:
                             st.session_state[TT_ADD_D].append(nds)
-                            st.success(f"Added date column: {nds}")
                             st.session_state.pop('tt_editor', None)
                             st.rerun()
                         else:
-                            st.warning("This date already exists.")
+                            st.warning("Date already exists.")
             with ctl2:
                 with st.popover("➕ Add New Test Row"):
                     _tt_std_obj = st.session_state.get('investigation_standards')
                     _tt_stds = _tt_std_obj.get_all_standards() if _tt_std_obj else []
-                    _tt_all_names = sorted(
+                    _tt_snames = sorted(
                         [s.get('standard_name', '') for s in _tt_stds
                          if isinstance(s, dict) and s.get('standard_name')],
                         key=str.lower
                     )
-                    _tt_existing = set(tt_tests)
-                    _tt_avail = [n for n in _tt_all_names if n not in _tt_existing]
-                    if _tt_avail:
-                        _tt_new_sel = st.selectbox(
-                            "Select test from standards:",
-                            _tt_avail,
-                            index=None,
-                            placeholder="Choose a test...",
-                            key="tt_new_test_sel"
-                        )
-                    else:
-                        _tt_new_sel = None
-                        st.info("All standard tests are already in the table.")
-                    _tt_new_custom = st.text_input("Or enter custom test name:", key="tt_new_test_custom")
+                    _tt_avail = [n for n in _tt_snames if n not in tt_tests]
+                    _tt_new_sel = st.selectbox(
+                        "From standards:", _tt_avail if _tt_avail else ["(all standards added)"],
+                        index=None, placeholder="Choose…", key="tt_new_test_sel"
+                    ) if _tt_avail else None
+                    _tt_new_custom = st.text_input("Or custom name:", key="tt_new_test_custom")
                     if st.button("Add Test", key="tt_add_test_btn"):
-                        _to_add = _tt_new_custom.strip() if _tt_new_custom.strip() else _tt_new_sel
-                        if _to_add and _to_add not in _tt_existing:
+                        _to_add = _tt_new_custom.strip() or _tt_new_sel
+                        if _to_add and _to_add not in tt_tests:
                             st.session_state[TT_ADD_T].append(_to_add)
-                            st.success(f"Added test row: {_to_add}")
                             st.session_state.pop('tt_editor', None)
                             st.rerun()
-                        elif _to_add in _tt_existing:
-                            st.warning("This test already exists in the table.")
+                        elif _to_add:
+                            st.warning("Test already in table.")
                         else:
-                            st.warning("Please select or enter a test name.")
+                            st.warning("Enter or select a test name.")
             with ctl3:
                 if st.button("🗑️ Clear & Start Over", key="tt_clear_btn"):
                     for k in [TT_PIVOT, TT_UNITS, TT_DATES, TT_TESTS, TT_ADD_D, TT_ADD_T, TT_READY, 'tt_editor']:
