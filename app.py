@@ -158,7 +158,29 @@ def upload_results_page(file_parser, data_processor, user_id):
         
         return f"Could not locate '{test_name}' in document text"
     
-    upload_tab, paste_tab = st.tabs(["📁 Upload Files", "📋 Paste Text"])
+    matrix_tab, upload_tab, paste_tab = st.tabs(["🧪 Upload into MatrixTable", "📁 Upload Files", "📋 Paste Text"])
+
+    with matrix_tab:
+        uploaded_files_matrix = st.file_uploader(
+            "Choose blood test result files",
+            type=['pdf', 'txt', 'docx', 'xlsx', 'xls', 'csv', 'xml', 'jpg', 'jpeg', 'png', 'bmp', 'tiff'],
+            accept_multiple_files=True,
+            key="matrix_file_uploader",
+            help="Upload PDF, Word (.docx), Excel (.xlsx, .xls), CSV, XML, text files, or images (JPG, PNG, BMP, TIFF) containing blood test results"
+        )
+
+        force_ocr_matrix = st.checkbox(
+            "Force OCR extraction",
+            key="matrix_force_ocr",
+            help="Use OCR (Optical Character Recognition) for image files and scanned documents."
+        )
+
+        if st.button("🔄 Clear Cache & Reprocess Files", key="matrix_clear_cache", help="Clear cached extraction results and reprocess all files"):
+            keys_to_remove = [key for key in st.session_state.keys() if key.startswith('mtx_extraction_')]
+            for key in keys_to_remove:
+                del st.session_state[key]
+            st.rerun()
+
 
     with upload_tab:
         uploaded_files = st.file_uploader(
@@ -297,6 +319,1619 @@ def upload_results_page(file_parser, data_processor, user_id):
                     st.info("Make sure the text contains test names and numeric values. The system matches against your investigation standards.")
                     with st.expander("Show processed text"):
                         st.text(parsed_text[:2000])
+
+    if uploaded_files_matrix:
+        st.subheader("Processing Files")
+        
+        for uploaded_file in uploaded_files_matrix:
+            with st.expander(f"mtx_Processing: {uploaded_file.name}", expanded=True):
+                try:
+                    # Cache extraction results to prevent reprocessing on form changes
+                    cache_key = f"mtx_extraction_{uploaded_file.name}_{uploaded_file.size}_{force_ocr_matrix}"
+                    
+                    # Always initialize these for consistent access
+                    progress_bar = st.progress(0)
+                    status_text = st.empty()
+                    
+                    if cache_key not in st.session_state:
+                        # Show processing status during initial extraction
+                        status_text.text("Reading file...")
+                        progress_bar.progress(25)
+                        
+                        # Parse file
+                        extracted_text = file_parser.parse_file(uploaded_file, force_ocr_matrix)
+                        
+                        status_text.text("Extracting test data...")
+                        progress_bar.progress(50)
+                        
+                        # Extract test data
+                        test_data = file_parser.extract_test_data(extracted_text)
+                        
+                        # Initialize image snippet extractor for OCR documents
+                        snippet_extractor = None
+                        if uploaded_file.type == "application/pdf" and ("OCR" in extracted_text or force_ocr_matrix):
+                            snippet_extractor = ImageSnippetExtractor()
+                            uploaded_file.seek(0)
+                            pdf_bytes = uploaded_file.read()
+                            snippet_extractor.process_pdf_for_snippets(pdf_bytes)
+                        
+                        # Cache the results
+                        st.session_state[cache_key] = {
+                            'extracted_text': extracted_text,
+                            'test_data': test_data,
+                            'snippet_extractor': snippet_extractor
+                        }
+                        
+                        status_text.text("Extraction complete!")
+                        progress_bar.progress(100)
+                    else:
+                        # Use cached results
+                        status_text.text("ℹ️ Using cached extraction results (no reprocessing needed)")
+                        progress_bar.progress(100)
+                        cached_data = st.session_state[cache_key]
+                        extracted_text = cached_data['extracted_text']
+                        test_data = cached_data['test_data']
+                        snippet_extractor = cached_data['snippet_extractor']
+                    
+                    # Check if we have any results - continue processing even if none found
+                    has_extracted_results = test_data and test_data.get('results')
+                    
+                    # Initialize num_additional early to avoid scope issues
+                    num_additional = 0
+                    
+                    if not has_extracted_results:
+                        st.warning("No blood test data automatically detected in the file")
+                        st.info("💡 Now trying standards-based extraction...")
+                        
+                        # Try standards-based extraction even when no original results
+                        investigation_standards = st.session_state.get('investigation_standards')
+                        if investigation_standards and extracted_text:
+                            standards_results = file_parser.scan_text_against_standards(extracted_text, investigation_standards)
+                            
+                            if standards_results:
+                                # Create two-column layout for Excel table and document preview
+                                col1, col2 = st.columns([0.8, 1.2])
+                                
+                                with col1:
+                                    st.success(f"Found {len(standards_results)} tests using standards-based extraction!")
+                                    st.subheader("📊 Standards-Based Extraction Results")
+                                    
+                                    # Create DataFrame for Excel-like display
+                                    df_data = []
+                                    seen_investigations = set()
+                                    for i, result in enumerate(standards_results):
+                                        investigation_name = result['test_type']
+                                        # Only enable Include for first occurrence of each investigation
+                                        is_first_occurrence = investigation_name not in seen_investigations
+                                        seen_investigations.add(investigation_name)
+                                        
+                                        df_data.append({
+                                            'Include': is_first_occurrence,
+                                            'Investigation': result['test_type'],
+                                            'Value': result['value'],
+                                            'Unit': result['unit'],
+                                            'Source Text': result.get('matched_term', ''),
+                                        })
+                                    
+                                    # Display editable dataframe
+                                    if df_data:
+                                        df = pd.DataFrame(df_data)
+                                        
+                                        # Configure column editor
+                                        column_config = {
+                                            'Include': st.column_config.CheckboxColumn(
+                                                'Include',
+                                                help='Check to include this test in results',
+                                                default=True
+                                            ),
+                                            'Investigation': st.column_config.TextColumn(
+                                                'Investigation Type',
+                                                help='Standardized investigation name',
+                                                width='medium'
+                                            ),
+                                            'Value': st.column_config.NumberColumn(
+                                                'Value',
+                                                help='Test result value',
+                                                format='%.2f',
+                                                width='small'
+                                            ),
+                                            'Unit': st.column_config.TextColumn(
+                                                'Unit',
+                                                help='Measurement unit',
+                                                width='small'
+                                            ),
+                                            'Matched Term': st.column_config.TextColumn(
+                                                'Matched Term',
+                                                help='Document term that matched',
+                                                width='small'
+                                            )
+                                        }
+                                        
+                                        # Store the editable results
+                                        edited_df = st.data_editor(
+                                            df,
+                                            column_config=column_config,
+                                            use_container_width=True,
+                                            num_rows="dynamic",
+                                            key=f"mtx_standards_results_no_original_{uploaded_file.name}",
+                                            height=400
+                                        )
+                                        
+                                        # Store edited results in session state for saving
+                                        st.session_state[f'mtx_standards_extracted_{uploaded_file.name}'] = edited_df
+                                        
+                                        # Show summary and save button
+                                        included_count = len(edited_df[edited_df['Include'] == True])
+                                        st.caption(f"Ready to save: {included_count} tests selected")
+                                        
+                                        # Investigation Standards Excel Editor for managing standards
+                                        st.markdown("---")
+                                        st.subheader("🔬 Investigation Standards Editor")
+                                        st.caption("Add new standards or edit existing ones. Changes will trigger automatic reprocessing of the document.")
+                                        
+                                        # Get all investigation standards
+                                        investigation_standards_obj = st.session_state.get('investigation_standards')
+                                        if investigation_standards_obj:
+                                            standards = investigation_standards_obj.get_all_standards()
+                                            
+                                            if standards:
+                                                # Convert to DataFrame for editing
+                                                standards_df = pd.DataFrame(standards)
+                                                
+                                                # Add computed unit column for display
+                                                standards_df['computed_unit'] = standards_df.apply(
+                                                    lambda row: row.get('common_unit') or row.get('male_unit') or row.get('female_unit') or '', 
+                                                    axis=1
+                                                )
+                                                
+                                                # Define column configuration for editing
+                                                edit_column_config = {
+                                                    'id': st.column_config.NumberColumn('ID', width='small', disabled=True),
+                                                    'standard_name': st.column_config.TextColumn('Standard Name', width='medium', required=True),
+                                                    'category': st.column_config.SelectboxColumn(
+                                                        'Category', 
+                                                        width='small',
+                                                        options=investigation_standards_obj.get_predefined_categories(),
+                                                        required=True
+                                                    ),
+                                                    'computed_unit': st.column_config.TextColumn('Unit', width='small'),
+                                                    'male_range_min': st.column_config.NumberColumn('Male Min', width='small', format="%.2f"),
+                                                    'male_range_max': st.column_config.NumberColumn('Male Max', width='small', format="%.2f"),
+                                                    'female_range_min': st.column_config.NumberColumn('Female Min', width='small', format="%.2f"),
+                                                    'female_range_max': st.column_config.NumberColumn('Female Max', width='small', format="%.2f"),
+                                                    'aliases': st.column_config.TextColumn('Aliases', width='large', help="Comma-separated list"),
+                                                    'exclusions': st.column_config.TextColumn('Exclusions', width='large', help="Comma-separated list of names that should NOT match this standard (non-aliases)"),
+                                                    'description': st.column_config.TextColumn('Description', width='large')
+                                                }
+                                                
+                                                # Select columns for editing
+                                                edit_columns = [
+                                                    'id', 'standard_name', 'category', 'computed_unit',
+                                                    'male_range_min', 'male_range_max', 'female_range_min', 'female_range_max',
+                                                    'aliases', 'exclusions', 'description'
+                                                ]
+                                                
+                                                st.info("ℹ️ Standard names must be unique. Changes will trigger document reprocessing.")
+                                                
+                                                # Excel-like editable table with unique key for upload page
+                                                edited_standards_df = st.data_editor(
+                                                    standards_df[edit_columns],
+                                                    column_config=edit_column_config,
+                                                    use_container_width=True,
+                                                    num_rows="dynamic",
+                                                    hide_index=True,
+                                                    key=f"mtx_standards_editor_{uploaded_file.name}"
+                                                )
+                                                
+                                                # Process changes and additions - outside the form to avoid conflicts
+                                                if not edited_standards_df.equals(standards_df[edit_columns]):
+                                                    st.markdown("**💾 Standards Changes Detected**")
+                                                    
+                                                    # Check for new rows
+                                                    new_rows = []
+                                                    for idx, row in edited_standards_df.iterrows():
+                                                        if (pd.isna(row['id']) or row['id'] == 0) and pd.notna(row['standard_name']) and str(row['standard_name']).strip():
+                                                            new_rows.append(row)
+                                                    
+                                                    # Check for modifications
+                                                    existing_changes = []
+                                                    for idx, edited_row in edited_standards_df.iterrows():
+                                                        if pd.notna(edited_row['id']) and edited_row['id'] != 0:
+                                                            record_id = int(edited_row['id'])
+                                                            original_rows = standards_df[standards_df['id'] == record_id]
+                                                            if len(original_rows) > 0:
+                                                                original_row = original_rows.iloc[0]
+                                                                edit_cols_without_id = [col for col in edit_columns if col != 'id']
+                                                                if not original_row[edit_cols_without_id].equals(edited_row[edit_cols_without_id]):
+                                                                    existing_changes.append((record_id, edited_row, original_row))
+                                                    
+                                                    # Create columns for separate buttons - outside the main form
+                                                    col_std1, col_std2 = st.columns(2)
+                                                    standards_changed = False
+                                                    
+                                                    with col_std1:
+                                                        if new_rows and st.button("✅ Add New Standards", type="secondary", key=f"mtx_add_standards_{uploaded_file.name}"):
+                                                            success_count = 0
+                                                            for row in new_rows:
+                                                                standard_data = {
+                                                                    'standard_name': str(row['standard_name']).strip(),
+                                                                    'aliases': row['aliases'] if pd.notna(row['aliases']) else '',
+                                                                    'exclusions': row['exclusions'] if pd.notna(row.get('exclusions')) else '',
+                                                                    'male_range_min': row['male_range_min'] if pd.notna(row['male_range_min']) else 0.0,
+                                                                    'male_range_max': row['male_range_max'] if pd.notna(row['male_range_max']) else 0.0,
+                                                                    'female_range_min': row['female_range_min'] if pd.notna(row['female_range_min']) else 0.0,
+                                                                    'female_range_max': row['female_range_max'] if pd.notna(row['female_range_max']) else 0.0,
+                                                                    'male_unit': row['computed_unit'] if pd.notna(row['computed_unit']) else '',
+                                                                    'female_unit': row['computed_unit'] if pd.notna(row['computed_unit']) else '',
+                                                                    'common_unit': row['computed_unit'] if pd.notna(row['computed_unit']) else '',
+                                                                    'description': row['description'] if pd.notna(row['description']) else '',
+                                                                    'category': row['category'] if pd.notna(row['category']) else 'Other'
+                                                                }
+                                                                
+                                                                if investigation_standards_obj.add_standard(standard_data):
+                                                                    success_count += 1
+                                                            
+                                                            if success_count > 0:
+                                                                st.success(f"Added {success_count} new standards!")
+                                                                standards_changed = True
+                                                    
+                                                    with col_std2:
+                                                        if existing_changes and st.button("💾 Update Standards", type="secondary", key=f"mtx_update_standards_{uploaded_file.name}"):
+                                                            success_count = 0
+                                                            for record_id, edited_row, original_row in existing_changes:
+                                                                update_data = {
+                                                                    'standard_name': edited_row['standard_name'],
+                                                                    'aliases': edited_row['aliases'] if pd.notna(edited_row['aliases']) else '',
+                                                                    'exclusions': edited_row['exclusions'] if pd.notna(edited_row.get('exclusions')) else '',
+                                                                    'male_range_min': edited_row['male_range_min'] if pd.notna(edited_row['male_range_min']) else 0.0,
+                                                                    'male_range_max': edited_row['male_range_max'] if pd.notna(edited_row['male_range_max']) else 0.0,
+                                                                    'female_range_min': edited_row['female_range_min'] if pd.notna(edited_row['female_range_min']) else 0.0,
+                                                                    'female_range_max': edited_row['female_range_max'] if pd.notna(edited_row['female_range_max']) else 0.0,
+                                                                    'male_unit': edited_row['computed_unit'] if pd.notna(edited_row['computed_unit']) else '',
+                                                                    'female_unit': edited_row['computed_unit'] if pd.notna(edited_row['computed_unit']) else '',
+                                                                    'common_unit': edited_row['computed_unit'] if pd.notna(edited_row['computed_unit']) else '',
+                                                                    'description': edited_row['description'] if pd.notna(edited_row['description']) else '',
+                                                                    'category': edited_row['category'] if pd.notna(edited_row['category']) else 'Other'
+                                                                }
+                                                                
+                                                                if investigation_standards_obj.update_standard(record_id, update_data):
+                                                                    success_count += 1
+                                                            
+                                                            if success_count > 0:
+                                                                st.success(f"Updated {success_count} standards!")
+                                                                standards_changed = True
+                                                    
+                                                    # Clear cache and trigger reprocessing when standards change
+                                                    if standards_changed:
+                                                        # Clear the cache
+                                                        if f'mtx_extraction_cache_{uploaded_file.name}' in st.session_state:
+                                                            del st.session_state[f'mtx_extraction_cache_{uploaded_file.name}']
+                                                        
+                                                        # Force reprocessing by rerunning the page
+                                                        st.success("🔄 Standards updated! Document will be reprocessed with new standards...")
+                                                        st.rerun()
+                                                    
+                                                    # Show preview of changes if no action taken
+                                                    if new_rows:
+                                                        with st.expander(f"Preview: {len(new_rows)} new standards to add"):
+                                                            st.dataframe(pd.DataFrame(new_rows), use_container_width=True)
+                                                    
+                                                    if existing_changes:
+                                                        with st.expander(f"Preview: {len(existing_changes)} standards to update"):
+                                                            changes_df = pd.DataFrame([change[1] for change in existing_changes])
+                                                            st.dataframe(changes_df, use_container_width=True)
+                                            else:
+                                                st.info("No investigation standards found. You can add new standards using the table above.")
+                                        
+                                        st.markdown("---")
+                                        
+                                        # Save button for standards-based results (no original results case)
+                                        if st.button("💾 Save Standards-Based Results", key=f"mtx_save_standards_no_orig_{uploaded_file.name}", type="primary"):
+                                            if patient_name:
+                                                with st.spinner("Saving standards-based results..."):
+                                                    # Convert edited dataframe to test results
+                                                    standards_final_results = []
+                                                    for _, row in edited_df.iterrows():
+                                                        if row['Include']:
+                                                            standards_final_results.append({
+                                                                'test_type': row['Investigation'],
+                                                                'value': row['Value'],
+                                                                'unit': row['Unit']
+                                                            })
+                                                    
+                                                    # Check for duplicates before saving
+                                                    duplicates = data_processor.db.check_duplicate_test_results(
+                                                        patient_name=patient_name,
+                                                        test_date=test_date.strftime('%Y-%m-%d') if hasattr(test_date, 'strftime') else str(test_date),
+                                                        test_results=standards_final_results,
+                                                        user_id=user_id
+                                                    )
+                                                    
+                                                    if duplicates:
+                                                        st.warning(f"⚠️ Found {len(duplicates)} duplicate test(s) already in database:")
+                                                        for dup in duplicates:
+                                                            st.write(f"  • **{dup['test_type']}**: {dup['value']} on {dup['date']}")
+                                                        
+                                                        # Filter out duplicates
+                                                        duplicate_keys = {(d['test_type'], d['value']) for d in duplicates}
+                                                        standards_final_results = [r for r in standards_final_results 
+                                                                                  if (r['test_type'], float(r['value']) if r['value'] else 0) not in duplicate_keys]
+                                                        
+                                                        if not standards_final_results:
+                                                            st.info("All tests are duplicates. No new results to save.")
+                                                        else:
+                                                            st.info(f"Saving {len(standards_final_results)} non-duplicate test(s)...")
+                                                    
+                                                    # Save using data processor
+                                                    if standards_final_results:
+                                                        success = data_processor.save_test_results(
+                                                            patient_name=patient_name,
+                                                            test_date=test_date,
+                                                            test_results=standards_final_results,
+                                                            user_id=user_id
+                                                        )
+                                                        
+                                                        if success:
+                                                            st.success(f"Successfully saved {len(standards_final_results)} standards-based test results for {patient_name}")
+                                                        else:
+                                                            st.error("Failed to save standards-based test results to database")
+                                            else:
+                                                st.warning("Please enter a patient name to save results")
+                                
+                                with col2:
+                                    st.subheader("📄 Document Preview")
+                                    with st.expander("📖 View Original Document Content", expanded=True):
+                                        # Display file type and size
+                                        file_size = len(uploaded_file.getvalue())
+                                        st.caption(f"mtx_File: {uploaded_file.name} | Size: {file_size:,} bytes | Type: {uploaded_file.type}")
+                                        
+                                        # Show extracted text in a scrollable container
+                                        if extracted_text:
+                                            # Limit text length for display
+                                            display_text = extracted_text[:3000] + "\n\n... (text truncated for display)" if len(extracted_text) > 3000 else extracted_text
+                                            
+                                            st.text_area(
+                                                "Extracted Document Text",
+                                                value=display_text,
+                                                height=400,
+                                                help="This is the text extracted from your document. Compare with the parsed results below to verify accuracy.",
+                                                label_visibility="collapsed"
+                                            )
+                                        else:
+                                            st.warning("No text could be extracted from this document.")
+                                
+                                # Set flag to show save button
+                                has_extracted_results = True
+                                
+                            else:
+                                st.warning("No tests found even with standards-based extraction")
+                                st.info("💡 You can manually add test results using the section below")
+                                # Show extracted text for debugging
+                                with st.expander("Debug: Show extracted text"):
+                                    st.text_area("Extracted text", extracted_text[:1000] + "..." if len(extracted_text) > 1000 else extracted_text, height=200)
+                        else:
+                            st.warning("Investigation standards not available")
+                            # Show extracted text for debugging
+                            with st.expander("Debug: Show extracted text"):
+                                st.text_area("Extracted text", extracted_text[:1000] + "..." if len(extracted_text) > 1000 else extracted_text, height=200)
+                    
+                    status_text.text("Processing patient information...")
+                    progress_bar.progress(75)
+                    
+                    # Preview and edit extracted data before saving
+                    st.subheader("Preview Extracted Data")
+                    
+                    # Patient information section
+                    col1, col2 = st.columns(2)
+                    
+                    with col1:
+                        patient_name = st.text_input(
+                            f"mtx_Patient Name for {uploaded_file.name}",
+                            value=test_data.get('patient_name', ''),
+                            key=f"mtx_name_{uploaded_file.name}",
+                            help="Edit the patient name if needed"
+                        )
+                    
+                    with col2:
+                        test_date = st.date_input(
+                            f"mtx_Test Date for {uploaded_file.name}",
+                            value=test_data.get('test_date', date.today()),
+                            key=f"mtx_date_{uploaded_file.name}",
+                            help="Edit the test date if needed"
+                        )
+                    
+
+                    
+                    # Test results preview and editing
+                    if has_extracted_results:
+                        # Create two-column layout for Excel table and document preview
+                        col1, col2 = st.columns([0.8, 1.2])
+                        
+                        with col1:
+                            st.subheader("📊 Standards-Based Extraction Results")
+                            
+                            # Scan document text against investigation standards
+                            investigation_standards = st.session_state.get('investigation_standards')
+                            if investigation_standards and extracted_text:
+                                standards_results = file_parser.scan_text_against_standards(extracted_text, investigation_standards)
+                                
+                                if standards_results:
+                                    st.success(f"Found {len(standards_results)} tests matching investigation standards")
+                                    
+                                    # Create DataFrame for Excel-like display
+                                    df_data = []
+                                    seen_investigations = set()
+                                    for i, result in enumerate(standards_results):
+                                        investigation_name = result['test_type']
+                                        # Only enable Include for first occurrence of each investigation
+                                        is_first_occurrence = investigation_name not in seen_investigations
+                                        seen_investigations.add(investigation_name)
+                                        
+                                        df_data.append({
+                                            'Include': is_first_occurrence,
+                                            'Investigation': result['test_type'],
+                                            'Value': result['value'],
+                                            'Unit': result['unit'],
+                                            'Source Text': result.get('matched_term', ''),
+                                        })
+                                    
+                                    # Display editable dataframe
+                                    if df_data:
+                                        df = pd.DataFrame(df_data)
+                                        
+                                        # Configure column editor
+                                        column_config = {
+                                            'Include': st.column_config.CheckboxColumn(
+                                                'Include',
+                                                help='Check to include this test in results',
+                                                default=True
+                                            ),
+                                            'Investigation': st.column_config.TextColumn(
+                                                'Investigation Type',
+                                                help='Standardized investigation name',
+                                                width='medium'
+                                            ),
+                                            'Value': st.column_config.NumberColumn(
+                                                'Value',
+                                                help='Test result value',
+                                                format='%.2f',
+                                                width='small'
+                                            ),
+                                            'Unit': st.column_config.TextColumn(
+                                                'Unit',
+                                                help='Measurement unit',
+                                                width='small'
+                                            ),
+                                            'Matched Term': st.column_config.TextColumn(
+                                                'Matched Term',
+                                                help='Document term that matched',
+                                                width='small'
+                                            )
+                                        }
+                                        
+                                        # Store the editable results
+                                        edited_df = st.data_editor(
+                                            df,
+                                            column_config=column_config,
+                                            use_container_width=True,
+                                            num_rows="dynamic",
+                                            key=f"mtx_standards_results_{uploaded_file.name}",
+                                            height=400
+                                        )
+                                        
+                                        # Store edited results in session state for saving
+                                        st.session_state[f'mtx_standards_extracted_{uploaded_file.name}'] = edited_df
+                                        
+                                        # Show summary and save button
+                                        included_count = len(edited_df[edited_df['Include'] == True])
+                                        st.caption(f"Ready to save: {included_count} tests selected")
+                                        
+                                        # Investigation Standards Excel Editor for managing standards
+                                        st.markdown("---")
+                                        st.subheader("🔬 Investigation Standards Editor")
+                                        st.caption("Add new standards or edit existing ones. Changes will trigger automatic reprocessing of the document.")
+                                        
+                                        # Get all investigation standards
+                                        investigation_standards_obj = st.session_state.get('investigation_standards')
+                                        if investigation_standards_obj:
+                                            standards = investigation_standards_obj.get_all_standards()
+                                            
+                                            if standards:
+                                                # Convert to DataFrame for editing
+                                                standards_df = pd.DataFrame(standards)
+                                                
+                                                # Add computed unit column for display
+                                                standards_df['computed_unit'] = standards_df.apply(
+                                                    lambda row: row.get('common_unit') or row.get('male_unit') or row.get('female_unit') or '', 
+                                                    axis=1
+                                                )
+                                                
+                                                # Define column configuration for editing
+                                                edit_column_config = {
+                                                    'id': st.column_config.NumberColumn('ID', width='small', disabled=True),
+                                                    'standard_name': st.column_config.TextColumn('Standard Name', width='medium', required=True),
+                                                    'category': st.column_config.SelectboxColumn(
+                                                        'Category', 
+                                                        width='small',
+                                                        options=investigation_standards_obj.get_predefined_categories(),
+                                                        required=True
+                                                    ),
+                                                    'computed_unit': st.column_config.TextColumn('Unit', width='small'),
+                                                    'male_range_min': st.column_config.NumberColumn('Male Min', width='small', format="%.2f"),
+                                                    'male_range_max': st.column_config.NumberColumn('Male Max', width='small', format="%.2f"),
+                                                    'female_range_min': st.column_config.NumberColumn('Female Min', width='small', format="%.2f"),
+                                                    'female_range_max': st.column_config.NumberColumn('Female Max', width='small', format="%.2f"),
+                                                    'aliases': st.column_config.TextColumn('Aliases', width='large', help="Comma-separated list"),
+                                                    'exclusions': st.column_config.TextColumn('Exclusions', width='large', help="Comma-separated list of names that should NOT match this standard (non-aliases)"),
+                                                    'description': st.column_config.TextColumn('Description', width='large')
+                                                }
+                                                
+                                                # Select columns for editing
+                                                edit_columns = [
+                                                    'id', 'standard_name', 'category', 'computed_unit',
+                                                    'male_range_min', 'male_range_max', 'female_range_min', 'female_range_max',
+                                                    'aliases', 'exclusions', 'description'
+                                                ]
+                                                
+                                                st.info("ℹ️ Standard names must be unique. Changes will trigger document reprocessing.")
+                                                
+                                                # Excel-like editable table with unique key for upload page
+                                                edited_standards_df = st.data_editor(
+                                                    standards_df[edit_columns],
+                                                    column_config=edit_column_config,
+                                                    use_container_width=True,
+                                                    num_rows="dynamic",
+                                                    hide_index=True,
+                                                    key=f"mtx_standards_editor_orig_{uploaded_file.name}"
+                                                )
+                                                
+                                                # Process changes and additions - outside the form to avoid conflicts
+                                                if not edited_standards_df.equals(standards_df[edit_columns]):
+                                                    st.markdown("**💾 Standards Changes Detected**")
+                                                    
+                                                    # Check for new rows
+                                                    new_rows = []
+                                                    for idx, row in edited_standards_df.iterrows():
+                                                        if (pd.isna(row['id']) or row['id'] == 0) and pd.notna(row['standard_name']) and str(row['standard_name']).strip():
+                                                            new_rows.append(row)
+                                                    
+                                                    # Check for modifications
+                                                    existing_changes = []
+                                                    for idx, edited_row in edited_standards_df.iterrows():
+                                                        if pd.notna(edited_row['id']) and edited_row['id'] != 0:
+                                                            record_id = int(edited_row['id'])
+                                                            original_rows = standards_df[standards_df['id'] == record_id]
+                                                            if len(original_rows) > 0:
+                                                                original_row = original_rows.iloc[0]
+                                                                edit_cols_without_id = [col for col in edit_columns if col != 'id']
+                                                                if not original_row[edit_cols_without_id].equals(edited_row[edit_cols_without_id]):
+                                                                    existing_changes.append((record_id, edited_row, original_row))
+                                                    
+                                                    # Create columns for separate buttons - outside the main form
+                                                    col_std1, col_std2 = st.columns(2)
+                                                    standards_changed = False
+                                                    
+                                                    with col_std1:
+                                                        if new_rows and st.button("✅ Add New Standards", type="secondary", key=f"mtx_add_standards_orig_{uploaded_file.name}"):
+                                                            success_count = 0
+                                                            for row in new_rows:
+                                                                standard_data = {
+                                                                    'standard_name': str(row['standard_name']).strip(),
+                                                                    'aliases': row['aliases'] if pd.notna(row['aliases']) else '',
+                                                                    'exclusions': row['exclusions'] if pd.notna(row.get('exclusions')) else '',
+                                                                    'male_range_min': row['male_range_min'] if pd.notna(row['male_range_min']) else 0.0,
+                                                                    'male_range_max': row['male_range_max'] if pd.notna(row['male_range_max']) else 0.0,
+                                                                    'female_range_min': row['female_range_min'] if pd.notna(row['female_range_min']) else 0.0,
+                                                                    'female_range_max': row['female_range_max'] if pd.notna(row['female_range_max']) else 0.0,
+                                                                    'male_unit': row['computed_unit'] if pd.notna(row['computed_unit']) else '',
+                                                                    'female_unit': row['computed_unit'] if pd.notna(row['computed_unit']) else '',
+                                                                    'common_unit': row['computed_unit'] if pd.notna(row['computed_unit']) else '',
+                                                                    'description': row['description'] if pd.notna(row['description']) else '',
+                                                                    'category': row['category'] if pd.notna(row['category']) else 'Other'
+                                                                }
+                                                                
+                                                                if investigation_standards_obj.add_standard(standard_data):
+                                                                    success_count += 1
+                                                            
+                                                            if success_count > 0:
+                                                                st.success(f"Added {success_count} new standards!")
+                                                                standards_changed = True
+                                                    
+                                                    with col_std2:
+                                                        if existing_changes and st.button("💾 Update Standards", type="secondary", key=f"mtx_update_standards_orig_{uploaded_file.name}"):
+                                                            success_count = 0
+                                                            for record_id, edited_row, original_row in existing_changes:
+                                                                update_data = {
+                                                                    'standard_name': edited_row['standard_name'],
+                                                                    'aliases': edited_row['aliases'] if pd.notna(edited_row['aliases']) else '',
+                                                                    'exclusions': edited_row['exclusions'] if pd.notna(edited_row.get('exclusions')) else '',
+                                                                    'male_range_min': edited_row['male_range_min'] if pd.notna(edited_row['male_range_min']) else 0.0,
+                                                                    'male_range_max': edited_row['male_range_max'] if pd.notna(edited_row['male_range_max']) else 0.0,
+                                                                    'female_range_min': edited_row['female_range_min'] if pd.notna(edited_row['female_range_min']) else 0.0,
+                                                                    'female_range_max': edited_row['female_range_max'] if pd.notna(edited_row['female_range_max']) else 0.0,
+                                                                    'male_unit': edited_row['computed_unit'] if pd.notna(edited_row['computed_unit']) else '',
+                                                                    'female_unit': edited_row['computed_unit'] if pd.notna(edited_row['computed_unit']) else '',
+                                                                    'common_unit': edited_row['computed_unit'] if pd.notna(edited_row['computed_unit']) else '',
+                                                                    'description': edited_row['description'] if pd.notna(edited_row['description']) else '',
+                                                                    'category': edited_row['category'] if pd.notna(edited_row['category']) else 'Other'
+                                                                }
+                                                                
+                                                                if investigation_standards_obj.update_standard(record_id, update_data):
+                                                                    success_count += 1
+                                                            
+                                                            if success_count > 0:
+                                                                st.success(f"Updated {success_count} standards!")
+                                                                standards_changed = True
+                                                    
+                                                    # Clear cache and trigger reprocessing when standards change
+                                                    if standards_changed:
+                                                        # Clear the cache
+                                                        if f'mtx_extraction_cache_{uploaded_file.name}' in st.session_state:
+                                                            del st.session_state[f'mtx_extraction_cache_{uploaded_file.name}']
+                                                        
+                                                        # Force reprocessing by rerunning the page
+                                                        st.success("🔄 Standards updated! Document will be reprocessed with new standards...")
+                                                        st.rerun()
+                                                    
+                                                    # Show preview of changes if no action taken
+                                                    if new_rows:
+                                                        with st.expander(f"Preview: {len(new_rows)} new standards to add"):
+                                                            st.dataframe(pd.DataFrame(new_rows), use_container_width=True)
+                                                    
+                                                    if existing_changes:
+                                                        with st.expander(f"Preview: {len(existing_changes)} standards to update"):
+                                                            changes_df = pd.DataFrame([change[1] for change in existing_changes])
+                                                            st.dataframe(changes_df, use_container_width=True)
+                                            else:
+                                                st.info("No investigation standards found. You can add new standards using the table above.")
+                                        
+                                        st.markdown("---")
+                                        
+                                        # Don't show original extraction when standards-based works
+                                        st.session_state[f'mtx_show_original_extraction_{uploaded_file.name}'] = False
+                                        
+                                        # Save button for standards-based results
+                                        if st.button("💾 Save Standards-Based Results", key=f"mtx_save_standards_{uploaded_file.name}", type="primary"):
+                                            if patient_name:
+                                                with st.spinner("Saving standards-based results..."):
+                                                    # Convert edited dataframe to test results
+                                                    standards_final_results = []
+                                                    for _, row in edited_df.iterrows():
+                                                        if row['Include']:
+                                                            standards_final_results.append({
+                                                                'test_type': row['Investigation'],
+                                                                'value': row['Value'],
+                                                                'unit': row['Unit']
+                                                            })
+                                                    
+                                                    # Check for duplicates before saving
+                                                    duplicates = data_processor.db.check_duplicate_test_results(
+                                                        patient_name=patient_name,
+                                                        test_date=test_date.strftime('%Y-%m-%d') if hasattr(test_date, 'strftime') else str(test_date),
+                                                        test_results=standards_final_results,
+                                                        user_id=user_id
+                                                    )
+                                                    
+                                                    if duplicates:
+                                                        st.warning(f"⚠️ Found {len(duplicates)} duplicate test(s) already in database:")
+                                                        for dup in duplicates:
+                                                            st.write(f"  • **{dup['test_type']}**: {dup['value']} on {dup['date']}")
+                                                        
+                                                        # Filter out duplicates
+                                                        duplicate_keys = {(d['test_type'], d['value']) for d in duplicates}
+                                                        standards_final_results = [r for r in standards_final_results 
+                                                                                  if (r['test_type'], float(r['value']) if r['value'] else 0) not in duplicate_keys]
+                                                        
+                                                        if not standards_final_results:
+                                                            st.info("All tests are duplicates. No new results to save.")
+                                                        else:
+                                                            st.info(f"Saving {len(standards_final_results)} non-duplicate test(s)...")
+                                                    
+                                                    # Save using data processor
+                                                    if standards_final_results:
+                                                        success = data_processor.save_test_results(
+                                                            patient_name=patient_name,
+                                                            test_date=test_date,
+                                                            test_results=standards_final_results,
+                                                            user_id=user_id
+                                                        )
+                                                        
+                                                        if success:
+                                                            st.success(f"Successfully saved {len(standards_final_results)} standards-based test results for {patient_name}")
+                                                        else:
+                                                            st.error("Failed to save standards-based test results to database")
+                                            else:
+                                                st.warning("Please enter a patient name to save results")
+                                        
+                                else:
+                                    st.warning("No tests found matching investigation standards")
+                                    st.info("💡 Try using the original extraction results below or add tests manually")
+                                    # Set flag to show original extraction when standards-based fails
+                                    st.session_state[f'mtx_show_original_extraction_{uploaded_file.name}'] = True
+                            else:
+                                st.warning("Investigation standards not available or no text extracted")
+                                # Set flag to show original extraction when standards not available
+                                st.session_state[f'mtx_show_original_extraction_{uploaded_file.name}'] = True
+                            
+                            # Only show original extraction results when standards-based extraction fails or finds no results
+                            if test_data.get('results') and st.session_state.get(f'mtx_show_original_extraction_{uploaded_file.name}', False):
+                                with st.expander(f"📋 Original Extraction Results ({len(test_data['results'])} tests found)", expanded=False):
+                                    st.write("Review and edit the originally extracted test results:")
+                        
+                        with col2:
+                            st.subheader("📄 Document Reference")
+                            st.caption("Full document image with highlighted extracted data - green boxes show already extracted tests")
+                            
+                            # Get extracted test names for highlighting
+                            extracted_test_names = []
+                            if has_extracted_results and test_data.get('results'):
+                                extracted_test_names = [result.get('test_type', '') for result in test_data['results']]
+                            
+                            try:
+                                # Use ImageSnippetExtractor for highlighting
+                                snippet_extractor = ImageSnippetExtractor()
+                                
+                                if uploaded_file.type.startswith('image'):
+                                    # For image files, display with highlighting
+                                    highlighted_image = snippet_extractor.highlight_text_in_image(
+                                        uploaded_file, extracted_test_names
+                                    )
+                                    if highlighted_image:
+                                        st.image(highlighted_image, caption=f"mtx_Full Document: {uploaded_file.name} (Green boxes = extracted tests)", use_container_width=True)
+                                    else:
+                                        # Fallback to original image
+                                        st.image(uploaded_file, caption=f"mtx_Full Document: {uploaded_file.name}", use_container_width=True)
+                                
+                                elif uploaded_file.type == 'application/pdf':
+                                    # For PDF files, convert and display all pages
+                                    pdf_bytes = uploaded_file.getvalue()
+                                    images = convert_from_bytes(pdf_bytes, dpi=300, fmt='PNG')
+                                    if images:
+                                        st.caption(f"mtx_Document: {uploaded_file.name} - Showing all {len(images)} pages")
+                                        for i, image in enumerate(images):
+                                            # Try to highlight extracted test names on each page
+                                            try:
+                                                # Create a temporary file for each page to use with highlighting
+                                                import tempfile
+                                                with tempfile.NamedTemporaryFile(delete=False, suffix='.png') as tmp_file:
+                                                    image.save(tmp_file.name, 'PNG')
+                                                    highlighted_image = snippet_extractor.highlight_text_in_image(
+                                                        tmp_file.name, extracted_test_names, is_file_path=True
+                                                    )
+                                                    
+                                                    if highlighted_image:
+                                                        st.image(highlighted_image, caption=f"mtx_Page {i+1} of {len(images)} - {uploaded_file.name} (Green boxes = extracted tests)", use_container_width=True)
+                                                    else:
+                                                        st.image(image, caption=f"mtx_Page {i+1} of {len(images)} - {uploaded_file.name}", use_container_width=True)
+                                                    
+                                                    # Clean up temporary file
+                                                    try:
+                                                        os.unlink(tmp_file.name)
+                                                    except:
+                                                        pass
+                                            except:
+                                                # Fallback to showing page without highlighting
+                                                st.image(image, caption=f"mtx_Page {i+1} of {len(images)} - {uploaded_file.name}", use_container_width=True)
+                                
+                                else:
+                                    # For other file types, show text content with highlighting
+                                    with tempfile.NamedTemporaryFile(delete=False, suffix=os.path.splitext(uploaded_file.name)[1]) as tmp_file:
+                                        tmp_file.write(uploaded_file.getvalue())
+                                        tmp_file.flush()
+                                        
+                                        try:
+                                            if uploaded_file.name.lower().endswith(('.docx', '.doc')):
+                                                st.info(f"mtx_Document type: {uploaded_file.type}")
+                                                st.markdown("**Full document text extracted for reference:**")
+                                                
+                                                # Extract text for Word documents
+                                                if uploaded_file.name.lower().endswith('.docx'):
+                                                    from docx import Document
+                                                    doc = Document(tmp_file.name)
+                                                    full_text = '\n'.join([paragraph.text for paragraph in doc.paragraphs])
+                                                    
+                                                    # Highlight extracted test names in the text
+                                                    highlighted_text = full_text
+                                                    for test_name in extracted_test_names:
+                                                        if test_name and len(test_name) > 2:
+                                                            highlighted_text = highlighted_text.replace(
+                                                                test_name, f"🟢 **{test_name}** 🟢"
+                                                            )
+                                                    
+                                                    st.text_area(
+                                                        "Full Document Text",
+                                                        value=highlighted_text,
+                                                        height=400,
+                                                        help="Full document text with extracted test names highlighted in green",
+                                                        label_visibility="collapsed"
+                                                    )
+                                                else:
+                                                    st.caption("Preview not available for this document format")
+                                            else:
+                                                st.caption("Document preview not available for this file type")
+                                        finally:
+                                            try:
+                                                os.unlink(tmp_file.name)
+                                            except:
+                                                pass
+                            
+                            except Exception as e:
+                                st.warning(f"Could not display document preview: {str(e)}")
+                                st.info("Showing text-based fallback:")
+                                
+                                # Fallback to text display
+                                if extracted_text:
+                                    # Display full extracted text
+                                    display_text = extracted_text
+                                    st.text_area(
+                                        "Extracted Document Text",
+                                        value=display_text,
+                                        height=300,
+                                        help="This is the text extracted from your document as a fallback view.",
+                                        label_visibility="collapsed"
+                                    )
+                                else:
+                                    st.warning("No text could be extracted from this document.")
+                        
+                        # Create form for editing - full width below the preview
+                        st.markdown("---")  # Separator line
+                        
+                        # Initialize save_clicked to avoid UnboundLocalError
+                        save_clicked = False
+                        
+                        # Only show original extraction editing interface when standards-based extraction is not available
+                        if test_data.get('results') and st.session_state.get(f'mtx_show_original_extraction_{uploaded_file.name}', False):
+                            # Quick search buttons for extracted tests (outside form)
+                            st.write("**Quick Search in Document:**")
+                            search_cols = st.columns(min(len(test_data['results']), 6))  # Max 6 buttons per row
+                            for i, result in enumerate(test_data['results'][:6]):  # Show first 6 tests
+                                with search_cols[i]:
+                                    if st.button(f"🔍 {result['test_type'][:10]}{'...' if len(result['test_type']) > 10 else ''}", 
+                                               key=f"mtx_quick_search_{uploaded_file.name}_{i}",
+                                               help=f"Search for '{result['test_type']}' in document"):
+                                        st.session_state[f"mtx_search_{uploaded_file.name}"] = result['test_type']
+                                        st.rerun()
+                            
+                            if len(test_data['results']) > 6:
+                                st.caption(f"Showing first 6 of {len(test_data['results'])} tests")
+                        
+                            with st.form(key=f"mtx_edit_results_{uploaded_file.name}"):
+                                st.write("**Review & Edit Extracted Tests:**")
+                                st.caption("💡 Left side shows original extracted data, right side allows editing before saving")
+                                
+                                for i, result in enumerate(test_data['results']):
+                                    # Get context text for this specific test
+                                    test_context = _get_test_context(extracted_text, result)
+                                    
+                                    # Create expandable section for each test
+                                    with st.expander(f"Test {i+1}: {result['test_type']} = {result['value']} {result.get('unit', '')}", expanded=True):
+                                        left_col, right_col = st.columns([1, 1])
+                                        
+                                        # Left side - Original extracted data (read-only display)
+                                        with left_col:
+                                            st.markdown("**📄 Original Extracted Data:**")
+                                        
+                                        # Show image snippet for OCR documents
+                                        if snippet_extractor:
+                                            snippet_bytes = snippet_extractor.get_image_snippet_for_test(
+                                                result['test_type'], str(result['value'])
+                                            )
+                                            if snippet_bytes:
+                                                st.image(snippet_bytes, caption=f"Document snippet for {result['test_type']}", use_container_width=True)
+                                            else:
+                                                st.caption("📷 No image snippet available for this test")
+                                        
+                                        # Show context from document
+                                        if test_context and "Could not locate" not in test_context:
+                                            st.info(f"**Context from document:**\n{test_context}")
+                                        
+                                        # Show original values in a clean format
+                                        st.code(f"""Investigation: {result['test_type']}
+Value: {result['value']}
+Unit: {result.get('unit', 'Not specified')}
+Reference Range: {result.get('reference_range', 'Not specified')}
+Extraction Method: {result.get('source', 'regex')}""")
+                                    
+                                    # Right side - Editable fields
+                                    with right_col:
+                                        st.markdown("**✏️ Edit Before Saving:**")
+                                        
+                                        # Editable investigation type with standardization dropdown
+                                        investigation_standards = st.session_state.get('investigation_standards')
+                                        if investigation_standards:
+                                            # Get all standard names
+                                            all_standards = investigation_standards.get_all_standards()
+                                            standard_names = [std['standard_name'] for std in all_standards]
+                                            
+                                            # Try to find fuzzy match for current test type (including unit)
+                                            # Pass original test_type as source_text for exclusion checking
+                                            standardized_name, match_info = investigation_standards.standardize_test_name(
+                                                result['test_type'], 
+                                                result.get('unit', ''),
+                                                source_text=result['test_type']
+                                            )
+                                            
+                                            # Create the options list with option to use the text input
+                                            options = ["(Use custom text below)"] + standard_names
+                                            
+                                            # Determine default selection - if fuzzy match found, select it
+                                            if standardized_name in standard_names:
+                                                default_index = standard_names.index(standardized_name) + 1  # +1 because of custom option at index 0
+                                                # Show match information if fuzzy match was found
+                                                if match_info and standardized_name != result['test_type']:
+                                                    match_score = match_info.get('match_score', 0)
+                                                    st.info(f"🔍 Fuzzy match found: '{result['test_type']}' → '{standardized_name}' (score: {match_score:.2f})")
+                                            else:
+                                                default_index = 0  # Select custom text option by default
+                                            
+                                            selected_option = st.selectbox(
+                                                "Investigation Type",
+                                                options=options,
+                                                index=default_index,
+                                                key=f"mtx_test_dropdown_{uploaded_file.name}_{i}",
+                                                help="Choose a standard investigation type or use custom text below"
+                                            )
+                                            
+                                            # Always show the custom text input with extracted text
+                                            # Always populate with original extracted text
+                                            final_test_name = st.text_input(
+                                                "Custom Investigation Type",
+                                                value=result['test_type'],  # Always show extracted text
+                                                key=f"mtx_test_name_{uploaded_file.name}_{i}",
+                                                help="Original extracted text - edit if needed"
+                                            )
+                                            
+
+                                            
+                                        else:
+                                            # Fallback to text input if standards not available
+                                            final_test_name = st.text_input(
+                                                "Investigation Type",
+                                                value=result['test_type'],
+                                                key=f"mtx_test_name_{uploaded_file.name}_{i}",
+                                                help="Edit the test name if needed"
+                                            )
+
+                                        
+                                        # Editable value
+                                        st.number_input(
+                                            "Value",
+                                            value=float(result['value']),
+                                            key=f"mtx_test_value_{uploaded_file.name}_{i}",
+                                            format="%.2f",
+                                            help="Edit the test value if needed"
+                                        )
+                                        
+                                        # Editable unit
+                                        st.text_input(
+                                            "Unit",
+                                            value=result.get('unit', ''),
+                                            key=f"mtx_test_unit_{uploaded_file.name}_{i}",
+                                            help="Edit the unit if needed"
+                                        )
+                                        
+                                        # Editable reference range
+                                        st.text_input(
+                                            "Reference Range",
+                                            value=result.get('reference_range', ''),
+                                            key=f"mtx_test_ref_range_{uploaded_file.name}_{i}",
+                                            help="Edit the reference range if needed"
+                                        )
+                                        
+                                        # Include checkbox
+                                        st.checkbox(
+                                            "Include this test in results",
+                                            value=True,
+                                            key=f"mtx_include_{uploaded_file.name}_{i}",
+                                            help="Uncheck to exclude this test from being saved"
+                                        )
+                            
+
+                            
+                            # Show additional tests section if any are requested
+                            if num_additional > 0:
+                                st.write("**Additional Tests (not scanned):**")
+                                st.caption("Fill in the fields below for tests not automatically detected in the document")
+                                
+                            # Additional test inputs
+                            if num_additional > 0:
+                                for i in range(num_additional):
+                                    col1, col2, col3, col4, col5, col6 = st.columns([3, 2, 2, 2, 1, 1])
+                                    
+                                    with col1:
+                                        # Investigation type dropdown for additional tests
+                                        investigation_standards = st.session_state.get('investigation_standards')
+                                        if investigation_standards:
+                                            # Get all standard names
+                                            all_standards = investigation_standards.get_all_standards()
+                                            standard_names = [std['standard_name'] for std in all_standards]
+                                            
+                                            # Add option for custom entry at the top
+                                            options = ["(Use custom text below)"] + standard_names
+                                            
+                                            selected_option = st.selectbox(
+                                                f"Standard Type {i+1}",
+                                                options=options,
+                                                key=f"mtx_add_test_dropdown_{uploaded_file.name}_{i}",
+                                                label_visibility="collapsed",
+                                                help="Choose a standard or use custom text below"
+                                            )
+                                            
+                                            # Always show custom text input
+                                            st.text_input(
+                                                f"Custom Type {i+1}",
+                                                key=f"mtx_add_test_name_{uploaded_file.name}_{i}",
+                                                label_visibility="collapsed",
+                                                placeholder="Enter investigation type"
+                                            )
+                                            
+
+                                                
+                                        else:
+                                            # Fallback to text input if standards not available
+                                            st.text_input(
+                                                f"Additional Test {i+1}",
+                                                key=f"mtx_add_test_name_{uploaded_file.name}_{i}",
+                                                label_visibility="collapsed",
+                                                placeholder="Enter investigation type"
+                                            )
+
+                                    
+                                    with col2:
+                                        st.number_input(
+                                            f"Additional Value {i+1}",
+                                            value=0.0,
+                                            key=f"mtx_add_test_value_{uploaded_file.name}_{i}",
+                                            label_visibility="collapsed",
+                                            format="%.2f"
+                                        )
+                                    
+                                    with col3:
+                                        st.text_input(
+                                            f"Additional Unit {i+1}",
+                                            key=f"mtx_add_test_unit_{uploaded_file.name}_{i}",
+                                            label_visibility="collapsed",
+                                            placeholder="mg/dl, g/dl, etc."
+                                        )
+                                    
+                                    with col4:
+                                        st.text_input(
+                                            f"Additional Ref Range {i+1}",
+                                            key=f"mtx_add_test_ref_range_{uploaded_file.name}_{i}",
+                                            label_visibility="collapsed",
+                                            placeholder="5.0-15.0"
+                                        )
+                                    
+                                    with col5:
+                                        st.checkbox(
+                                            f"Add {i+1}",
+                                            value=True,
+                                            key=f"mtx_add_include_{uploaded_file.name}_{i}",
+                                            label_visibility="collapsed"
+                                        )
+                                    
+                                    with col6:
+                                        # Empty column to maintain layout
+                                        st.write("")
+                            
+                                # Save button
+                                save_clicked = st.form_submit_button("💾 Save Results", type="primary")
+                        
+                        if save_clicked and patient_name:
+                            with st.spinner("Saving results..."):
+                                status_text.text("Saving to database...")
+                                progress_bar.progress(90)
+                                
+                                # Get final edited results from extracted tests
+                                final_results = []
+                                for i, result in enumerate(test_data['results']):
+                                    if st.session_state.get(f"mtx_include_{uploaded_file.name}_{i}", True):
+                                        # Determine which test type to use based on user selection
+                                        dropdown_selection = st.session_state.get(f"mtx_test_dropdown_{uploaded_file.name}_{i}", "(Use custom text below)")
+                                        custom_text_value = st.session_state.get(f"mtx_test_name_{uploaded_file.name}_{i}", result['test_type'])
+                                        
+                                        if dropdown_selection == "(Use custom text below)":
+                                            # User chose to use custom text - ignore fuzzy match, use custom input
+                                            final_test_type = custom_text_value
+                                        else:
+                                            # User selected a standard from dropdown - use that standard
+                                            final_test_type = dropdown_selection
+                                        
+                                        final_results.append({
+                                            'test_type': final_test_type,
+                                            'value': st.session_state.get(f"mtx_test_value_{uploaded_file.name}_{i}", result['value']),
+                                            'unit': st.session_state.get(f"mtx_test_unit_{uploaded_file.name}_{i}", result.get('unit', '')),
+                                            'reference_range': st.session_state.get(f"mtx_test_ref_range_{uploaded_file.name}_{i}", result.get('reference_range', ''))
+                                        })
+                                
+                                # Add additional manual tests
+                                num_additional = st.session_state.get(f"mtx_num_additional_{uploaded_file.name}", 0)
+                                additional_count = 0
+                                
+                                if num_additional > 0:
+                                    for i in range(num_additional):
+                                        if st.session_state.get(f"mtx_add_include_{uploaded_file.name}_{i}", True):
+                                            # Determine which test type to use for additional tests
+                                            add_dropdown_selection = st.session_state.get(f"mtx_add_test_dropdown_{uploaded_file.name}_{i}", "(Use custom text below)")
+                                            
+                                            if add_dropdown_selection == "(Use custom text below)":
+                                                # User chose to use custom text - use custom input
+                                                test_name = st.session_state.get(f"mtx_add_test_name_{uploaded_file.name}_{i}", "").strip()
+                                            else:
+                                                # User selected a standard from dropdown - use that standard
+                                                test_name = add_dropdown_selection
+                                            
+                                            test_value = st.session_state.get(f"mtx_add_test_value_{uploaded_file.name}_{i}", 0.0)
+                                            test_unit = st.session_state.get(f"mtx_add_test_unit_{uploaded_file.name}_{i}", "").strip()
+                                            test_ref_range = st.session_state.get(f"mtx_add_test_ref_range_{uploaded_file.name}_{i}", "").strip()
+                                            
+                                            # Only add if test name is provided and value is not zero
+                                            if test_name and test_value != 0.0:
+                                                final_results.append({
+                                                    'test_type': test_name,
+                                                    'value': test_value,
+                                                    'unit': test_unit,
+                                                    'reference_range': test_ref_range
+                                                })
+                                                additional_count += 1
+                                
+                                # Check for duplicates before saving
+                                duplicates = data_processor.db.check_duplicate_test_results(
+                                    patient_name=patient_name,
+                                    test_date=test_date.strftime('%Y-%m-%d') if hasattr(test_date, 'strftime') else str(test_date),
+                                    test_results=final_results,
+                                    user_id=user_id
+                                )
+                                
+                                if duplicates:
+                                    st.warning(f"⚠️ Found {len(duplicates)} duplicate test(s) already in database:")
+                                    for dup in duplicates:
+                                        st.write(f"  • **{dup['test_type']}**: {dup['value']} on {dup['date']}")
+                                    
+                                    # Filter out duplicates from final results
+                                    duplicate_keys = {(d['test_type'], d['value']) for d in duplicates}
+                                    final_results = [r for r in final_results 
+                                                    if (r['test_type'], float(r['value']) if r['value'] else 0) not in duplicate_keys]
+                                    
+                                    if not final_results:
+                                        st.info("All tests are duplicates. No new results to save.")
+                                        progress_bar.progress(100)
+                                        status_text.text("⚠️ No new results to save")
+                                    else:
+                                        st.info(f"Saving {len(final_results)} non-duplicate test(s)...")
+                                
+                                # Save all results using the form values
+                                if final_results:
+                                    success = data_processor.save_test_results(
+                                        patient_name=patient_name,
+                                        test_date=test_date,
+                                        test_results=final_results,
+                                        user_id=user_id
+                                    )
+                                else:
+                                    success = True  # No results to save (all duplicates)
+                                
+                                progress_bar.progress(100)
+                                
+                                if success and final_results:
+                                    status_text.text("✅ Successfully processed!")
+                                    extracted_count = len([r for i, r in enumerate(test_data['results']) if st.session_state.get(f"mtx_include_{uploaded_file.name}_{i}", True)])
+                                    st.success(f"Successfully saved {len(final_results)} test results for {patient_name}")
+                                    st.info(f"Extracted: {extracted_count} tests, Additional: {additional_count} tests")
+                                    
+                                    # Show extraction debug info
+                                    with st.expander("Debug: Extraction details"):
+                                        extraction_methods = {}
+                                        for result in test_data['results']:
+                                            method = result.get('source', 'regex')
+                                            extraction_methods[method] = extraction_methods.get(method, 0) + 1
+                                        
+                                        col1, col2 = st.columns(2)
+                                        with col1:
+                                            st.write("**Tests extracted by method:**")
+                                            for method, count in extraction_methods.items():
+                                                st.write(f"- {method.title()}: {count} tests")
+                                        
+                                        with col2:
+                                            st.write("**All original extracted values:**")
+                                            for i, result in enumerate(test_data['results'], 1):
+                                                source = result.get('source', 'regex')
+                                                unit = result.get('unit', '')
+                                                unit_text = f" {unit}" if unit else ""
+                                                st.write(f"{i}. {result['test_type']}: {result['value']}{unit_text} ({source})")
+                                        
+                                        # Add text preview for debugging
+                                        with st.expander("Raw extracted text (first 2000 chars)"):
+                                            debug_text = file_parser.parse_file(uploaded_file, force_ocr_matrix)
+                                            st.text(debug_text[:2000] + "..." if len(debug_text) > 2000 else debug_text)
+                                else:
+                                    status_text.text("❌ Failed to save")
+                                    st.error("Failed to save test results to database")
+                        elif save_clicked and not patient_name:
+                            st.warning("Please enter a patient name to save results")
+                    else:
+                        # No extracted results - show manual entry form only
+                        with st.form(key=f"mtx_manual_results_{uploaded_file.name}"):
+                            st.write("**Manual Test Entry:**")
+                            st.caption("No tests were automatically detected. Add tests manually below.")
+                            
+                            # Get the current number of additional tests from session state
+                            current_num_additional = st.session_state.get(f"mtx_num_additional_{uploaded_file.name}", 0)
+                            
+                            # Show additional tests section if any are requested
+                            if current_num_additional > 0:
+                                st.write("**Manual Tests:**")
+                                st.caption("Fill in the fields below for tests to add to the database")
+                                
+                            # Additional test inputs
+                            if current_num_additional > 0:
+                                for i in range(current_num_additional):
+                                    col1, col2, col3, col4, col5, col6 = st.columns([3, 2, 2, 2, 1, 1])
+                                    
+                                    with col1:
+                                        # Investigation type dropdown for additional tests
+                                        investigation_standards = st.session_state.get('investigation_standards')
+                                        if investigation_standards:
+                                            # Get all standard names
+                                            all_standards = investigation_standards.get_all_standards()
+                                            standard_names = [std['standard_name'] for std in all_standards]
+                                            
+                                            # Add option for custom entry at the top
+                                            options = ["(Use custom text below)"] + standard_names
+                                            
+                                            selected_option = st.selectbox(
+                                                f"Standard Type {i+1}",
+                                                options=options,
+                                                key=f"mtx_add_test_dropdown_{uploaded_file.name}_{i}",
+                                                label_visibility="collapsed",
+                                                help="Choose a standard or use custom text below"
+                                            )
+                                            
+                                            # Always show custom text input
+                                            st.text_input(
+                                                f"Custom Type {i+1}",
+                                                key=f"mtx_add_test_name_{uploaded_file.name}_{i}",
+                                                label_visibility="collapsed",
+                                                placeholder="Enter investigation type"
+                                            )
+                                        else:
+                                            # Fallback to text input if standards not available
+                                            st.text_input(
+                                                f"Manual Test {i+1}",
+                                                key=f"mtx_add_test_name_{uploaded_file.name}_{i}",
+                                                label_visibility="collapsed",
+                                                placeholder="Enter investigation type"
+                                            )
+                                    
+                                    with col2:
+                                        st.number_input(
+                                            f"Value {i+1}",
+                                            value=0.0,
+                                            key=f"mtx_add_test_value_{uploaded_file.name}_{i}",
+                                            label_visibility="collapsed",
+                                            format="%.2f"
+                                        )
+                                    
+                                    with col3:
+                                        st.text_input(
+                                            f"Unit {i+1}",
+                                            key=f"mtx_add_test_unit_{uploaded_file.name}_{i}",
+                                            label_visibility="collapsed",
+                                            placeholder="mg/dl, g/dl, etc."
+                                        )
+                                    
+                                    with col4:
+                                        st.text_input(
+                                            f"Ref Range {i+1}",
+                                            key=f"mtx_add_test_ref_range_{uploaded_file.name}_{i}",
+                                            label_visibility="collapsed",
+                                            placeholder="5.0-15.0"
+                                        )
+                                    
+                                    with col5:
+                                        st.checkbox(
+                                            f"Add {i+1}",
+                                            value=True,
+                                            key=f"mtx_add_include_{uploaded_file.name}_{i}",
+                                            label_visibility="collapsed"
+                                        )
+                                    
+                                    with col6:
+                                        st.write("")
+                            
+                            # Save button for manual entry
+                            save_manual_clicked = st.form_submit_button("💾 Save Manual Tests", type="primary")
+                        
+                        if save_manual_clicked and patient_name:
+                            with st.spinner("Saving manual tests..."):
+                                # Process only additional manual tests
+                                final_results = []
+                                manual_num_additional = st.session_state.get(f"mtx_num_additional_{uploaded_file.name}", 0)
+                                additional_count = 0
+                                
+                                if manual_num_additional > 0:
+                                    for i in range(manual_num_additional):
+                                        if st.session_state.get(f"mtx_add_include_{uploaded_file.name}_{i}", True):
+                                            # Determine which test type to use for additional tests
+                                            add_dropdown_selection = st.session_state.get(f"mtx_add_test_dropdown_{uploaded_file.name}_{i}", "(Use custom text below)")
+                                            
+                                            if add_dropdown_selection == "(Use custom text below)":
+                                                test_name = st.session_state.get(f"mtx_add_test_name_{uploaded_file.name}_{i}", "").strip()
+                                            else:
+                                                test_name = add_dropdown_selection
+                                            
+                                            test_value = st.session_state.get(f"mtx_add_test_value_{uploaded_file.name}_{i}", 0.0)
+                                            test_unit = st.session_state.get(f"mtx_add_test_unit_{uploaded_file.name}_{i}", "").strip()
+                                            test_ref_range = st.session_state.get(f"mtx_add_test_ref_range_{uploaded_file.name}_{i}", "").strip()
+                                            
+                                            # Only add if test name is provided and value is not zero
+                                            if test_name and test_value != 0.0:
+                                                final_results.append({
+                                                    'test_type': test_name,
+                                                    'value': test_value,
+                                                    'unit': test_unit,
+                                                    'reference_range': test_ref_range
+                                                })
+                                                additional_count += 1
+                                
+                                if final_results:
+                                    # Check for duplicates before saving
+                                    duplicates = data_processor.db.check_duplicate_test_results(
+                                        patient_name=patient_name,
+                                        test_date=test_date.strftime('%Y-%m-%d') if hasattr(test_date, 'strftime') else str(test_date),
+                                        test_results=final_results,
+                                        user_id=user_id
+                                    )
+                                    
+                                    if duplicates:
+                                        st.warning(f"⚠️ Found {len(duplicates)} duplicate test(s) already in database:")
+                                        for dup in duplicates:
+                                            st.write(f"  • **{dup['test_type']}**: {dup['value']} on {dup['date']}")
+                                        
+                                        # Filter out duplicates
+                                        duplicate_keys = {(d['test_type'], d['value']) for d in duplicates}
+                                        final_results = [r for r in final_results 
+                                                        if (r['test_type'], float(r['value']) if r['value'] else 0) not in duplicate_keys]
+                                        
+                                        if not final_results:
+                                            st.info("All tests are duplicates. No new results to save.")
+                                        else:
+                                            st.info(f"Saving {len(final_results)} non-duplicate test(s)...")
+                                    
+                                    # Save manual results
+                                    if final_results:
+                                        success = data_processor.save_test_results(
+                                            patient_name=patient_name,
+                                            test_date=test_date,
+                                            test_results=final_results,
+                                            user_id=user_id
+                                        )
+                                        
+                                        if success:
+                                            st.success(f"Successfully saved {len(final_results)} manual test results for {patient_name}")
+                                        else:
+                                            st.error("Failed to save manual test results to database")
+                                else:
+                                    st.warning("No valid manual tests to save. Please enter test names and non-zero values.")
+                        
+                        elif save_manual_clicked and not patient_name:
+                            st.warning("Please enter a patient name to save results")
+                    
+                    # Manual test entry section - always shown at bottom
+                    st.divider()
+                    
+                    # Document Preview section (moved from top)
+                    st.markdown("### 📄 Document Preview")
+                    with st.expander("📖 View Original Document Content", expanded=True):
+                        # Display file type and size
+                        file_size = len(uploaded_file.getvalue())
+                        st.caption(f"mtx_File: {uploaded_file.name} | Size: {file_size:,} bytes | Type: {uploaded_file.type}")
+                        
+                        # Show extracted text in a scrollable container
+                        if extracted_text:
+                            # Display full extracted text
+                            display_text = extracted_text
+                            
+                            st.text_area(
+                                "Extracted Document Text",
+                                value=display_text,
+                                height=400,
+                                help="This is the text extracted from your document. Compare with the parsed results above to verify accuracy.",
+                                label_visibility="collapsed"
+                            )
+                            
+                            # Add search functionality for better comparison
+                            search_term = st.text_input(
+                                "🔍 Search in document",
+                                placeholder="Enter test name or value to highlight in document",
+                                key=f"mtx_search_bottom_{uploaded_file.name}"
+                            )
+                            
+                            if search_term:
+                                # Count occurrences of search term
+                                occurrences = extracted_text.lower().count(search_term.lower())
+                                if occurrences > 0:
+                                    st.success(f"Found '{search_term}' {occurrences} time(s) in the document")
+                                else:
+                                    st.warning(f"'{search_term}' not found in the document")
+                            
+                            # Show extraction method used
+                            if hasattr(test_data, 'extraction_method'):
+                                st.caption(f"Extraction method: {test_data.get('extraction_method', 'Standard')}")
+                            
+                            # Show full text length info
+                            st.caption(f"Total extracted text: {len(extracted_text):,} characters")
+                        else:
+                            st.warning("No text could be extracted from this document.")
+                    
+                    st.divider()
+                    st.markdown("### 📝 Add Additional Tests (Manual Entry)")
+                    st.caption("Add test results that weren't automatically detected or scanned from the document")
+                    
+
+                    
+                    # Number of additional tests to add
+                    num_additional = st.number_input(
+                        "Number of additional tests to add",
+                        min_value=0,
+                        max_value=20,
+                        value=0,
+                        key=f"mtx_num_additional_{uploaded_file.name}",
+                        help="Choose how many manual tests to add, then press Enter to see input fields below"
+                    )
+                    
+                    # Show additional test input fields when requested
+                    if num_additional > 0:
+                        st.write(f"**Enter details for {num_additional} additional test(s):**")
+                        
+                        # Create a form for the manual tests at the bottom
+                        with st.form(key=f"mtx_bottom_manual_tests_{uploaded_file.name}"):
+                            for i in range(num_additional):
+                                st.write(f"**Test {i+1}:**")
+                                col1, col2, col3, col4, col5 = st.columns([3, 2, 2, 2, 1])
+                                
+                                with col1:
+                                    # Investigation type dropdown for additional tests
+                                    investigation_standards = st.session_state.get('investigation_standards')
+                                    if investigation_standards:
+                                        # Get all standard names
+                                        all_standards = investigation_standards.get_all_standards()
+                                        standard_names = [std['standard_name'] for std in all_standards]
+                                        
+                                        # Add option for custom entry at the top
+                                        options = ["(Use custom text below)"] + standard_names
+                                        
+                                        selected_option = st.selectbox(
+                                            f"Standard Type {i+1}",
+                                            options=options,
+                                            key=f"mtx_bottom_test_dropdown_{uploaded_file.name}_{i}",
+                                            help="Choose a standard or use custom text below"
+                                        )
+                                        
+                                        # Always show custom text input
+                                        st.text_input(
+                                            f"Custom Type {i+1}",
+                                            key=f"mtx_bottom_test_name_{uploaded_file.name}_{i}",
+                                            placeholder="Enter investigation type"
+                                        )
+                                    else:
+                                        # Fallback to text input if standards not available
+                                        st.text_input(
+                                            f"Manual Test {i+1}",
+                                            key=f"mtx_bottom_test_name_{uploaded_file.name}_{i}",
+                                            placeholder="Enter investigation type"
+                                        )
+                                
+                                with col2:
+                                    st.number_input(
+                                        f"Value {i+1}",
+                                        value=0.0,
+                                        key=f"mtx_bottom_test_value_{uploaded_file.name}_{i}",
+                                        format="%.2f"
+                                    )
+                                
+                                with col3:
+                                    st.text_input(
+                                        f"Unit {i+1}",
+                                        key=f"mtx_bottom_test_unit_{uploaded_file.name}_{i}",
+                                        placeholder="mg/dl, g/dl, etc."
+                                    )
+                                
+                                with col4:
+                                    st.text_input(
+                                        f"Ref Range {i+1}",
+                                        key=f"mtx_bottom_test_ref_range_{uploaded_file.name}_{i}",
+                                        placeholder="5.0-15.0"
+                                    )
+                                
+                                with col5:
+                                    st.checkbox(
+                                        f"Include",
+                                        value=True,
+                                        key=f"mtx_bottom_include_{uploaded_file.name}_{i}",
+                                        help="Include this test"
+                                    )
+                            
+                            # Save button for bottom manual tests
+                            save_bottom_manual = st.form_submit_button("💾 Save Additional Tests", type="primary")
+                        
+                        # Handle save for bottom manual tests
+                        if save_bottom_manual and patient_name:
+                            with st.spinner("Saving additional tests..."):
+                                # Process manual tests from bottom section
+                                final_results = []
+                                additional_count = 0
+                                
+                                for i in range(num_additional):
+                                    if st.session_state.get(f"mtx_bottom_include_{uploaded_file.name}_{i}", True):
+                                        # Determine which test type to use
+                                        dropdown_selection = st.session_state.get(f"mtx_bottom_test_dropdown_{uploaded_file.name}_{i}", "(Use custom text below)")
+                                        
+                                        if dropdown_selection == "(Use custom text below)":
+                                            test_name = st.session_state.get(f"mtx_bottom_test_name_{uploaded_file.name}_{i}", "").strip()
+                                        else:
+                                            test_name = dropdown_selection
+                                        
+                                        test_value = st.session_state.get(f"mtx_bottom_test_value_{uploaded_file.name}_{i}", 0.0)
+                                        test_unit = st.session_state.get(f"mtx_bottom_test_unit_{uploaded_file.name}_{i}", "").strip()
+                                        test_ref_range = st.session_state.get(f"mtx_bottom_test_ref_range_{uploaded_file.name}_{i}", "").strip()
+                                        
+                                        # Only add if test name is provided and value is not zero
+                                        if test_name and test_value != 0.0:
+                                            final_results.append({
+                                                'test_type': test_name,
+                                                'value': test_value,
+                                                'unit': test_unit,
+                                                'reference_range': test_ref_range
+                                            })
+                                            additional_count += 1
+                                
+                                if final_results:
+                                    # Check for duplicates before saving
+                                    duplicates = data_processor.db.check_duplicate_test_results(
+                                        patient_name=patient_name,
+                                        test_date=test_date.strftime('%Y-%m-%d') if hasattr(test_date, 'strftime') else str(test_date),
+                                        test_results=final_results,
+                                        user_id=user_id
+                                    )
+                                    
+                                    if duplicates:
+                                        st.warning(f"⚠️ Found {len(duplicates)} duplicate test(s) already in database:")
+                                        for dup in duplicates:
+                                            st.write(f"  • **{dup['test_type']}**: {dup['value']} on {dup['date']}")
+                                        
+                                        # Filter out duplicates
+                                        duplicate_keys = {(d['test_type'], d['value']) for d in duplicates}
+                                        final_results = [r for r in final_results 
+                                                        if (r['test_type'], float(r['value']) if r['value'] else 0) not in duplicate_keys]
+                                        
+                                        if not final_results:
+                                            st.info("All tests are duplicates. No new results to save.")
+                                        else:
+                                            st.info(f"Saving {len(final_results)} non-duplicate test(s)...")
+                                    
+                                    # Save additional results
+                                    if final_results:
+                                        success = data_processor.save_test_results(
+                                            patient_name=patient_name,
+                                            test_date=test_date,
+                                            test_results=final_results,
+                                            user_id=user_id
+                                        )
+                                        
+                                        if success:
+                                            st.success(f"Successfully saved {len(final_results)} additional test results for {patient_name}")
+                                        else:
+                                            st.error("Failed to save additional test results to database")
+                                else:
+                                    st.warning("No valid additional tests to save. Please enter test names and non-zero values.")
+                        
+                        elif save_bottom_manual and not patient_name:
+                            st.warning("Please enter a patient name to save results")
+                        
+                except Exception as e:
+                    st.error(f"mtx_Error processing file {uploaded_file.name}: {str(e)}")
+
 
     if uploaded_files:
         st.subheader("Processing Files")
