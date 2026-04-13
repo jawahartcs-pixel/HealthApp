@@ -458,6 +458,16 @@ def upload_results_page(file_parser, data_processor, user_id):
 
             st.session_state["mtx_matrix_data"]          = all_date_results
             st.session_state["mtx_patient_name_saved"]   = mtx_patient_name
+            # Store extracted texts for document preview
+            _mtx_texts = {}
+            if uploaded_files_matrix:
+                for uf in uploaded_files_matrix:
+                    _ck = f"mtx_cache_{uf.name}_{uf.size}_{force_ocr_matrix}"
+                    if _ck in st.session_state:
+                        _mtx_texts[uf.name] = st.session_state[_ck]["text"]
+            elif mtx_pasted_text and mtx_pasted_text.strip():
+                _mtx_texts["Pasted Text"] = mtx_pasted_text
+            st.session_state["mtx_extracted_texts"] = _mtx_texts
 
         # ── Render matrix ─────────────────────────────────────────────────────
         all_date_results  = st.session_state.get("mtx_matrix_data", {})
@@ -534,6 +544,144 @@ def upload_results_page(file_parser, data_processor, user_id):
 
             _included_count = int((edited_matrix["Include"] == True).sum())
             st.caption(f"{_included_count} of {len(edited_matrix)} tests selected · {len(edited_dates)} date column(s)")
+
+            st.markdown("---")
+
+            # ── Investigation Standards Editor ────────────────────────────────
+            st.subheader("🔬 Investigation Standards Editor")
+            st.caption("Add new standards or edit existing ones. Changes will trigger automatic re-extraction when you click Extract & Build Matrix again.")
+            _inv_std_obj = st.session_state.get("investigation_standards")
+            if _inv_std_obj:
+                _mtx_stds = _inv_std_obj.get_all_standards()
+                if _mtx_stds:
+                    _mtx_stds_df = pd.DataFrame(_mtx_stds)
+                    _mtx_stds_df["computed_unit"] = _mtx_stds_df.apply(
+                        lambda r: r.get("common_unit") or r.get("male_unit") or r.get("female_unit") or "", axis=1
+                    )
+                    _mtx_edit_cols = [
+                        "id", "standard_name", "category", "computed_unit",
+                        "male_range_min", "male_range_max", "female_range_min", "female_range_max",
+                        "aliases", "exclusions", "description"
+                    ]
+                    _mtx_edit_cfg = {
+                        "id":               st.column_config.NumberColumn("ID", width="small", disabled=True),
+                        "standard_name":    st.column_config.TextColumn("Standard Name", width="medium", required=True),
+                        "category":         st.column_config.SelectboxColumn("Category", width="small",
+                                                options=_inv_std_obj.get_predefined_categories(), required=True),
+                        "computed_unit":    st.column_config.TextColumn("Unit", width="small"),
+                        "male_range_min":   st.column_config.NumberColumn("Male Min", width="small", format="%.2f"),
+                        "male_range_max":   st.column_config.NumberColumn("Male Max", width="small", format="%.2f"),
+                        "female_range_min": st.column_config.NumberColumn("Female Min", width="small", format="%.2f"),
+                        "female_range_max": st.column_config.NumberColumn("Female Max", width="small", format="%.2f"),
+                        "aliases":          st.column_config.TextColumn("Aliases", width="large", help="Comma-separated"),
+                        "exclusions":       st.column_config.TextColumn("Exclusions", width="large", help="Comma-separated names that should NOT match"),
+                        "description":      st.column_config.TextColumn("Description", width="large"),
+                    }
+                    st.info("ℹ️ Standard names must be unique. After saving changes, click Extract & Build Matrix again to re-process with the updated standards.")
+                    _mtx_edited_stds = st.data_editor(
+                        _mtx_stds_df[_mtx_edit_cols],
+                        column_config=_mtx_edit_cfg,
+                        use_container_width=True,
+                        num_rows="dynamic",
+                        hide_index=True,
+                        key="mtx_standards_editor"
+                    )
+                    if not _mtx_edited_stds.equals(_mtx_stds_df[_mtx_edit_cols]):
+                        st.markdown("**💾 Standards Changes Detected**")
+                        _mtx_new_rows = [
+                            r for _, r in _mtx_edited_stds.iterrows()
+                            if (pd.isna(r["id"]) or r["id"] == 0) and pd.notna(r["standard_name"]) and str(r["standard_name"]).strip()
+                        ]
+                        _mtx_existing_changes = []
+                        for _, _er in _mtx_edited_stds.iterrows():
+                            if pd.notna(_er["id"]) and _er["id"] != 0:
+                                _rid = int(_er["id"])
+                                _orig_rows = _mtx_stds_df[_mtx_stds_df["id"] == _rid]
+                                if len(_orig_rows) > 0:
+                                    _orig_r = _orig_rows.iloc[0]
+                                    _cmp_cols = [c for c in _mtx_edit_cols if c != "id"]
+                                    if not _orig_r[_cmp_cols].equals(_er[_cmp_cols]):
+                                        _mtx_existing_changes.append((_rid, _er, _orig_r))
+                        _mcol1, _mcol2 = st.columns(2)
+                        _mtx_std_changed = False
+                        with _mcol1:
+                            if _mtx_new_rows and st.button("✅ Add New Standards", type="secondary", key="mtx_add_standards"):
+                                _ok_count = 0
+                                for _nr in _mtx_new_rows:
+                                    _sd = {
+                                        "standard_name":  str(_nr["standard_name"]).strip(),
+                                        "aliases":        _nr["aliases"] if pd.notna(_nr["aliases"]) else "",
+                                        "exclusions":     _nr["exclusions"] if pd.notna(_nr.get("exclusions")) else "",
+                                        "male_range_min": _nr["male_range_min"] if pd.notna(_nr["male_range_min"]) else 0.0,
+                                        "male_range_max": _nr["male_range_max"] if pd.notna(_nr["male_range_max"]) else 0.0,
+                                        "female_range_min": _nr["female_range_min"] if pd.notna(_nr["female_range_min"]) else 0.0,
+                                        "female_range_max": _nr["female_range_max"] if pd.notna(_nr["female_range_max"]) else 0.0,
+                                        "male_unit":   _nr["computed_unit"] if pd.notna(_nr["computed_unit"]) else "",
+                                        "female_unit": _nr["computed_unit"] if pd.notna(_nr["computed_unit"]) else "",
+                                        "common_unit": _nr["computed_unit"] if pd.notna(_nr["computed_unit"]) else "",
+                                        "description": _nr["description"] if pd.notna(_nr["description"]) else "",
+                                        "category":    _nr["category"] if pd.notna(_nr["category"]) else "Other",
+                                    }
+                                    if _inv_std_obj.add_standard(_sd):
+                                        _ok_count += 1
+                                if _ok_count > 0:
+                                    st.success(f"Added {_ok_count} new standards!")
+                                    _mtx_std_changed = True
+                        with _mcol2:
+                            if _mtx_existing_changes and st.button("💾 Update Standards", type="secondary", key="mtx_update_standards"):
+                                _ok_count = 0
+                                for _rid, _er, _ in _mtx_existing_changes:
+                                    _ud = {
+                                        "standard_name":  _er["standard_name"],
+                                        "aliases":        _er["aliases"] if pd.notna(_er["aliases"]) else "",
+                                        "exclusions":     _er["exclusions"] if pd.notna(_er.get("exclusions")) else "",
+                                        "male_range_min": _er["male_range_min"] if pd.notna(_er["male_range_min"]) else 0.0,
+                                        "male_range_max": _er["male_range_max"] if pd.notna(_er["male_range_max"]) else 0.0,
+                                        "female_range_min": _er["female_range_min"] if pd.notna(_er["female_range_min"]) else 0.0,
+                                        "female_range_max": _er["female_range_max"] if pd.notna(_er["female_range_max"]) else 0.0,
+                                        "male_unit":   _er["computed_unit"] if pd.notna(_er["computed_unit"]) else "",
+                                        "female_unit": _er["computed_unit"] if pd.notna(_er["computed_unit"]) else "",
+                                        "common_unit": _er["computed_unit"] if pd.notna(_er["computed_unit"]) else "",
+                                        "description": _er["description"] if pd.notna(_er["description"]) else "",
+                                        "category":    _er["category"] if pd.notna(_er["category"]) else "Other",
+                                    }
+                                    if _inv_std_obj.update_standard(_rid, _ud):
+                                        _ok_count += 1
+                                if _ok_count > 0:
+                                    st.success(f"Updated {_ok_count} standards!")
+                                    _mtx_std_changed = True
+                        if _mtx_std_changed:
+                            for _k in [k for k in st.session_state if k.startswith("mtx_cache_")]:
+                                del st.session_state[_k]
+                            st.session_state.pop("mtx_matrix_data", None)
+                            st.success("🔄 Standards updated! Click Extract & Build Matrix to reprocess.")
+                            st.rerun()
+                        if _mtx_new_rows:
+                            with st.expander(f"Preview: {len(_mtx_new_rows)} new standard(s) to add"):
+                                st.dataframe(pd.DataFrame(_mtx_new_rows), use_container_width=True)
+                        if _mtx_existing_changes:
+                            with st.expander(f"Preview: {len(_mtx_existing_changes)} standard(s) to update"):
+                                st.dataframe(pd.DataFrame([c[1] for c in _mtx_existing_changes]), use_container_width=True)
+                else:
+                    st.info("No investigation standards found. Add new ones using the table above.")
+            else:
+                st.info("Investigation standards not loaded.")
+
+            st.markdown("---")
+
+            # ── Document Preview ──────────────────────────────────────────────
+            _mtx_doc_texts = st.session_state.get("mtx_extracted_texts", {})
+            if _mtx_doc_texts:
+                st.subheader("📄 Document Preview")
+                for _doc_name, _doc_text in _mtx_doc_texts.items():
+                    with st.expander(f"📖 {_doc_name}", expanded=False):
+                        if _doc_text:
+                            _display = (_doc_text[:3000] + "\n\n… (text truncated for display)") if len(_doc_text) > 3000 else _doc_text
+                            st.text(_display)
+                        else:
+                            st.info("No text extracted from this source.")
+
+            st.markdown("---")
 
             # ── Save ──────────────────────────────────────────────────────────
             if st.button("💾 Save Matrix Results", type="primary", key="mtx_save_btn"):
