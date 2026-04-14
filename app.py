@@ -609,47 +609,115 @@ def upload_results_page(file_parser, data_processor, user_id):
                 )
 
 
-            # ── Right column: document pages ──────────────────────────────────
+            # ── Right column: document pages (tabbed view) ───────────────────
             with _mtx_right:
                 st.subheader("📄 Document Reference")
                 _mtx_uploaded = st.session_state.get("matrix_file_uploader") or []
                 _mtx_texts    = st.session_state.get("mtx_extracted_texts", {})
 
+                # Build flat list of panels: (tab_label, "image"|"text", content)
+                _panels = []
                 if _mtx_uploaded:
                     for _uf in _mtx_uploaded:
                         _uf_bytes = _uf.getvalue()
                         _uf_type  = _uf.type or ""
-                        st.markdown(f"**{_uf.name}**")
-                        st.caption(f"Size: {len(_uf_bytes):,} bytes · Type: {_uf_type}")
                         if _uf_type == "application/pdf":
                             try:
                                 _pages = convert_from_bytes(_uf_bytes, dpi=150, fmt="PNG")
                                 for _pi, _pg in enumerate(_pages):
-                                    with st.expander(f"Page {_pi + 1} of {len(_pages)}", expanded=False):
-                                        st.image(_pg, use_container_width=True)
-                            except Exception as _pe:
-                                with st.expander(f"{_uf.name} — text preview", expanded=False):
-                                    _ft = _mtx_texts.get(_uf.name, "")
-                                    st.text(_ft[:2000] if _ft else "(no text extracted)")
-                        elif _uf_type.startswith("image/"):
-                            with st.expander(f"{_uf.name}", expanded=False):
-                                st.image(_uf_bytes, use_container_width=True)
-                        else:
-                            with st.expander(f"{_uf.name} — extracted text", expanded=False):
+                                    _lbl = f"p{_pi+1}" if len(_mtx_uploaded) == 1 else f"{_uf.name[:12]} p{_pi+1}"
+                                    _panels.append((_lbl, "image", _pg))
+                            except Exception:
                                 _ft = _mtx_texts.get(_uf.name, "")
-                                _disp_t = (_ft[:2000] + "\n…(truncated)") if len(_ft) > 2000 else _ft
-                                st.text(_disp_t or "(no text extracted)")
+                                _panels.append((_uf.name[:20], "text", _ft))
+                        elif _uf_type.startswith("image/"):
+                            _panels.append((_uf.name[:20], "image", _uf_bytes))
+                        else:
+                            _ft = _mtx_texts.get(_uf.name, "")
+                            _panels.append((_uf.name[:20], "text", _ft))
                 elif _mtx_texts:
                     for _dn, _dt in _mtx_texts.items():
-                        with st.expander(f"📋 {_dn}", expanded=False):
-                            _disp_t = (_dt[:2000] + "\n…(truncated)") if len(_dt) > 2000 else _dt
-                            st.text(_disp_t or "(no text extracted)")
+                        _panels.append((_dn[:20], "text", _dt))
+
+                if _panels:
+                    _tab_labels = [p[0] for p in _panels]
+                    _doc_tabs = st.tabs(_tab_labels)
+                    for _dtab, (_, _ptype, _pcontent) in zip(_doc_tabs, _panels):
+                        with _dtab:
+                            if _ptype == "image":
+                                st.image(_pcontent, use_container_width=True)
+                            else:
+                                _disp_t = (_pcontent[:3000] + "\n…(truncated)") if _pcontent and len(_pcontent) > 3000 else (_pcontent or "")
+                                st.text_area(
+                                    "Extracted text",
+                                    value=_disp_t or "(no text extracted)",
+                                    height=500,
+                                    label_visibility="collapsed"
+                                )
                 else:
                     st.info("No document to preview.")
 
             # ─── full-width below two columns ─────────────────────────────────
             _included_count_fw = int((edited_matrix["Include"] == True).sum())
             st.caption(f"Matrix: {_included_count_fw} tests selected · {len(edited_dates)} date(s)")
+
+            st.markdown("---")
+
+            # ── Save Test Results (above standards editor) ────────────────────
+            if st.button("💾 Save Test Results", type="primary", key="mtx_save_btn"):
+                if not patient_display:
+                    st.warning("Please enter a patient name before saving.")
+                elif not edited_dates:
+                    st.warning("No date columns to save.")
+                else:
+                    _total_saved   = 0
+                    _total_skipped = 0
+                    for _disp in edited_dates:
+                        _date_rows = []
+                        for _, _row in edited_matrix.iterrows():
+                            if _row.get("Include") and pd.notna(_row.get(_disp)):
+                                _date_rows.append({
+                                    "test_type": _row["Investigation"],
+                                    "value":     _row[_disp],
+                                    "unit":      _row.get("Unit", "")
+                                })
+                        if _date_rows:
+                            try:
+                                from datetime import datetime as _dt
+                                _save_date = _dt.strptime(_disp, "%Y-%m-%d").date()
+                            except Exception:
+                                _save_date = date.today()
+                            _dups = data_processor.db.check_duplicate_test_results(
+                                patient_name=patient_display,
+                                test_date=_save_date.strftime("%Y-%m-%d"),
+                                test_results=_date_rows,
+                                user_id=user_id
+                            )
+                            if _dups:
+                                _dup_keys = {(d["test_type"], d["value"]) for d in _dups}
+                                _date_rows = [r for r in _date_rows
+                                              if (r["test_type"], float(r["value"]) if r["value"] else 0) not in _dup_keys]
+                                _total_skipped += len(_dups)
+                            if _date_rows:
+                                _ok = data_processor.save_test_results(
+                                    patient_name=patient_display,
+                                    test_date=_save_date,
+                                    test_results=_date_rows,
+                                    user_id=user_id
+                                )
+                                if _ok:
+                                    _total_saved += len(_date_rows)
+                    if _total_saved > 0:
+                        st.success(
+                            f"✅ Saved {_total_saved} results across {len(edited_dates)} date(s) "
+                            f"for **{patient_display}**"
+                        )
+                        if _total_skipped > 0:
+                            st.info(f"Skipped {_total_skipped} duplicate entries.")
+                        st.session_state.pop("mtx_matrix_data", None)
+                        st.rerun()
+                    else:
+                        st.warning("No new results to save (all may be duplicates).")
 
             st.markdown("---")
 
@@ -773,77 +841,7 @@ def upload_results_page(file_parser, data_processor, user_id):
             else:
                 st.info("Investigation standards not loaded.")
 
-            st.markdown("---")
 
-            # ── Document Preview ──────────────────────────────────────────────
-            _mtx_doc_texts = st.session_state.get("mtx_extracted_texts", {})
-            if _mtx_doc_texts:
-                st.subheader("📄 Document Preview")
-                for _doc_name, _doc_text in _mtx_doc_texts.items():
-                    with st.expander(f"📖 {_doc_name}", expanded=False):
-                        if _doc_text:
-                            _display = (_doc_text[:3000] + "\n\n… (text truncated for display)") if len(_doc_text) > 3000 else _doc_text
-                            st.text(_display)
-                        else:
-                            st.info("No text extracted from this source.")
-
-            st.markdown("---")
-
-            # ── Save ──────────────────────────────────────────────────────────
-            if st.button("💾 Save Matrix Results", type="primary", key="mtx_save_btn"):
-                if not patient_display:
-                    st.warning("Please enter a patient name before saving.")
-                elif not edited_dates:
-                    st.warning("No date columns to save.")
-                else:
-                    _total_saved   = 0
-                    _total_skipped = 0
-                    for _disp in edited_dates:
-                        _date_rows = []
-                        for _, _row in edited_matrix.iterrows():
-                            if _row.get("Include") and pd.notna(_row.get(_disp)):
-                                _date_rows.append({
-                                    "test_type": _row["Investigation"],
-                                    "value":     _row[_disp],
-                                    "unit":      _row.get("Unit", "")
-                                })
-                        if _date_rows:
-                            try:
-                                from datetime import datetime as _dt
-                                _save_date = _dt.strptime(_disp, "%Y-%m-%d").date()
-                            except Exception:
-                                _save_date = date.today()
-                            _dups = data_processor.db.check_duplicate_test_results(
-                                patient_name=patient_display,
-                                test_date=_save_date.strftime("%Y-%m-%d"),
-                                test_results=_date_rows,
-                                user_id=user_id
-                            )
-                            if _dups:
-                                _dup_keys = {(d["test_type"], d["value"]) for d in _dups}
-                                _date_rows = [r for r in _date_rows
-                                              if (r["test_type"], float(r["value"]) if r["value"] else 0) not in _dup_keys]
-                                _total_skipped += len(_dups)
-                            if _date_rows:
-                                _ok = data_processor.save_test_results(
-                                    patient_name=patient_display,
-                                    test_date=_save_date,
-                                    test_results=_date_rows,
-                                    user_id=user_id
-                                )
-                                if _ok:
-                                    _total_saved += len(_date_rows)
-                    if _total_saved > 0:
-                        st.success(
-                            f"✅ Saved {_total_saved} results across {len(edited_dates)} date(s) "
-                            f"for **{patient_display}**"
-                        )
-                        if _total_skipped > 0:
-                            st.info(f"Skipped {_total_skipped} duplicate entries.")
-                        st.session_state.pop("mtx_matrix_data", None)
-                        st.rerun()
-                    else:
-                        st.warning("No new results to save (all may be duplicates).")
 
     if uploaded_files:
         st.subheader("Processing Files")
