@@ -210,7 +210,7 @@ def upload_results_page(file_parser, data_processor, user_id):
             )
         with mtx_btn_col2:
             if st.button("🔄 Clear Matrix", key="mtx_clear_cache"):
-                for k in [k for k in st.session_state if k.startswith('mtx_cache_') or k in ('mtx_matrix_data', 'mtx_patient_name_saved')]:
+                for k in [k for k in st.session_state if k.startswith('mtx_cache_') or k in ('mtx_matrix_data', 'mtx_patient_name_saved', 'mtx_added_dates', 'mtx_added_tests')]:
                     del st.session_state[k]
                 st.rerun()
 
@@ -359,6 +359,8 @@ def upload_results_page(file_parser, data_processor, user_id):
         if mtx_extract:
             # Clear any previous matrix so we do a fresh extraction
             st.session_state.pop('mtx_matrix_data', None)
+            st.session_state["mtx_added_dates"] = []
+            st.session_state["mtx_added_tests"] = []
 
             all_date_results = {}   # {date_str: [{test_type, value, unit}, ...]}
 
@@ -476,14 +478,26 @@ def upload_results_page(file_parser, data_processor, user_id):
         if not all_date_results:
             st.warning("No test results found in the uploaded content.")
         else:
-            all_dates = sorted(all_date_results.keys())
+            # Initialise added-items lists in session state
+            if "mtx_added_dates" not in st.session_state:
+                st.session_state["mtx_added_dates"] = []
+            if "mtx_added_tests" not in st.session_state:
+                st.session_state["mtx_added_tests"] = []
+
+            all_dates = sorted(all_date_results.keys()) + [
+                d for d in st.session_state["mtx_added_dates"]
+                if d not in sorted(all_date_results.keys())
+            ]
 
             # Collect unique test names preserving first-seen order
             seen_tests = {}
-            for d_str in all_dates:
+            for d_str in sorted(all_date_results.keys()):
                 for r in all_date_results[d_str]:
                     if r["test_type"] not in seen_tests:
                         seen_tests[r["test_type"]] = r.get("unit", "")
+            for _at in st.session_state["mtx_added_tests"]:
+                if _at not in seen_tests:
+                    seen_tests[_at] = ""
             all_test_names = list(seen_tests.keys())
 
             st.success(
@@ -491,59 +505,151 @@ def upload_results_page(file_parser, data_processor, user_id):
                 f"**{len(all_dates)} date(s)** · Patient: **{patient_display or '(not set)'}**"
             )
 
-            # ── Editable date headers ─────────────────────────────────────────
-            st.markdown("**Review / edit column dates:**")
-            date_header_cols = st.columns(min(len(all_dates), 6))
-            edited_dates = []
-            for _i, _d in enumerate(all_dates):
-                with date_header_cols[_i % len(date_header_cols)]:
-                    try:
-                        from datetime import datetime as _dt
-                        _default = _dt.strptime(_d, "%Y-%m-%d").date()
-                    except Exception:
-                        _default = date.today()
-                    _new = st.date_input(
-                        f"Date {_i + 1}",
-                        value=_default,
-                        key=f"mtx_date_hdr_{_i}",
-                        label_visibility="collapsed"
-                    )
-                    edited_dates.append(_new.strftime("%Y-%m-%d"))
+            # ── Two-column layout: pivot table | document pages ───────────────
+            _mtx_left, _mtx_right = st.columns([0.6, 0.4])
 
-            # ── Build pivot DataFrame ─────────────────────────────────────────
-            _rows = []
-            for _tname in all_test_names:
-                _row = {"Include": True, "Investigation": _tname, "Unit": seen_tests.get(_tname, "")}
-                for _orig, _disp in zip(all_dates, edited_dates):
-                    _match = next(
-                        (r for r in all_date_results.get(_orig, []) if r["test_type"] == _tname),
-                        None
-                    )
-                    _row[_disp] = _match["value"] if _match else None
-                    if _match and not _row["Unit"] and _match.get("unit"):
-                        _row["Unit"] = _match["unit"]
-                _rows.append(_row)
+            with _mtx_left:
+                # ── Editable date headers ─────────────────────────────────────
+                st.markdown("**Review / edit column dates:**")
+                date_header_cols = st.columns(min(len(all_dates), 6))
+                edited_dates = []
+                for _i, _d in enumerate(all_dates):
+                    with date_header_cols[_i % len(date_header_cols)]:
+                        try:
+                            from datetime import datetime as _dt
+                            _default = _dt.strptime(_d, "%Y-%m-%d").date()
+                        except Exception:
+                            _default = date.today()
+                        _new = st.date_input(
+                            f"Date {_i + 1}",
+                            value=_default,
+                            key=f"mtx_date_hdr_{_i}",
+                            label_visibility="collapsed"
+                        )
+                        edited_dates.append(_new.strftime("%Y-%m-%d"))
 
-            matrix_df = pd.DataFrame(_rows)
+                # ── Add Date / Add Test buttons ───────────────────────────────
+                _pop1, _pop2 = st.columns(2)
+                with _pop1:
+                    with st.popover("➕ Add New Date Column"):
+                        _new_date_pick = st.date_input("New date:", key="mtx_new_date_input")
+                        if st.button("Add Date", key="mtx_add_date_btn"):
+                            _new_dstr = _new_date_pick.strftime("%Y-%m-%d")
+                            if _new_dstr not in all_dates:
+                                st.session_state["mtx_added_dates"].append(_new_dstr)
+                                if "mtx_matrix_editor" in st.session_state:
+                                    del st.session_state["mtx_matrix_editor"]
+                                st.rerun()
+                            else:
+                                st.warning("That date column already exists.")
+                with _pop2:
+                    with st.popover("➕ Add New Test Row"):
+                        _inv_std_obj_pop = st.session_state.get("investigation_standards")
+                        _all_std_names = []
+                        if _inv_std_obj_pop:
+                            _all_std_names = sorted(
+                                [s.get("standard_name", "") for s in _inv_std_obj_pop.get_all_standards()
+                                 if isinstance(s, dict) and s.get("standard_name")],
+                                key=str.lower
+                            )
+                        _avail_tests = [t for t in _all_std_names if t not in set(all_test_names)]
+                        if _avail_tests:
+                            _sel_test = st.selectbox(
+                                "Select test from standards:",
+                                _avail_tests, index=None,
+                                placeholder="Choose a test…",
+                                key="mtx_new_test_select"
+                            )
+                        else:
+                            _sel_test = None
+                            st.info("All standard tests already in the table.")
+                        _custom_test = st.text_input("Or enter custom test name:", key="mtx_custom_test_input")
+                        if st.button("Add Test", key="mtx_add_test_btn"):
+                            _to_add = _custom_test.strip() if _custom_test.strip() else _sel_test
+                            if _to_add and _to_add not in set(all_test_names):
+                                st.session_state["mtx_added_tests"].append(_to_add)
+                                if "mtx_matrix_editor" in st.session_state:
+                                    del st.session_state["mtx_matrix_editor"]
+                                st.rerun()
+                            elif _to_add in set(all_test_names):
+                                st.warning("This test is already in the table.")
+                            else:
+                                st.warning("Please select or enter a test name.")
 
-            _col_cfg = {
-                "Include":       st.column_config.CheckboxColumn("Include", default=True, width="small"),
-                "Investigation": st.column_config.TextColumn("Investigation", width="medium"),
-                "Unit":          st.column_config.TextColumn("Unit", width="small"),
-            }
-            for _disp in edited_dates:
-                _col_cfg[_disp] = st.column_config.NumberColumn(_disp, format="%.4f", width="small")
+                # ── Build pivot DataFrame ─────────────────────────────────────
+                _rows = []
+                for _tname in all_test_names:
+                    _row = {"Include": True, "Investigation": _tname, "Unit": seen_tests.get(_tname, "")}
+                    for _orig, _disp in zip(all_dates, edited_dates):
+                        _match = next(
+                            (r for r in all_date_results.get(_orig, []) if r["test_type"] == _tname),
+                            None
+                        )
+                        _row[_disp] = _match["value"] if _match else None
+                        if _match and not _row["Unit"] and _match.get("unit"):
+                            _row["Unit"] = _match["unit"]
+                    _rows.append(_row)
 
-            edited_matrix = st.data_editor(
-                matrix_df,
-                column_config=_col_cfg,
-                use_container_width=True,
-                num_rows="dynamic",
-                key="mtx_matrix_editor"
-            )
+                matrix_df = pd.DataFrame(_rows)
 
-            _included_count = int((edited_matrix["Include"] == True).sum())
-            st.caption(f"{_included_count} of {len(edited_matrix)} tests selected · {len(edited_dates)} date column(s)")
+                _col_cfg = {
+                    "Include":       st.column_config.CheckboxColumn("Include", default=True, width="small"),
+                    "Investigation": st.column_config.TextColumn("Investigation", width="medium"),
+                    "Unit":          st.column_config.TextColumn("Unit", width="small"),
+                }
+                for _disp in edited_dates:
+                    _col_cfg[_disp] = st.column_config.NumberColumn(_disp, format="%.4f", width="small")
+
+                edited_matrix = st.data_editor(
+                    matrix_df,
+                    column_config=_col_cfg,
+                    use_container_width=True,
+                    num_rows="dynamic",
+                    key="mtx_matrix_editor"
+                )
+
+
+            # ── Right column: document pages ──────────────────────────────────
+            with _mtx_right:
+                st.subheader("📄 Document Reference")
+                _mtx_uploaded = st.session_state.get("matrix_file_uploader") or []
+                _mtx_texts    = st.session_state.get("mtx_extracted_texts", {})
+
+                if _mtx_uploaded:
+                    for _uf in _mtx_uploaded:
+                        _uf_bytes = _uf.getvalue()
+                        _uf_type  = _uf.type or ""
+                        st.markdown(f"**{_uf.name}**")
+                        st.caption(f"Size: {len(_uf_bytes):,} bytes · Type: {_uf_type}")
+                        if _uf_type == "application/pdf":
+                            try:
+                                _pages = convert_from_bytes(_uf_bytes, dpi=150, fmt="PNG")
+                                for _pi, _pg in enumerate(_pages):
+                                    with st.expander(f"Page {_pi + 1} of {len(_pages)}", expanded=False):
+                                        st.image(_pg, use_container_width=True)
+                            except Exception as _pe:
+                                with st.expander(f"{_uf.name} — text preview", expanded=False):
+                                    _ft = _mtx_texts.get(_uf.name, "")
+                                    st.text(_ft[:2000] if _ft else "(no text extracted)")
+                        elif _uf_type.startswith("image/"):
+                            with st.expander(f"{_uf.name}", expanded=False):
+                                st.image(_uf_bytes, use_container_width=True)
+                        else:
+                            with st.expander(f"{_uf.name} — extracted text", expanded=False):
+                                _ft = _mtx_texts.get(_uf.name, "")
+                                _disp_t = (_ft[:2000] + "\n…(truncated)") if len(_ft) > 2000 else _ft
+                                st.text(_disp_t or "(no text extracted)")
+                elif _mtx_texts:
+                    for _dn, _dt in _mtx_texts.items():
+                        with st.expander(f"📋 {_dn}", expanded=False):
+                            _disp_t = (_dt[:2000] + "\n…(truncated)") if len(_dt) > 2000 else _dt
+                            st.text(_disp_t or "(no text extracted)")
+                else:
+                    st.info("No document to preview.")
+
+            # ─── full-width below two columns ─────────────────────────────────
+            _included_count_fw = int((edited_matrix["Include"] == True).sum())
+            st.caption(f"Matrix: {_included_count_fw} tests selected · {len(edited_dates)} date(s)")
 
             st.markdown("---")
 
