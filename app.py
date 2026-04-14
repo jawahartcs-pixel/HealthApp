@@ -506,7 +506,7 @@ def upload_results_page(file_parser, data_processor, user_id):
             )
 
             # ── Two-column layout: pivot table | document pages ───────────────
-            _mtx_left, _mtx_right = st.columns([0.6, 0.4])
+            _mtx_left, _mtx_right = st.columns([0.5, 0.5])
 
             with _mtx_left:
                 # ── Editable date headers ─────────────────────────────────────
@@ -577,33 +577,51 @@ def upload_results_page(file_parser, data_processor, user_id):
                                 st.warning("Please select or enter a test name.")
 
                 # ── Build pivot DataFrame ─────────────────────────────────────
+                # Column order: Include | Investigation | Date1 | Date2 | ... | Unit | Src_Date1 | ...
                 _rows = []
                 for _tname in all_test_names:
-                    _row = {"Include": True, "Investigation": _tname, "Unit": seen_tests.get(_tname, "")}
+                    _row = {"Include": True, "Investigation": _tname}
+                    _row_unit = seen_tests.get(_tname, "")
                     for _orig, _disp in zip(all_dates, edited_dates):
                         _match = next(
                             (r for r in all_date_results.get(_orig, []) if r["test_type"] == _tname),
                             None
                         )
                         _row[_disp] = _match["value"] if _match else None
-                        if _match and not _row["Unit"] and _match.get("unit"):
-                            _row["Unit"] = _match["unit"]
+                        if _match and not _row_unit and _match.get("unit"):
+                            _row_unit = _match["unit"]
+                    _row["Unit"] = _row_unit
+                    for _orig, _disp in zip(all_dates, edited_dates):
+                        _match = next(
+                            (r for r in all_date_results.get(_orig, []) if r["test_type"] == _tname),
+                            None
+                        )
+                        _src_key = f"Src: {_disp}" if len(edited_dates) > 1 else "Source Text"
+                        _row[_src_key] = _match.get("matched_term", "") if _match else ""
                     _rows.append(_row)
 
                 matrix_df = pd.DataFrame(_rows)
+
+                # Enforce column order
+                _date_cols = list(edited_dates)
+                _src_cols  = [f"Src: {d}" if len(edited_dates) > 1 else "Source Text" for d in edited_dates]
+                _ordered   = ["Include", "Investigation"] + _date_cols + ["Unit"] + _src_cols
+                matrix_df  = matrix_df[[c for c in _ordered if c in matrix_df.columns]]
 
                 _col_cfg = {
                     "Include":       st.column_config.CheckboxColumn("Include", default=True, width="small"),
                     "Investigation": st.column_config.TextColumn("Investigation", width="medium"),
                     "Unit":          st.column_config.TextColumn("Unit", width="small"),
                 }
-                for _disp in edited_dates:
+                for _disp in _date_cols:
                     _col_cfg[_disp] = st.column_config.NumberColumn(_disp, format="%.4f", width="small")
+                for _sc in _src_cols:
+                    _col_cfg[_sc] = st.column_config.TextColumn(_sc, width="medium", disabled=True)
 
                 edited_matrix = st.data_editor(
                     matrix_df,
                     column_config=_col_cfg,
-                    use_container_width=True,
+                    use_container_width=False,
                     num_rows="dynamic",
                     key="mtx_matrix_editor"
                 )
@@ -841,7 +859,24 @@ def upload_results_page(file_parser, data_processor, user_id):
             else:
                 st.info("Investigation standards not loaded.")
 
-
+            # ── Raw extracted text at bottom ──────────────────────────────────
+            _mtx_raw_texts = st.session_state.get("mtx_extracted_texts", {})
+            if _mtx_raw_texts:
+                st.markdown("---")
+                st.subheader("📋 Extracted Raw Text")
+                st.caption("Raw text extracted from each source — useful for verifying what the parser read.")
+                for _raw_name, _raw_text in _mtx_raw_texts.items():
+                    with st.expander(f"📖 {_raw_name}", expanded=False):
+                        if _raw_text:
+                            _raw_disp = (_raw_text[:5000] + "\n\n… (truncated — showing first 5000 chars)") if len(_raw_text) > 5000 else _raw_text
+                            st.text_area(
+                                "",
+                                value=_raw_disp,
+                                height=350,
+                                label_visibility="collapsed"
+                            )
+                        else:
+                            st.info("No text was extracted from this source.")
 
     if uploaded_files:
         st.subheader("Processing Files")
@@ -913,7 +948,7 @@ def upload_results_page(file_parser, data_processor, user_id):
                             
                             if standards_results:
                                 # Create two-column layout for Excel table and document preview
-                                col1, col2 = st.columns([0.8, 1.2])
+                                col1, col2 = st.columns([1.4, 0.6])
                                 
                                 with col1:
                                     st.success(f"Found {len(standards_results)} tests using standards-based extraction!")
@@ -1268,7 +1303,7 @@ def upload_results_page(file_parser, data_processor, user_id):
                     # Test results preview and editing
                     if has_extracted_results:
                         # Create two-column layout for Excel table and document preview
-                        col1, col2 = st.columns([0.8, 1.2])
+                        col1, col2 = st.columns([1.4, 0.6])
                         
                         with col1:
                             st.subheader("📊 Standards-Based Extraction Results")
