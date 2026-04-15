@@ -479,7 +479,7 @@ def upload_results_page(file_parser, data_processor, user_id):
 
         # ── Render matrix ─────────────────────────────────────────────────────
         all_date_results  = st.session_state.get("mtx_matrix_data", {})
-        patient_display   = st.session_state.get("mtx_patient_name_saved", mtx_patient_name)
+        patient_display   = mtx_patient_name or st.session_state.get("mtx_patient_name_saved", "")
 
         if not all_date_results:
             st.warning("No test results found in the uploaded content.")
