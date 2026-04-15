@@ -948,7 +948,7 @@ def upload_results_page(file_parser, data_processor, user_id):
                             
                             if standards_results:
                                 # Create two-column layout for Excel table and document preview
-                                col1, col2 = st.columns([1.4, 0.6])
+                                col1, col2 = st.columns([0.8, 1.2])
                                 
                                 with col1:
                                     st.success(f"Found {len(standards_results)} tests using standards-based extraction!")
@@ -1303,7 +1303,7 @@ def upload_results_page(file_parser, data_processor, user_id):
                     # Test results preview and editing
                     if has_extracted_results:
                         # Create two-column layout for Excel table and document preview
-                        col1, col2 = st.columns([1.4, 0.6])
+                        col1, col2 = st.columns([0.8, 1.2])
                         
                         with col1:
                             st.subheader("📊 Standards-Based Extraction Results")
