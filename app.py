@@ -525,7 +525,7 @@ def upload_results_page(file_parser, data_processor, user_id):
             )
 
             # ── Two-column layout: pivot table | document pages ───────────────
-            _mtx_left, _mtx_right = st.columns([0.6, 1.4])
+            _mtx_left, _mtx_right = st.columns([0.7, 1.3])
 
             with _mtx_left:
                 # ── Editable date headers ─────────────────────────────────────
@@ -5880,15 +5880,20 @@ def investigation_standards_page(investigation_standards, db=None, user_id=None)
                 filtered_df = filtered_df[filtered_df['category'] == selected_category]
             
             if search_term:
-                search_mask = (
-                    filtered_df['standard_name'].str.contains(search_term, case=False, na=False) |
-                    filtered_df['aliases'].str.contains(search_term, case=False, na=False) |
-                    filtered_df['category'].str.contains(search_term, case=False, na=False) |
-                    filtered_df['description'].str.contains(search_term, case=False, na=False)
-                )
-                filtered_df = filtered_df[search_mask]
+                try:
+                    search_mask = (
+                        filtered_df['standard_name'].str.contains(search_term, case=False, na=False, regex=False) |
+                        filtered_df['aliases'].str.contains(search_term, case=False, na=False, regex=False) |
+                        filtered_df['category'].str.contains(search_term, case=False, na=False, regex=False) |
+                        filtered_df['description'].str.contains(search_term, case=False, na=False, regex=False)
+                    )
+                    filtered_df = filtered_df[search_mask]
+                except Exception:
+                    filtered_df = filtered_df.iloc[0:0]
             
             # Prepare display DataFrame
+            if search_term and filtered_df.empty:
+                st.info(f"No standards found matching **\"{search_term}\"**. Try a different search term.")
             display_df = filtered_df.copy()
             
             # Format columns for better display
