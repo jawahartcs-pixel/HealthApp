@@ -211,7 +211,12 @@ def upload_results_page(file_parser, data_processor, user_id):
             )
         with mtx_btn_col2:
             if st.button("🔄 Clear Matrix", key="mtx_clear_cache"):
-                for k in [k for k in st.session_state if k.startswith('mtx_cache_') or k in ('mtx_matrix_data', 'mtx_patient_name_saved', 'mtx_added_dates', 'mtx_added_tests')]:
+                for k in [k for k in st.session_state if k.startswith('mtx_cache_')
+                          or k.startswith('mtx_pdf_b64_')
+                          or k.startswith('mtx_img_b64_')
+                          or k in ('mtx_matrix_data', 'mtx_patient_name_saved',
+                                   'mtx_added_dates', 'mtx_added_tests',
+                                   'mtx_extracted_texts', 'mtx_matrix_editor')]:
                     del st.session_state[k]
                 st.rerun()
 
@@ -647,23 +652,42 @@ def upload_results_page(file_parser, data_processor, user_id):
                 _mtx_uploaded = st.session_state.get("matrix_file_uploader") or []
                 _mtx_texts    = st.session_state.get("mtx_extracted_texts", {})
 
-                # Build flat list of panels: (tab_label, "image"|"text", content)
+                # Build flat list of panels: (tab_label, "image_b64"|"text", content)
+                # PDF pages and base64 strings are cached in session state to avoid
+                # re-running convert_from_bytes on every Streamlit rerun (e.g. on pivot edits).
                 _panels = []
                 if _mtx_uploaded:
                     for _uf in _mtx_uploaded:
                         _uf_bytes = _uf.getvalue()
                         _uf_type  = _uf.type or ""
                         if _uf_type == "application/pdf":
-                            try:
-                                _pages = convert_from_bytes(_uf_bytes, dpi=150, fmt="PNG")
-                                for _pi, _pg in enumerate(_pages):
+                            # Cache converted pages as base64 strings keyed by file name+size
+                            _pdf_cache_key = f"mtx_pdf_b64_{_uf.name}_{_uf.size}"
+                            if _pdf_cache_key not in st.session_state:
+                                try:
+                                    _raw_pages = convert_from_bytes(_uf_bytes, dpi=150, fmt="PNG")
+                                    _b64_pages = []
+                                    for _pg in _raw_pages:
+                                        _buf = io.BytesIO()
+                                        _pg.save(_buf, format="PNG")
+                                        _b64_pages.append(base64.b64encode(_buf.getvalue()).decode())
+                                    st.session_state[_pdf_cache_key] = _b64_pages
+                                except Exception:
+                                    st.session_state[_pdf_cache_key] = []
+                            _b64_pages = st.session_state[_pdf_cache_key]
+                            if _b64_pages:
+                                for _pi, _b64 in enumerate(_b64_pages):
                                     _lbl = f"p{_pi+1}" if len(_mtx_uploaded) == 1 else f"{_uf.name[:12]} p{_pi+1}"
-                                    _panels.append((_lbl, "image", _pg))
-                            except Exception:
+                                    _panels.append((_lbl, "image_b64", _b64))
+                            else:
                                 _ft = _mtx_texts.get(_uf.name, "")
                                 _panels.append((_uf.name[:20], "text", _ft))
                         elif _uf_type.startswith("image/"):
-                            _panels.append((_uf.name[:20], "image", _uf_bytes))
+                            # Cache image bytes as base64
+                            _img_cache_key = f"mtx_img_b64_{_uf.name}_{_uf.size}"
+                            if _img_cache_key not in st.session_state:
+                                st.session_state[_img_cache_key] = base64.b64encode(_uf_bytes).decode()
+                            _panels.append((_uf.name[:20], "image_b64", st.session_state[_img_cache_key]))
                         else:
                             _ft = _mtx_texts.get(_uf.name, "")
                             _panels.append((_uf.name[:20], "text", _ft))
@@ -676,15 +700,10 @@ def upload_results_page(file_parser, data_processor, user_id):
                     _doc_tabs = st.tabs(_tab_labels)
                     for _dtab, (_, _ptype, _pcontent) in zip(_doc_tabs, _panels):
                         with _dtab:
-                            if _ptype == "image":
-                                # Convert image to base64 for magnifying glass component
+                            if _ptype == "image_b64":
+                                # base64 already prepared — no re-conversion needed
                                 try:
-                                    if isinstance(_pcontent, bytes):
-                                        _img_b64 = base64.b64encode(_pcontent).decode()
-                                    else:
-                                        _buf = io.BytesIO()
-                                        _pcontent.save(_buf, format="PNG")
-                                        _img_b64 = base64.b64encode(_buf.getvalue()).decode()
+                                    _img_b64 = _pcontent
                                     _zoom_val = st.session_state.get("mtx_zoom_level", 3.0)
                                     _mag_html = f"""
 <style>
@@ -730,7 +749,7 @@ def upload_results_page(file_parser, data_processor, user_id):
 """
                                     st.components.v1.html(_mag_html, height=820, scrolling=True)
                                 except Exception:
-                                    st.image(_pcontent, use_container_width=True)
+                                    st.image(base64.b64decode(_pcontent), use_container_width=True)
                             else:
                                 _disp_t = (_pcontent[:3000] + "\n…(truncated)") if _pcontent and len(_pcontent) > 3000 else (_pcontent or "")
                                 st.text_area(
