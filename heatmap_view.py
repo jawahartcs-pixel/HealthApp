@@ -637,7 +637,7 @@ def render_heatmap_view(db, selected_patient, user_id, edit_df, key_prefix="mana
                 use_container_width=False,
                 height=min(600, len(unique_tests) * 35 + 80),
                 on_select="rerun",
-                selection_mode="single-cell",
+                selection_mode=["single-row", "single-column"],
             )
             st.caption("💡 Click any coloured value cell to auto-populate and open the analysis panel below.")
 
