@@ -285,6 +285,10 @@ def render_heatmap_view(db, selected_patient, user_id, edit_df, key_prefix="mana
         pivot_df = pd.DataFrame(pivot_data).T
         pivot_df.index.name = 'Test Name'
 
+        def _text_color_for_bg(r, g, b):
+            brightness = 0.299 * r + 0.587 * g + 0.114 * b
+            return "white" if brightness < 140 else "black"
+
         def get_deviation_color(value, ref_info):
             if value is None or pd.isna(value):
                 return ""
@@ -320,7 +324,8 @@ def render_heatmap_view(db, selected_patient, user_id, edit_df, key_prefix="mana
                 r = int(144 - deviation * 110)
                 g = int(238 - deviation * 99)
                 b = int(144 - deviation * 110)
-                return f"background-color: rgb({r}, {g}, {b})"
+                fc = _text_color_for_bg(r, g, b)
+                return f"background-color: rgb({r}, {g}, {b}); color: {fc}"
             elif value < low:
                 deviation = (low - value) / range_size
                 deviation = min(max(deviation, 0), 2)
@@ -328,7 +333,8 @@ def render_heatmap_view(db, selected_patient, user_id, edit_df, key_prefix="mana
                 r = int(173 - intensity * 173)
                 g = int(216 - intensity * 216)
                 b = int(230 - intensity * 91)
-                return f"background-color: rgb({r}, {g}, {b})"
+                fc = _text_color_for_bg(r, g, b)
+                return f"background-color: rgb({r}, {g}, {b}); color: {fc}"
             else:
                 deviation = (value - high) / range_size
                 deviation = min(max(deviation, 0), 2)
@@ -336,7 +342,8 @@ def render_heatmap_view(db, selected_patient, user_id, edit_df, key_prefix="mana
                 r = int(255 - intensity * 116)
                 g = int(204 - intensity * 204)
                 b = int(203 - intensity * 203)
-                return f"background-color: rgb({r}, {g}, {b})"
+                fc = _text_color_for_bg(r, g, b)
+                return f"background-color: rgb({r}, {g}, {b}); color: {fc}"
 
         st.markdown("""
         <style>
