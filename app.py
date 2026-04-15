@@ -26,6 +26,7 @@ from PIL import Image
 import tempfile
 import io
 import base64
+from urllib.parse import quote_plus
 
 # Initialize database and components
 @st.cache_resource
@@ -6271,9 +6272,10 @@ def investigation_standards_page(investigation_standards, db=None, user_id=None)
             _configured_af = [s for s in ai_mod.SERVICES if _stored_keys_af.get(s)]
 
             with method_col:
-                _method_options = ["🌐 Web Search (no API key needed)"]
+                _method_options = ["🔎 Manual Search (open Google)"]
                 if _configured_af:
                     _method_options += [f"🤖 AI — {ai_mod.SERVICES[s]['label']}" for s in _configured_af]
+                _method_options += ["🌐 Web Search (auto-extract)"]
                 chosen_method = st.selectbox(
                     "Method",
                     options=_method_options,
@@ -6283,14 +6285,16 @@ def investigation_standards_page(investigation_standards, db=None, user_id=None)
 
             with btn_col:
                 st.markdown("<div style='margin-top:4px'></div>", unsafe_allow_html=True)
-                af_clicked = st.button("🔍 Auto-fill", key="do_autofill", type="primary")
+                af_clicked = st.button("🔍 Look Up", key="do_autofill", type="primary")
 
             # Method notes
-            if chosen_method.startswith("🤖"):
+            if chosen_method.startswith("🔎"):
+                st.caption("Opens a Google search in your browser pre-filled with the test name and medical terms. Copy the values into the fields below.")
+            elif chosen_method.startswith("🤖"):
                 st.caption("Uses your AI API key — high accuracy, structured results.")
             else:
                 st.caption(
-                    "Searches DuckDuckGo, Wikipedia, and medical reference sites. "
+                    "Searches DuckDuckGo, Wikipedia, and medical reference sites automatically. "
                     "No API key needed. Description and ranges may be partial — always verify."
                 )
 
@@ -6298,91 +6302,111 @@ def investigation_standards_page(investigation_standards, db=None, user_id=None)
                 if not af_search.strip():
                     st.warning("Enter a test name first.")
                 else:
+                    _is_manual = chosen_method.startswith("🔎")
                     _is_web = chosen_method.startswith("🌐")
 
-                    _af_debug = None
-                    if _is_web:
-                        with st.spinner(f"Searching the web for '{af_search}'…"):
-                            _af_data, _af_err, _af_debug = ai_mod.scrape_test_standard_info(af_search.strip())
-                    else:
-                        # Identify selected AI service from the label
-                        _af_svc = None
-                        for s in _configured_af:
-                            if ai_mod.SERVICES[s]['label'] in chosen_method:
-                                _af_svc = s
-                                break
-                        if not _af_svc:
-                            st.warning("Could not identify the selected AI service.")
-                            _af_data, _af_err = None, "No service"
-                        else:
-                            with st.spinner(f"Querying {ai_mod.SERVICES[_af_svc]['label']} for '{af_search}'…"):
-                                _af_data, _af_err = ai_mod.fetch_test_standard_info(
-                                    af_search.strip(), _af_svc, _stored_keys_af[_af_svc]
-                                )
-
-                    if _af_err:
-                        st.error(f"Auto-fill failed: {_af_err}")
-                        if _af_debug:
-                            with st.expander("🔎 Debug — what was searched and what came back", expanded=True):
-                                for q in _af_debug.get('queries', []):
-                                    st.markdown(f"**{q.get('source', '?')}**")
-                                    st.code(q.get('url', ''), language=None)
-                                    if 'error' in q:
-                                        st.error(f"Error: {q['error']}")
-                                    else:
-                                        st.markdown(
-                                            f"HTTP {q.get('status','?')} · "
-                                            f"{q.get('chars', 0)} chars collected"
-                                        )
-                                        st.text(q.get('got', '(nothing)'))
-                                    st.markdown("---")
-                                if _af_debug.get('collected_text'):
-                                    st.markdown("**Full collected text (first 4000 chars):**")
-                                    st.text(_af_debug['collected_text'])
-                    else:
-                        st.session_state['new_name'] = af_search.strip()
-                        if _af_data.get('description'):
-                            st.session_state['new_description'] = str(_af_data['description'])
-                        if _af_data.get('aliases'):
-                            st.session_state['new_aliases'] = str(_af_data['aliases'])
-                        if _af_data.get('unit'):
-                            st.session_state['new_common_unit'] = str(_af_data['unit'])
-                        try:
-                            if _af_data.get('male_min') is not None:
-                                st.session_state['new_m_min'] = float(_af_data['male_min'])
-                            if _af_data.get('male_max') is not None:
-                                st.session_state['new_m_max'] = float(_af_data['male_max'])
-                            if _af_data.get('female_min') is not None:
-                                st.session_state['new_f_min'] = float(_af_data['female_min'])
-                            if _af_data.get('female_max') is not None:
-                                st.session_state['new_f_max'] = float(_af_data['female_max'])
-                        except (TypeError, ValueError):
-                            pass
-                        if _af_data.get('category'):
-                            st.session_state['new_af_category'] = str(_af_data['category'])
-                        src_note = "from web search — please verify before saving" if _is_web else "from AI"
-                        st.success(
-                            f"✅ Auto-filled ({src_note})! Review and adjust the values below, "
-                            f"then click **Add Standard**."
+                    if _is_manual:
+                        _mq = (
+                            f"{af_search.strip()} blood test normal reference range "
+                            f"male female unit"
                         )
-                        if _is_web and _af_debug:
-                            with st.expander("🔎 Debug — what was searched and what came back", expanded=False):
-                                for q in _af_debug.get('queries', []):
-                                    st.markdown(f"**{q.get('source', '?')}**")
-                                    st.code(q.get('url', ''), language=None)
-                                    if 'error' in q:
-                                        st.error(f"Error: {q['error']}")
-                                    else:
-                                        st.markdown(
-                                            f"HTTP {q.get('status','?')} · "
-                                            f"{q.get('chars', 0)} chars collected"
-                                        )
-                                        st.text(q.get('got', '(nothing)'))
-                                    st.markdown("---")
-                                if _af_debug.get('collected_text'):
-                                    st.markdown("**Full collected text (first 4000 chars):**")
-                                    st.text(_af_debug['collected_text'])
-                        st.rerun()
+                        _mu = f"https://www.google.com/search?q={quote_plus(_mq)}"
+                        st.success(
+                            f"Google search ready for **{af_search.strip()}**. "
+                            f"Click the button below — it opens in a new tab. "
+                            f"Copy the reference ranges, unit and description into the fields below."
+                        )
+                        st.link_button("🔎 Open Google Search", _mu)
+                        st.caption(
+                            "Search terms included: test name · blood test · normal reference range · "
+                            "male · female · unit"
+                        )
+                        _af_data, _af_err = None, None
+                    else:
+                        _af_debug = None
+                        if _is_web:
+                            with st.spinner(f"Searching the web for '{af_search}'…"):
+                                _af_data, _af_err, _af_debug = ai_mod.scrape_test_standard_info(af_search.strip())
+                        else:
+                            # Identify selected AI service from the label
+                            _af_svc = None
+                            for s in _configured_af:
+                                if ai_mod.SERVICES[s]['label'] in chosen_method:
+                                    _af_svc = s
+                                    break
+                            if not _af_svc:
+                                st.warning("Could not identify the selected AI service.")
+                                _af_data, _af_err = None, "No service"
+                            else:
+                                with st.spinner(f"Querying {ai_mod.SERVICES[_af_svc]['label']} for '{af_search}'…"):
+                                    _af_data, _af_err = ai_mod.fetch_test_standard_info(
+                                        af_search.strip(), _af_svc, _stored_keys_af[_af_svc]
+                                    )
+
+                    if not _is_manual:
+                        if _af_err:
+                            st.error(f"Auto-fill failed: {_af_err}")
+                            if _af_debug:
+                                with st.expander("🔎 Debug — what was searched and what came back", expanded=True):
+                                    for q in _af_debug.get('queries', []):
+                                        st.markdown(f"**{q.get('source', '?')}**")
+                                        st.code(q.get('url', ''), language=None)
+                                        if 'error' in q:
+                                            st.error(f"Error: {q['error']}")
+                                        else:
+                                            st.markdown(
+                                                f"HTTP {q.get('status','?')} · "
+                                                f"{q.get('chars', 0)} chars collected"
+                                            )
+                                            st.text(q.get('got', '(nothing)'))
+                                        st.markdown("---")
+                                    if _af_debug.get('collected_text'):
+                                        st.markdown("**Full collected text (first 4000 chars):**")
+                                        st.text(_af_debug['collected_text'])
+                        else:
+                            st.session_state['new_name'] = af_search.strip()
+                            if _af_data.get('description'):
+                                st.session_state['new_description'] = str(_af_data['description'])
+                            if _af_data.get('aliases'):
+                                st.session_state['new_aliases'] = str(_af_data['aliases'])
+                            if _af_data.get('unit'):
+                                st.session_state['new_common_unit'] = str(_af_data['unit'])
+                            try:
+                                if _af_data.get('male_min') is not None:
+                                    st.session_state['new_m_min'] = float(_af_data['male_min'])
+                                if _af_data.get('male_max') is not None:
+                                    st.session_state['new_m_max'] = float(_af_data['male_max'])
+                                if _af_data.get('female_min') is not None:
+                                    st.session_state['new_f_min'] = float(_af_data['female_min'])
+                                if _af_data.get('female_max') is not None:
+                                    st.session_state['new_f_max'] = float(_af_data['female_max'])
+                            except (TypeError, ValueError):
+                                pass
+                            if _af_data.get('category'):
+                                st.session_state['new_af_category'] = str(_af_data['category'])
+                            src_note = "from web search — please verify before saving" if _is_web else "from AI"
+                            st.success(
+                                f"✅ Auto-filled ({src_note})! Review and adjust the values below, "
+                                f"then click **Add Standard**."
+                            )
+                            if _is_web and _af_debug:
+                                with st.expander("🔎 Debug — what was searched and what came back", expanded=False):
+                                    for q in _af_debug.get('queries', []):
+                                        st.markdown(f"**{q.get('source', '?')}**")
+                                        st.code(q.get('url', ''), language=None)
+                                        if 'error' in q:
+                                            st.error(f"Error: {q['error']}")
+                                        else:
+                                            st.markdown(
+                                                f"HTTP {q.get('status','?')} · "
+                                                f"{q.get('chars', 0)} chars collected"
+                                            )
+                                            st.text(q.get('got', '(nothing)'))
+                                        st.markdown("---")
+                                    if _af_debug.get('collected_text'):
+                                        st.markdown("**Full collected text (first 4000 chars):**")
+                                        st.text(_af_debug['collected_text'])
+                            st.rerun()
 
         st.markdown("---")
 
