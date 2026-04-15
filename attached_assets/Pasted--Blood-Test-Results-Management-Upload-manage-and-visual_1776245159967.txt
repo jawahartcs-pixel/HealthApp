@@ -1,0 +1,108 @@
+🩸 Blood Test Results Management
+Upload, manage, and visualize patient blood test results
+
+📁 Upload Blood Test Results
+
+🧩 Process as Matrix table
+
+
+📁 Upload Files
+
+
+📋 Paste Text
+
+Upload files or paste text — all test results are extracted and displayed as a matrix table where each detected date becomes its own column.
+
+Input method
+
+
+📁 Upload Files
+
+
+📋 Paste Text
+
+Patient Name
+
+Mary Stella
+Paste test results here
+
+Investigation	4/9/2026	4/8/2026
+Albumin	2.98	2.95
+Creatinine	0.9	
+Potassium (K)	3.4	5.1
+Calcium (Ca)	9	
+Globulin	2.8	
+Bilirubin (Direct)	0.201	
+Bilirubin(Total)	0.546	
+AST (Aspartate Aminotransferase)	16	
+ALT (Alanine Aminotransferase)	18	
+Alkaline Phosphatase	96	
+Sodium (Na)	137	130
+Polymorphs	75	84
+Lymphocytes % Percentage	15	11
+Monocytes % Percentage	6	4
+Eosinophils % Percentage	4	1
+Basophils % Percentage	1	0
+Hematocrit		33.7
+Platelet Count		163
+Hemoglobin		11.1
+White Blood Cell Count (WBC)	6.1	11.75
+Red Blood Cell Count (RBC)		3.654
+MCV Mean Corpuscular Volume		92.3
+MCH Mean Corpuscular Hemoglobin		30.4
+MCHC Mean Corpuscular Hemoglobin Concentration		32.9
+
+
+
+Found 24 tests across 2 date(s) · Patient: Mary Stella
+
+💡 You can close the sidebar for a better side-by-side comparison of the table and document display. Hover over the document to use the magnifying glass. Set the zoom level below.
+
+🔍 Magnifying glass zoom level
+
+1.50
+8.00
+Review / edit column dates:
+
+2026/08/04
+2026/09/04
+
+
+📄 Document Reference
+
+Pasted Text
+
+Investigation	4/9/2026	4/8/2026
+Albumin	2.98	2.95
+Creatinine	0.9	
+Potassium (K)	3.4	5.1
+Calcium (Ca)	9	
+Globulin	2.8	
+Bilirubin (Direct)	0.201	
+Bilirubin(Total)	0.546	
+AST (Aspartate Aminotransferase)	16	
+ALT (Alanine Aminotransferase)	18	
+Alkaline Phosphatase	96	
+Sodium (Na)	137	130
+Polymorphs	75	84
+Lymphocytes % Percentage	15	11
+Monocytes % Percentage	6	4
+Eosinophils % Percentage	4	1
+Basophils % Percentage	1	0
+Hematocrit		33.7
+Platelet Count		163
+Hemoglobin		11.1
+White Blood Cell Count (WBC)	6.1	11.75
+Red Blood Cell Count (RBC)		3.654
+MCV Mean Corpuscular Volume		92.3
+MCH Mean Corpuscular Hemoglobin		30.4
+MCHC Mean Corpuscular Hemoglobin Concentration		32.9
+
+Matrix: 24 tests selected · 2 date(s)
+
+
+Invalid test date
+
+Invalid test date
+
+No new results to save (all may be duplicates).
