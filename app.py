@@ -506,7 +506,7 @@ def upload_results_page(file_parser, data_processor, user_id):
             )
 
             # ── Two-column layout: pivot table | document pages ───────────────
-            _mtx_left, _mtx_right = st.columns([0.5, 0.5])
+            _mtx_left, _mtx_right = st.columns([0.6, 1.4])
 
             with _mtx_left:
                 # ── Editable date headers ─────────────────────────────────────
