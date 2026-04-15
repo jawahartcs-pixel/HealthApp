@@ -4,6 +4,7 @@ import json
 import io
 import matplotlib
 import ai_insights as ai_mod
+from urllib.parse import quote_plus
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import matplotlib.colors as mcolors
@@ -672,9 +673,10 @@ def render_heatmap_view(db, selected_patient, user_id, edit_df, key_prefix="mana
                 st.warning("No value recorded for this test on the selected date.")
 
             # ── Method selector ───────────────────────────────────────────────
-            _hm_method_options = ["🌐 Web Search (no API key needed)"]
+            _hm_method_options = ["🔎 Manual Search (open Google)"]
             if configured_svcs:
                 _hm_method_options += [f"🤖 AI — {ai_mod.SERVICES[s]['label']}" for s in configured_svcs]
+            _hm_method_options += ["🌐 Web Search (auto-extract)"]
 
             hm_method_col, hm_btn_col = st.columns([4, 1])
             with hm_method_col:
@@ -692,8 +694,10 @@ def render_heatmap_view(db, selected_patient, user_id, edit_df, key_prefix="mana
                     disabled=cell_value is None,
                 )
 
-            if hm_chosen.startswith("🌐"):
-                st.caption("Searches DuckDuckGo and Wikipedia. No API key needed. Always verify results with a clinician.")
+            if hm_chosen.startswith("🔎"):
+                st.caption("Opens a Google search in your browser pre-filled with the test name, value, and patient context.")
+            elif hm_chosen.startswith("🌐"):
+                st.caption("Searches DuckDuckGo and Wikipedia automatically. No API key needed. Always verify results with a clinician.")
             else:
                 st.caption("Uses your stored API key. Higher accuracy and medical context.")
 
@@ -701,8 +705,34 @@ def render_heatmap_view(db, selected_patient, user_id, edit_df, key_prefix="mana
                 if cell_value is None:
                     st.warning("No value for the selected test/date combination.")
                 else:
+                    _hm_is_manual = hm_chosen.startswith("🔎")
                     _hm_is_web = hm_chosen.startswith("🌐")
-                    if _hm_is_web:
+
+                    if _hm_is_manual:
+                        _hm_parts = [sel_test_ai, "blood test"]
+                        if cell_value is not None:
+                            _hm_parts.append(str(cell_value))
+                        if unit:
+                            _hm_parts.append(unit)
+                        if gender:
+                            _hm_parts.append(gender)
+                        if age:
+                            _hm_parts.append(f"age {age}")
+                        _hm_parts.append("implications normal range")
+                        _hm_mq = " ".join(str(p) for p in _hm_parts)
+                        _hm_mu = f"https://www.google.com/search?q={quote_plus(_hm_mq)}"
+                        st.success(
+                            f"Click below to open a Google search for **{sel_test_ai}** "
+                            f"({cell_value} {unit}) in a new tab."
+                        )
+                        st.link_button("🔎 Open Google Search", _hm_mu)
+                        st.caption(
+                            f"Search includes: test name · value · unit"
+                            + (f" · {gender}" if gender else "")
+                            + (f" · age {age}" if age else "")
+                            + " · blood test implications · normal range"
+                        )
+                    elif _hm_is_web:
                         with st.spinner(f"Searching the web for information on {sel_test_ai}…"):
                             _hm_result, _hm_err, _hm_debug = ai_mod.scrape_test_explanation(
                                 sel_test_ai, cell_value, unit, ref_min, ref_max, gender
