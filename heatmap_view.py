@@ -632,10 +632,38 @@ def render_heatmap_view(db, selected_patient, user_id, edit_df, key_prefix="mana
         st.caption("Tip: Scroll horizontally to see all dates. Test name column and header row stay fixed when scrolling.")
 
         with st.expander("📊 Heat Map View (Color-Coded)", expanded=True):
-            st.dataframe(styled_display, use_container_width=False, height=min(600, len(unique_tests) * 35 + 80))
+            _hm_df_event = st.dataframe(
+                styled_display,
+                use_container_width=False,
+                height=min(600, len(unique_tests) * 35 + 80),
+                on_select="rerun",
+                selection_mode="single-cell",
+            )
+            st.caption("💡 Click any coloured value cell to auto-populate and open the analysis panel below.")
+
+            # ── Detect cell click and pre-populate analysis panel ─────────────
+            try:
+                _sel_rows = _hm_df_event.selection.rows
+                _sel_cols = _hm_df_event.selection.columns
+            except Exception:
+                _sel_rows, _sel_cols = [], []
+
+            if _sel_rows and _sel_cols:
+                _sel_row_idx = _sel_rows[0]
+                _sel_col_name = _sel_cols[0]
+                _all_idx = list(enhanced_pivot_df.index)
+                if 0 <= _sel_row_idx < len(_all_idx) and _sel_col_name in date_columns:
+                    _clicked_test = _all_idx[_sel_row_idx]
+                    _clicked_date = _sel_col_name
+                    if _clicked_test in unique_tests and _clicked_date in unique_dates:
+                        st.session_state[f"{key_prefix}_ai_test"] = _clicked_test
+                        st.session_state[f"{key_prefix}_ai_date"] = _clicked_date
+                        st.session_state[f"{key_prefix}_panel_open"] = True
+                        st.session_state[f"{key_prefix}_auto_analyse"] = True
 
         # ── AI / Web Search Analysis Panel ───────────────────────────────────
-        with st.expander("🔍 Analyse a Test Result — Web Search or AI", expanded=False):
+        _panel_open = st.session_state.get(f"{key_prefix}_panel_open", False)
+        with st.expander("🔍 Analyse a Test Result — Web Search or AI", expanded=_panel_open):
             stored_keys = db.get_all_ai_api_keys(user_id)
             configured_svcs = [s for s in ai_mod.SERVICES if stored_keys.get(s)]
 
@@ -700,6 +728,12 @@ def render_heatmap_view(db, selected_patient, user_id, edit_df, key_prefix="mana
                 st.caption("Searches DuckDuckGo and Wikipedia automatically. No API key needed. Always verify results with a clinician.")
             else:
                 st.caption("Uses your stored API key. Higher accuracy and medical context.")
+
+            # Auto-trigger analysis when a cell was clicked in the heatmap
+            _auto_analyse = st.session_state.get(f"{key_prefix}_auto_analyse", False)
+            if _auto_analyse:
+                st.session_state[f"{key_prefix}_auto_analyse"] = False
+            hm_run = hm_run or _auto_analyse
 
             if hm_run:
                 if cell_value is None:
