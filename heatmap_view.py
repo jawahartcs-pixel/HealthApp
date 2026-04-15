@@ -637,29 +637,37 @@ def render_heatmap_view(db, selected_patient, user_id, edit_df, key_prefix="mana
                 use_container_width=False,
                 height=min(600, len(unique_tests) * 35 + 80),
                 on_select="rerun",
-                selection_mode=["single-row", "single-column"],
+                selection_mode="single-row",
             )
-            st.caption("💡 Click any coloured value cell to auto-populate and open the analysis panel below.")
+            st.caption("💡 Click any test row to auto-populate and open the analysis panel below.")
 
-            # ── Detect cell click and pre-populate analysis panel ─────────────
+            # ── Detect row click → pre-populate test + most-recent date ───────
             try:
                 _sel_rows = _hm_df_event.selection.rows
-                _sel_cols = _hm_df_event.selection.columns
             except Exception:
-                _sel_rows, _sel_cols = [], []
+                _sel_rows = []
 
-            if _sel_rows and _sel_cols:
+            if _sel_rows:
                 _sel_row_idx = _sel_rows[0]
-                _sel_col_name = _sel_cols[0]
                 _all_idx = list(enhanced_pivot_df.index)
-                if 0 <= _sel_row_idx < len(_all_idx) and _sel_col_name in date_columns:
+                if 0 <= _sel_row_idx < len(_all_idx):
                     _clicked_test = _all_idx[_sel_row_idx]
-                    _clicked_date = _sel_col_name
-                    if _clicked_test in unique_tests and _clicked_date in unique_dates:
-                        st.session_state[f"{key_prefix}_ai_test"] = _clicked_test
-                        st.session_state[f"{key_prefix}_ai_date"] = _clicked_date
-                        st.session_state[f"{key_prefix}_panel_open"] = True
-                        st.session_state[f"{key_prefix}_auto_analyse"] = True
+                    if _clicked_test in unique_tests:
+                        # Find most-recent date that has a value for this test
+                        # unique_dates is already sorted newest-first
+                        _best_date = None
+                        for _d in unique_dates:
+                            _v = pivot_data.get(_clicked_test, {}).get(_d)
+                            if _v is not None and not (isinstance(_v, float) and pd.isna(_v)):
+                                _best_date = _d
+                                break
+                        if _best_date is None and unique_dates:
+                            _best_date = unique_dates[0]
+                        if _best_date:
+                            st.session_state[f"{key_prefix}_ai_test"] = _clicked_test
+                            st.session_state[f"{key_prefix}_ai_date"] = _best_date
+                            st.session_state[f"{key_prefix}_panel_open"] = True
+                            st.session_state[f"{key_prefix}_auto_analyse"] = True
 
         # ── AI / Web Search Analysis Panel ───────────────────────────────────
         _panel_open = st.session_state.get(f"{key_prefix}_panel_open", False)
