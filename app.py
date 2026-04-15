@@ -25,6 +25,7 @@ from pdf2image import convert_from_bytes
 from PIL import Image
 import tempfile
 import io
+import base64
 
 # Initialize database and components
 @st.cache_resource
@@ -505,6 +506,19 @@ def upload_results_page(file_parser, data_processor, user_id):
                 f"**{len(all_dates)} date(s)** · Patient: **{patient_display or '(not set)'}**"
             )
 
+            # ── Instructional banner + zoom slider ────────────────────────────
+            st.info(
+                "💡 You can close the sidebar for a better side-by-side comparison of the "
+                "table and document display. Hover over the document to use the magnifying "
+                "glass. Set the zoom level below."
+            )
+            _mtx_zoom = st.slider(
+                "🔍 Magnifying glass zoom level",
+                min_value=1.5, max_value=8.0, value=3.0, step=0.5,
+                key="mtx_zoom_level",
+                help="Controls how much the magnifying glass zooms into the document image when you hover over it."
+            )
+
             # ── Two-column layout: pivot table | document pages ───────────────
             _mtx_left, _mtx_right = st.columns([0.6, 1.4])
 
@@ -663,7 +677,60 @@ def upload_results_page(file_parser, data_processor, user_id):
                     for _dtab, (_, _ptype, _pcontent) in zip(_doc_tabs, _panels):
                         with _dtab:
                             if _ptype == "image":
-                                st.image(_pcontent, use_container_width=True)
+                                # Convert image to base64 for magnifying glass component
+                                try:
+                                    if isinstance(_pcontent, bytes):
+                                        _img_b64 = base64.b64encode(_pcontent).decode()
+                                    else:
+                                        _buf = io.BytesIO()
+                                        _pcontent.save(_buf, format="PNG")
+                                        _img_b64 = base64.b64encode(_buf.getvalue()).decode()
+                                    _zoom_val = st.session_state.get("mtx_zoom_level", 3.0)
+                                    _mag_html = f"""
+<style>
+.mag-wrap{{position:relative;display:block;width:100%;line-height:0;}}
+.mag-wrap img{{width:100%;display:block;cursor:crosshair;}}
+.mag-lens{{
+  display:none;position:absolute;
+  width:200px;height:200px;
+  border-radius:50%;
+  border:3px solid #ccc;
+  box-shadow:0 4px 24px rgba(0,0,0,0.55);
+  pointer-events:none;
+  background-image:url('data:image/png;base64,{_img_b64}');
+  background-repeat:no-repeat;
+  z-index:999;
+}}
+</style>
+<div class="mag-wrap" id="mw">
+  <img id="mimg" src="data:image/png;base64,{_img_b64}" />
+  <div class="mag-lens" id="mlens"></div>
+</div>
+<script>
+(function(){{
+  var img=document.getElementById('mimg');
+  var lens=document.getElementById('mlens');
+  var zoom={_zoom_val};
+  img.addEventListener('mousemove',function(e){{
+    lens.style.display='block';
+    var r=img.getBoundingClientRect();
+    var x=e.clientX-r.left, y=e.clientY-r.top;
+    var lw=lens.offsetWidth, lh=lens.offsetHeight;
+    var lx=x-lw/2, ly=y-lh/2;
+    if(lx<0)lx=0; if(ly<0)ly=0;
+    if(lx+lw>img.offsetWidth)lx=img.offsetWidth-lw;
+    if(ly+lh>img.offsetHeight)ly=img.offsetHeight-lh;
+    lens.style.left=lx+'px'; lens.style.top=ly+'px';
+    lens.style.backgroundSize=(img.offsetWidth*zoom)+'px '+(img.offsetHeight*zoom)+'px';
+    lens.style.backgroundPosition=(-(x*zoom-lw/2))+'px '+(-(y*zoom-lh/2))+'px';
+  }});
+  img.addEventListener('mouseleave',function(){{lens.style.display='none';}});
+}})();
+</script>
+"""
+                                    st.components.v1.html(_mag_html, height=820, scrolling=True)
+                                except Exception:
+                                    st.image(_pcontent, use_container_width=True)
                             else:
                                 _disp_t = (_pcontent[:3000] + "\n…(truncated)") if _pcontent and len(_pcontent) > 3000 else (_pcontent or "")
                                 st.text_area(
@@ -868,7 +935,7 @@ def upload_results_page(file_parser, data_processor, user_id):
                 for _raw_name, _raw_text in _mtx_raw_texts.items():
                     with st.expander(f"📖 {_raw_name}", expanded=False):
                         if _raw_text:
-                            _raw_disp = (_raw_text[:5000] + "\n\n… (truncated — showing first 5000 chars)") if len(_raw_text) > 5000 else _raw_text
+                            _raw_disp = (_raw_text[:100000] + "\n\n… (truncated — showing first 100000 chars)") if len(_raw_text) > 100000 else _raw_text
                             st.text_area(
                                 "",
                                 value=_raw_disp,
