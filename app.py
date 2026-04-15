@@ -367,28 +367,35 @@ def upload_results_page(file_parser, data_processor, user_id):
             # ── Extract from uploaded files ──────────────────────────────────
             if uploaded_files_matrix:
                 st.subheader("Extracting from files…")
-                inv_std = st.session_state.get("investigation_standards")
                 for uf in uploaded_files_matrix:
                     cache_key = f"mtx_cache_{uf.name}_{uf.size}_{force_ocr_matrix}"
                     with st.spinner(f"Parsing {uf.name}…"):
                         if cache_key not in st.session_state:
                             ext_text = file_parser.parse_file(uf, force_ocr_matrix)
-                            st.session_state[cache_key] = {"text": ext_text}
+                            t_data   = file_parser.extract_test_data(ext_text)
+                            st.session_state[cache_key] = {"text": ext_text, "data": t_data}
                         else:
                             ext_text = st.session_state[cache_key]["text"]
+                            t_data   = st.session_state[cache_key]["data"]
 
-                    # Multi-date extraction: returns [(date_obj, [results]), ...]
-                    # extract_multi_date_results uses the regex-based scan_text_against_standards internally
-                    multi = file_parser.extract_multi_date_results(ext_text, inv_std)
+                    # Determine date for this file
+                    raw_date = t_data.get("test_date", date.today())
+                    if hasattr(raw_date, "strftime"):
+                        date_str = raw_date.strftime("%Y-%m-%d")
+                    else:
+                        date_str = str(raw_date)[:10] if raw_date else date.today().strftime("%Y-%m-%d")
 
-                    for raw_date, results in multi:
-                        if hasattr(raw_date, "strftime"):
-                            date_str = raw_date.strftime("%Y-%m-%d")
-                        else:
-                            date_str = str(raw_date)[:10] if raw_date else date.today().strftime("%Y-%m-%d")
-                        if date_str not in all_date_results:
-                            all_date_results[date_str] = []
-                        all_date_results[date_str].extend(results)
+                    # Prefer standards-based extraction
+                    inv_std = st.session_state.get("investigation_standards")
+                    if inv_std and ext_text:
+                        std_res = file_parser.scan_text_against_standards(ext_text, inv_std)
+                        results = std_res if std_res else t_data.get("results", [])
+                    else:
+                        results = t_data.get("results", [])
+
+                    if date_str not in all_date_results:
+                        all_date_results[date_str] = []
+                    all_date_results[date_str].extend(results)
 
             # ── Extract from pasted text ─────────────────────────────────────
             elif mtx_pasted_text and mtx_pasted_text.strip():
