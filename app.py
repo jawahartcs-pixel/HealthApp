@@ -776,41 +776,73 @@ def upload_results_page(file_parser, data_processor, user_id):
                 else:
                     _total_saved   = 0
                     _total_skipped = 0
+                    _save_errors   = []
+                    from datetime import datetime as _dt
                     for _disp in edited_dates:
                         _date_rows = []
                         for _, _row in edited_matrix.iterrows():
                             if _row.get("Include") and pd.notna(_row.get(_disp)):
+                                try:
+                                    _val = float(_row[_disp])
+                                except (TypeError, ValueError):
+                                    continue
                                 _date_rows.append({
-                                    "test_type": _row["Investigation"],
-                                    "value":     _row[_disp],
-                                    "unit":      _row.get("Unit", "")
+                                    "test_type": str(_row["Investigation"]).strip(),
+                                    "value":     _val,
+                                    "unit":      str(_row.get("Unit", "") or "").strip()
                                 })
-                        if _date_rows:
-                            try:
-                                from datetime import datetime as _dt
-                                _save_date = _dt.strptime(_disp, "%Y-%m-%d").date()
-                            except Exception:
-                                _save_date = date.today()
-                            _dups = data_processor.db.check_duplicate_test_results(
-                                patient_name=patient_display,
-                                test_date=_save_date.strftime("%Y-%m-%d"),
-                                test_results=_date_rows,
-                                user_id=user_id
+                        if not _date_rows:
+                            continue
+                        # Parse the date — allow any valid date (past or future)
+                        try:
+                            _save_date = _dt.strptime(_disp, "%Y-%m-%d").date()
+                        except Exception:
+                            _save_errors.append(f"Could not parse date: {_disp}")
+                            continue
+                        if _save_date.year < 1900:
+                            _save_errors.append(f"Date out of range: {_disp}")
+                            continue
+                        # Duplicate check — compare rounded floats to avoid precision issues
+                        _dups = data_processor.db.check_duplicate_test_results(
+                            patient_name=patient_display,
+                            test_date=_save_date.strftime("%Y-%m-%d"),
+                            test_results=_date_rows,
+                            user_id=user_id
+                        )
+                        if _dups:
+                            _dup_keys = {
+                                (d["test_type"], round(float(d["value"]), 6))
+                                for d in _dups
+                            }
+                            _date_rows = [
+                                r for r in _date_rows
+                                if (r["test_type"], round(r["value"], 6)) not in _dup_keys
+                            ]
+                            _total_skipped += len(_dups)
+                        if not _date_rows:
+                            continue
+                        # Save directly via DB layer (no future-date restriction)
+                        try:
+                            _patient_id = data_processor.db.add_patient(
+                                patient_display.strip(), user_id
                             )
-                            if _dups:
-                                _dup_keys = {(d["test_type"], d["value"]) for d in _dups}
-                                _date_rows = [r for r in _date_rows
-                                              if (r["test_type"], float(r["value"]) if r["value"] else 0) not in _dup_keys]
-                                _total_skipped += len(_dups)
-                            if _date_rows:
-                                _ok = data_processor.save_test_results(
-                                    patient_name=patient_display,
+                            for _r in _date_rows:
+                                _ok = data_processor.db.add_test_result(
+                                    patient_id=_patient_id,
                                     test_date=_save_date,
-                                    test_results=_date_rows,
+                                    test_type=_r["test_type"],
+                                    test_value=_r["value"],
+                                    unit=_r["unit"],
+                                    reference_range="",
                                     user_id=user_id
                                 )
                                 if _ok:
-                                    _total_saved += len(_date_rows)
+                                    _total_saved += 1
+                        except Exception as _e:
+                            _save_errors.append(f"{_disp}: {_e}")
+                    if _save_errors:
+                        for _msg in _save_errors:
+                            st.error(_msg)
                     if _total_saved > 0:
                         st.success(
                             f"✅ Saved {_total_saved} results across {len(edited_dates)} date(s) "
@@ -820,7 +852,7 @@ def upload_results_page(file_parser, data_processor, user_id):
                             st.info(f"Skipped {_total_skipped} duplicate entries.")
                         st.session_state.pop("mtx_matrix_data", None)
                         st.rerun()
-                    else:
+                    elif not _save_errors:
                         st.warning("No new results to save (all may be duplicates).")
 
             st.markdown("---")
