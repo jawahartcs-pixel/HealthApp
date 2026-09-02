@@ -1,0 +1,1 @@
+- [Streamlit preview cache](streamlit-preview-cache.md) — hashed-bundle import errors can come from stale long-lived preview tabs, not missing app files.
