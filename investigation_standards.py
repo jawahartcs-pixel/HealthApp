@@ -4,6 +4,7 @@ Handles standardization of investigation types with fuzzy matching and reference
 """
 
 import sqlite3
+import math
 import pandas as pd
 from typing import Dict, List, Tuple, Optional
 from difflib import SequenceMatcher
@@ -360,6 +361,147 @@ class InvestigationStandards:
         except Exception as e:
             print(f"Error adding standard: {e}")
             return False
+
+    def add_standards(self, standards_data: List[Dict]) -> Dict[str, List[Dict]]:
+        """Add multiple standards in one database session, reporting results per row."""
+        added = []
+        failed = []
+        if len(standards_data) > 50:
+            return {
+                'added': [],
+                'failed': [{
+                    'row': 0, 'name': '',
+                    'error': 'A bulk submission can contain at most 50 standards.',
+                }],
+            }
+
+        numeric_fields = (
+            'male_range_min', 'male_range_max',
+            'female_range_min', 'female_range_max',
+        )
+        insert_columns = [
+            'standard_name', 'aliases', 'male_range_min', 'male_range_max',
+            'male_unit', 'female_range_min', 'female_range_max', 'female_unit',
+            'description', 'category',
+        ]
+
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+                cursor.execute("PRAGMA table_info(investigation_standards)")
+                available_columns = {column[1] for column in cursor.fetchall()}
+
+                # Include newer fields only when the existing database has them.
+                if 'exclusions' in available_columns:
+                    insert_columns.insert(2, 'exclusions')
+                if 'common_unit' in available_columns:
+                    insert_columns.append('common_unit')
+
+                cursor.execute("SELECT LOWER(standard_name) FROM investigation_standards")
+                existing_names = {row[0] for row in cursor.fetchall() if row[0]}
+                placeholders = ', '.join('?' for _ in insert_columns)
+                column_sql = ', '.join(insert_columns)
+                insert_sql = (
+                    f"INSERT INTO investigation_standards ({column_sql}) "
+                    f"VALUES ({placeholders})"
+                )
+
+                for sequence_number, source in enumerate(standards_data, start=1):
+                    source = source if isinstance(source, dict) else {}
+                    row_number = int(source.get('_source_row', sequence_number))
+                    name = str(source.get('standard_name') or '').strip()
+                    category = str(source.get('category') or '').strip()
+
+                    if not name:
+                        failed.append({
+                            'row': row_number, 'name': '', 'error': 'Standard name is required.'
+                        })
+                        continue
+                    if not category:
+                        failed.append({
+                            'row': row_number, 'name': name, 'error': 'Category is required.'
+                        })
+                        continue
+                    name_key = name.casefold()
+                    if name_key in existing_names:
+                        failed.append({
+                            'row': row_number, 'name': name,
+                            'error': 'A standard with this name already exists.',
+                        })
+                        continue
+
+                    values = {
+                        'standard_name': name,
+                        'aliases': str(source.get('aliases') or '').strip(),
+                        'exclusions': str(source.get('exclusions') or '').strip(),
+                        'male_unit': str(source.get('male_unit') or '').strip(),
+                        'female_unit': str(source.get('female_unit') or '').strip(),
+                        'common_unit': str(source.get('common_unit') or '').strip(),
+                        'description': str(source.get('description') or '').strip(),
+                        'category': category,
+                    }
+                    invalid_number = None
+                    for field in numeric_fields:
+                        raw_value = source.get(field)
+                        if raw_value is None or (isinstance(raw_value, str) and not raw_value.strip()):
+                            values[field] = None
+                            continue
+                        try:
+                            number = float(raw_value)
+                            if not math.isfinite(number):
+                                raise ValueError
+                            values[field] = number
+                        except (TypeError, ValueError):
+                            invalid_number = f"{field.replace('_', ' ')} must be a number."
+                            break
+
+                    if invalid_number:
+                        failed.append({
+                            'row': row_number, 'name': name, 'error': invalid_number
+                        })
+                        continue
+
+                    range_error = None
+                    for lower_field, upper_field, label in (
+                        ('male_range_min', 'male_range_max', 'Male'),
+                        ('female_range_min', 'female_range_max', 'Female'),
+                    ):
+                        lower = values[lower_field]
+                        upper = values[upper_field]
+                        if lower is not None and upper is not None and lower > upper:
+                            range_error = f"{label} range minimum cannot exceed its maximum."
+                            break
+
+                    if range_error:
+                        failed.append({
+                            'row': row_number, 'name': name, 'error': range_error
+                        })
+                        continue
+
+                    try:
+                        cursor.execute(insert_sql, [values[column] for column in insert_columns])
+                        existing_names.add(name_key)
+                        added.append({'row': row_number, 'name': name})
+                    except sqlite3.IntegrityError as exc:
+                        failed.append({
+                            'row': row_number, 'name': name,
+                            'error': f"Could not save this standard: {exc}",
+                        })
+        except Exception as exc:
+            print(f"Error adding investigation standards in bulk: {exc}")
+            for item in added:
+                failed.append({
+                    **item,
+                    'error': 'This row was rolled back because the bulk save failed.',
+                })
+            added = []
+            failed.append({
+                'row': 0,
+                'name': '',
+                'error': f"Bulk save stopped because of a database error: {exc}",
+            })
+
+        return {'added': added, 'failed': failed}
     
     def update_standard(self, standard_id: int, standard_data: Dict) -> bool:
         """Update an existing investigation standard and sync changes to test results."""
