@@ -6255,6 +6255,203 @@ def investigation_standards_page(investigation_standards, db=None, user_id=None)
     with tab2:
         st.subheader("Add New Investigation Standard")
 
+        # ── Bulk standard entry ──────────────────────────────────────────────
+        with st.expander("📚 Bulk add up to 50 standards", expanded=False):
+            st.markdown(
+                "Fill in the table directly or upload a CSV. All editable standard "
+                "fields are included; standard name and category are required."
+            )
+
+            _bulk_columns = [
+                "standard_name", "aliases", "exclusions",
+                "male_range_min", "male_range_max", "male_unit",
+                "female_range_min", "female_range_max", "female_unit",
+                "common_unit", "description", "category",
+            ]
+            _bulk_numeric_columns = {
+                "male_range_min", "male_range_max",
+                "female_range_min", "female_range_max",
+            }
+            _bulk_labels = {
+                "standard_name": "Standard Name *",
+                "aliases": "Aliases (comma-separated)",
+                "exclusions": "Exclusions (comma-separated)",
+                "male_range_min": "Male Min",
+                "male_range_max": "Male Max",
+                "male_unit": "Male Unit",
+                "female_range_min": "Female Min",
+                "female_range_max": "Female Max",
+                "female_unit": "Female Unit",
+                "common_unit": "Common Unit",
+                "description": "Description",
+                "category": "Category *",
+            }
+            def _bulk_row_has_values(row):
+                return any(
+                    not pd.isna(value) and str(value).strip()
+                    for value in row
+                )
+
+            _bulk_template = pd.DataFrame({
+                column: (
+                    pd.Series([float("nan")] * 50, dtype="float64")
+                    if column in _bulk_numeric_columns
+                    else pd.Series([""] * 50, dtype="object")
+                )
+                for column in _bulk_columns
+            })
+            _template_csv = _bulk_template.to_csv(index=False).encode("utf-8")
+            st.download_button(
+                "⬇️ Download 50-row CSV template",
+                data=_template_csv,
+                file_name="investigation_standards_template.csv",
+                mime="text/csv",
+                key="download_bulk_standards_template",
+            )
+
+            _bulk_upload = st.file_uploader(
+                "Upload a completed CSV template (optional)",
+                type=["csv"],
+                key="bulk_standards_csv_upload",
+                help="Use the downloaded template headers. You can also fill the table below directly.",
+            )
+            _bulk_df = _bulk_template.copy()
+            _bulk_upload_error = None
+
+            if _bulk_upload is not None:
+                try:
+                    _uploaded_df = pd.read_csv(
+                        io.BytesIO(_bulk_upload.getvalue()),
+                        keep_default_na=False,
+                    )
+                    _uploaded_df.columns = [
+                        str(column).strip().lstrip("\ufeff").lower().replace(" ", "_")
+                        for column in _uploaded_df.columns
+                    ]
+                    if _uploaded_df.columns.duplicated().any():
+                        _bulk_upload_error = "The CSV contains duplicate column headers."
+                    else:
+                        _missing_required = [
+                            field for field in ("standard_name", "category")
+                            if field not in _uploaded_df.columns
+                        ]
+                    if _bulk_upload_error is None and _missing_required:
+                        _bulk_upload_error = (
+                            "CSV is missing required column(s): "
+                            + ", ".join(_missing_required)
+                            + ". Download and use the template above."
+                        )
+                    elif _bulk_upload_error is None:
+                        for _column in _bulk_columns:
+                            if _column not in _uploaded_df.columns:
+                                _uploaded_df[_column] = (
+                                    float("nan") if _column in _bulk_numeric_columns else ""
+                                )
+
+                        _uploaded_df = _uploaded_df[_bulk_columns].copy()
+                        for _column in _bulk_numeric_columns:
+                            _raw_values = _uploaded_df[_column]
+                            _parsed_values = pd.to_numeric(_raw_values, errors="coerce")
+                            _invalid_mask = (
+                                _raw_values.astype(str).str.strip().ne("")
+                                & _parsed_values.isna()
+                            )
+                            if _invalid_mask.any():
+                                _bad_rows = [
+                                    str(int(index) + 2)
+                                    for index in _uploaded_df.index[_invalid_mask][:5]
+                                ]
+                                _bulk_upload_error = (
+                                    f"Column '{_column}' has a non-numeric value on "
+                                    f"CSV row(s) {', '.join(_bad_rows)}."
+                                )
+                                break
+                            _uploaded_df[_column] = _parsed_values
+
+                        if _bulk_upload_error is None:
+                            _bulk_df = _uploaded_df
+                except Exception as _bulk_csv_error:
+                    _bulk_upload_error = f"Could not read the CSV: {_bulk_csv_error}"
+
+            if _bulk_upload_error:
+                st.error(_bulk_upload_error)
+            elif int(_bulk_df.apply(_bulk_row_has_values, axis=1).sum()) > 50:
+                st.error(
+                    "This bulk form accepts at most 50 populated rows. "
+                    "Split the CSV into smaller batches."
+                )
+            else:
+                _bulk_column_config = {
+                    column: st.column_config.TextColumn(
+                        _bulk_labels[column],
+                        width="large" if column in {
+                            "standard_name", "aliases", "exclusions", "description"
+                        } else "medium",
+                        required=column == "standard_name",
+                    )
+                    for column in _bulk_columns
+                    if column not in _bulk_numeric_columns
+                }
+                for _column in _bulk_numeric_columns:
+                    _bulk_column_config[_column] = st.column_config.NumberColumn(
+                        _bulk_labels[_column],
+                        format="%.4f",
+                    )
+
+                _bulk_edited_df = st.data_editor(
+                    _bulk_df,
+                    column_config=_bulk_column_config,
+                    num_rows="dynamic",
+                    hide_index=True,
+                    use_container_width=True,
+                    height=420,
+                    key="bulk_standards_editor",
+                )
+
+                _bulk_nonempty = _bulk_edited_df.apply(_bulk_row_has_values, axis=1)
+                _bulk_records_df = _bulk_edited_df.loc[_bulk_nonempty, _bulk_columns]
+                _bulk_records = [
+                    {**row.to_dict(), "_source_row": int(index) + 1}
+                    for index, row in _bulk_records_df.iterrows()
+                ]
+                st.caption(
+                    f"{len(_bulk_records)} populated row(s); maximum 50. "
+                    "Blank rows are ignored. Range minimums cannot exceed maximums."
+                )
+
+                if st.button(
+                    "✅ Add Bulk Standards",
+                    type="primary",
+                    key="submit_bulk_standards",
+                    disabled=not _bulk_records or len(_bulk_records) > 50,
+                ):
+                    _bulk_result = investigation_standards.add_standards(_bulk_records)
+                    _added_standards = _bulk_result["added"]
+                    _failed_standards = _bulk_result["failed"]
+
+                    if _added_standards:
+                        st.success(
+                            f"Added {len(_added_standards)} standard(s): "
+                            + ", ".join(item["name"] for item in _added_standards)
+                        )
+                        with st.spinner("Syncing new standards to existing test results..."):
+                            _sync_counts = investigation_standards.sync_all_standards_to_test_results()
+                        if _sync_counts["units"] or _sync_counts["reference_ranges"]:
+                            st.info(
+                                f"Updated {_sync_counts['units']} test-result unit(s) and "
+                                f"{_sync_counts['reference_ranges']} reference range(s)."
+                            )
+                    if _failed_standards:
+                        st.warning(
+                            f"{len(_failed_standards)} row(s) were not added. "
+                            "Correct those rows in the table and try again."
+                        )
+                        st.dataframe(
+                            pd.DataFrame(_failed_standards),
+                            use_container_width=True,
+                            hide_index=True,
+                        )
+
         # ── Auto-fill section — AI or Web Search ─────────────────────────────
         with st.expander("🔍 Auto-fill — type the test name to look up details automatically", expanded=True):
 
