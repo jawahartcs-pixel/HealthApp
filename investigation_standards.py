@@ -434,12 +434,12 @@ class InvestigationStandards:
                         'standard_name': name,
                         'aliases': str(source.get('aliases') or '').strip(),
                         'exclusions': str(source.get('exclusions') or '').strip(),
-                        'male_unit': str(source.get('male_unit') or '').strip(),
-                        'female_unit': str(source.get('female_unit') or '').strip(),
                         'common_unit': str(source.get('common_unit') or '').strip(),
                         'description': str(source.get('description') or '').strip(),
                         'category': category,
                     }
+                    values['male_unit'] = values['common_unit']
+                    values['female_unit'] = values['common_unit']
                     invalid_number = None
                     for field in numeric_fields:
                         raw_value = source.get(field)

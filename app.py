@@ -6259,14 +6259,15 @@ def investigation_standards_page(investigation_standards, db=None, user_id=None)
         with st.expander("📚 Bulk add up to 50 standards", expanded=False):
             st.markdown(
                 "Fill in the table directly or upload a CSV. All editable standard "
-                "fields are included; standard name and category are required."
+                "fields are included; standard name and category are required. "
+                "Male and female units are both copied from Common Unit when saved."
             )
 
             _bulk_columns = [
-                "standard_name", "aliases", "exclusions",
-                "male_range_min", "male_range_max", "male_unit",
-                "female_range_min", "female_range_max", "female_unit",
-                "common_unit", "description", "category",
+                "standard_name", "description", "common_unit",
+                "male_range_min", "male_range_max",
+                "female_range_min", "female_range_max",
+                "category", "aliases", "exclusions",
             ]
             _bulk_numeric_columns = {
                 "male_range_min", "male_range_max",
@@ -6274,17 +6275,15 @@ def investigation_standards_page(investigation_standards, db=None, user_id=None)
             }
             _bulk_labels = {
                 "standard_name": "Standard Name *",
-                "aliases": "Aliases (comma-separated)",
-                "exclusions": "Exclusions (comma-separated)",
+                "description": "Description",
+                "common_unit": "Common Unit",
                 "male_range_min": "Male Min",
                 "male_range_max": "Male Max",
-                "male_unit": "Male Unit",
                 "female_range_min": "Female Min",
                 "female_range_max": "Female Max",
-                "female_unit": "Female Unit",
-                "common_unit": "Common Unit",
-                "description": "Description",
                 "category": "Category *",
+                "aliases": "Aliases (comma-separated)",
+                "exclusions": "Exclusions (comma-separated)",
             }
             def _bulk_row_has_values(row):
                 return any(
