@@ -4324,31 +4324,6 @@ def manage_data_page(db, user_id):
                                       placeholder="Choose a patient...")
         
         if selected_patient:
-            save_report = st.session_state.get("excel_data_save_report")
-            if save_report and save_report.get("selected_patient") == selected_patient:
-                st.markdown("### Save result")
-                saved_count = save_report["saved_count"]
-                error_count = len(save_report["errors"])
-                skipped_count = save_report["skipped_count"]
-
-                result_cols = st.columns(3)
-                result_cols[0].metric("Saved / updated", saved_count)
-                result_cols[1].metric("Failed", error_count)
-                result_cols[2].metric("Blank rows skipped", skipped_count)
-
-                if error_count:
-                    if saved_count:
-                        st.warning(f"Saved or updated {saved_count} record(s); {error_count} failed.")
-                    else:
-                        st.error(f"No records were saved; {error_count} failed.")
-                    with st.expander("Why records failed", expanded=True):
-                        for error in save_report["errors"]:
-                            st.write(f"- {error}")
-                elif saved_count:
-                    st.success(f"All {saved_count} record(s) were saved or updated successfully.")
-                else:
-                    st.info("No records were saved. Fill in at least one row and try again.")
-
             # Get existing data for the patient (if not adding new)
             if selected_patient != "Add New Patient":
                 existing_data = db.get_patient_test_results_with_ids(selected_patient)
@@ -4591,7 +4566,7 @@ def manage_data_page(db, user_id):
                                 row_errors.append("Test Type is required.")
                             if not patient_name:
                                 row_errors.append("Patient Name is required.")
-                            elif is_new:
+                            elif selected_patient == "Add New Patient":
                                 name_words = patient_name.split()
                                 if (
                                     len(patient_name) < 2
@@ -4600,8 +4575,8 @@ def manage_data_page(db, user_id):
                                     or len(name_words) < 2
                                 ):
                                     row_errors.append("Patient Name must be 2–100 characters and contain at least two words.")
-                            elif patient_name != selected_patient:
-                                row_errors.append("Patient Name cannot be changed for an existing record in this editor.")
+                            elif selected_patient != "Add New Patient" and patient_name != selected_patient:
+                                row_errors.append("Patient Name must match the selected patient.")
 
                             date_value = pd.to_datetime(row.get("Date"), errors="coerce")
                             if pd.isna(date_value):
@@ -4636,7 +4611,8 @@ def manage_data_page(db, user_id):
                                         test_date=test_date,
                                         test_results=[new_result],
                                         user_id=user_id,
-                                        show_feedback=False
+                                        show_feedback=False,
+                                        validate_patient_name=(selected_patient == "Add New Patient")
                                     ):
                                         success_count += 1
                                     else:
@@ -4667,11 +4643,36 @@ def manage_data_page(db, user_id):
                         "skipped_count": skipped_count,
                         "errors": errors,
                     }
-                    st.rerun()
             
             with col2:
                 if st.button("🔄 Reset Form"):
                     st.rerun()
+
+            save_report = st.session_state.get("excel_data_save_report")
+            if save_report and save_report.get("selected_patient") == selected_patient:
+                st.markdown("---")
+                st.markdown("### Save result")
+                saved_count = save_report["saved_count"]
+                error_count = len(save_report["errors"])
+                skipped_count = save_report["skipped_count"]
+
+                result_cols = st.columns(3)
+                result_cols[0].metric("Saved / updated", saved_count)
+                result_cols[1].metric("Failed", error_count)
+                result_cols[2].metric("Blank rows skipped", skipped_count)
+
+                if error_count:
+                    if saved_count:
+                        st.warning(f"Saved or updated {saved_count} record(s); {error_count} failed.")
+                    else:
+                        st.error(f"No records were saved; {error_count} failed.")
+                    with st.expander("Why records failed", expanded=True):
+                        for error in save_report["errors"]:
+                            st.write(f"- {error}")
+                elif saved_count:
+                    st.success(f"All {saved_count} record(s) were saved or updated successfully.")
+                else:
+                    st.info("No records were saved. Fill in at least one row and try again.")
     
     elif management_type == "View & Edit Patient Data":
         st.subheader("📊 View & Edit Patient Data")
