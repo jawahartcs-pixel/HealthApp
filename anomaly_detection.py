@@ -1,4 +1,4 @@
-"""
+"Manage Data""""
 AI-Powered Anomaly Detection for Blood Test Results
 This module provides advanced anomaly detection capabilities using machine learning
 to identify unusual patterns in patient blood test results.

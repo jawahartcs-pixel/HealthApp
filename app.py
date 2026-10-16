@@ -4324,6 +4324,31 @@ def manage_data_page(db, user_id):
                                       placeholder="Choose a patient...")
         
         if selected_patient:
+            save_report = st.session_state.get("excel_data_save_report")
+            if save_report and save_report.get("selected_patient") == selected_patient:
+                st.markdown("### Save result")
+                saved_count = save_report["saved_count"]
+                error_count = len(save_report["errors"])
+                skipped_count = save_report["skipped_count"]
+
+                result_cols = st.columns(3)
+                result_cols[0].metric("Saved / updated", saved_count)
+                result_cols[1].metric("Failed", error_count)
+                result_cols[2].metric("Blank rows skipped", skipped_count)
+
+                if error_count:
+                    if saved_count:
+                        st.warning(f"Saved or updated {saved_count} record(s); {error_count} failed.")
+                    else:
+                        st.error(f"No records were saved; {error_count} failed.")
+                    with st.expander("Why records failed", expanded=True):
+                        for error in save_report["errors"]:
+                            st.write(f"- {error}")
+                elif saved_count:
+                    st.success(f"All {saved_count} record(s) were saved or updated successfully.")
+                else:
+                    st.info("No records were saved. Fill in at least one row and try again.")
+
             # Get existing data for the patient (if not adding new)
             if selected_patient != "Add New Patient":
                 existing_data = db.get_patient_test_results_with_ids(selected_patient)
@@ -4528,60 +4553,121 @@ def manage_data_page(db, user_id):
             with col1:
                 if st.button("💾 Save All Changes", type="primary"):
                     success_count = 0
-                    error_count = 0
+                    skipped_count = 0
+                    errors = []
                     
                     with st.spinner("Processing changes..."):
-                        for _, row in edited_df.iterrows():
-                            # Skip empty rows
-                            if not row['Test Type'] or not row['Patient Name'] or row['Value'] == 0.0:
-                                continue
-                            
+                        data_processor = DataProcessor(db)
+                        for row_number, (_, row) in enumerate(edited_df.iterrows(), start=1):
+                            result_id = row.get("ID", 0)
+                            is_new = pd.isna(result_id) or int(result_id) == 0
+                            test_type = "" if pd.isna(row.get("Test Type")) else str(row.get("Test Type")).strip()
+                            patient_name = "" if pd.isna(row.get("Patient Name")) else str(row.get("Patient Name")).strip()
+                            unit = "" if pd.isna(row.get("Unit")) else str(row.get("Unit")).strip()
+                            reference_range = "" if pd.isna(row.get("Reference Range")) else str(row.get("Reference Range")).strip()
+
                             try:
-                                if row['ID'] == 0:  # New entry
-                                    # Add new test result
+                                numeric_value = float(row.get("Value"))
+                            except (TypeError, ValueError):
+                                numeric_value = None
+
+                            # Empty template rows are not save attempts.
+                            row_has_data = bool(test_type or unit or reference_range)
+                            row_has_data = row_has_data or (numeric_value is not None and numeric_value != 0)
+                            if selected_patient == "Add New Patient" and patient_name:
+                                row_has_data = True
+                            if is_new and not row_has_data:
+                                skipped_count += 1
+                                continue
+
+                            row_label = f"Row {row_number}"
+                            if not is_new:
+                                row_label += f" (ID {result_id})"
+                            if test_type:
+                                row_label += f" — {test_type}"
+
+                            row_errors = []
+                            if not test_type:
+                                row_errors.append("Test Type is required.")
+                            if not patient_name:
+                                row_errors.append("Patient Name is required.")
+                            elif is_new:
+                                name_words = patient_name.split()
+                                if (
+                                    len(patient_name) < 2
+                                    or len(patient_name) > 100
+                                    or not any(character.isalpha() for character in patient_name)
+                                    or len(name_words) < 2
+                                ):
+                                    row_errors.append("Patient Name must be 2–100 characters and contain at least two words.")
+                            elif patient_name != selected_patient:
+                                row_errors.append("Patient Name cannot be changed for an existing record in this editor.")
+
+                            date_value = pd.to_datetime(row.get("Date"), errors="coerce")
+                            if pd.isna(date_value):
+                                row_errors.append("Date is missing or invalid.")
+                                test_date = None
+                            else:
+                                test_date = date_value.date()
+                                if test_date.year < 1900:
+                                    row_errors.append("Date must be in or after 1900.")
+                                elif test_date > date.today():
+                                    row_errors.append("Date cannot be in the future.")
+
+                            if numeric_value is None or pd.isna(numeric_value):
+                                row_errors.append("Value must be a valid number.")
+                            elif numeric_value < 0 or numeric_value > 1_000_000:
+                                row_errors.append("Value must be between 0 and 1,000,000.")
+
+                            if row_errors:
+                                errors.append(f"{row_label}: {' '.join(row_errors)}")
+                                continue
+
+                            try:
+                                if is_new:
                                     new_result = {
-                                        'test_type': row['Test Type'],
-                                        'value': row['Value'],
-                                        'unit': row['Unit'],
-                                        'reference_range': row['Reference Range']
+                                        "test_type": test_type,
+                                        "value": numeric_value,
+                                        "unit": unit,
+                                        "reference_range": reference_range
                                     }
-                                    
-                                    data_processor = DataProcessor(db)
                                     if data_processor.save_test_results(
-                                        patient_name=row['Patient Name'],
-                                        test_date=pd.to_datetime(row['Date']).date(),
+                                        patient_name=patient_name,
+                                        test_date=test_date,
                                         test_results=[new_result],
-                                        user_id=user_id
+                                        user_id=user_id,
+                                        show_feedback=False
                                     ):
                                         success_count += 1
                                     else:
-                                        error_count += 1
-                                        
-                                else:  # Update existing entry
+                                        errors.append(
+                                            f"{row_label}: The database did not confirm the new record was saved."
+                                        )
+                                else:
                                     if db.update_test_result(
-                                        result_id=row['ID'],
-                                        test_type=row['Test Type'],
-                                        value=row['Value'],
-                                        unit=row['Unit'],
-                                        test_date=pd.to_datetime(row['Date']).date(),
-                                        reference_range=row['Reference Range']
+                                        result_id=int(result_id),
+                                        test_type=test_type,
+                                        value=numeric_value,
+                                        unit=unit,
+                                        test_date=test_date,
+                                        reference_range=reference_range
                                     ):
                                         success_count += 1
                                     else:
-                                        error_count += 1
+                                        errors.append(
+                                            f"{row_label}: The database did not update this record; it may have been removed or the write was rejected."
+                                        )
                                         
                             except Exception as e:
-                                st.error(f"Error processing row: {str(e)}")
-                                error_count += 1
-                    
-                    # Show results
-                    if success_count > 0:
-                        st.success(f"✅ Successfully processed {success_count} entries!")
-                    if error_count > 0:
-                        st.error(f"❌ Failed to process {error_count} entries")
-                    
-                    if success_count > 0:
-                        st.rerun()
+                                errors.append(f"{row_label}: {str(e)}")
+
+                    st.session_state["excel_data_save_report"] = {
+                        "selected_patient": selected_patient,
+                        "saved_count": success_count,
+                        "skipped_count": skipped_count,
+                        "errors": errors,
+                    }
+                    st.rerun()
             
             with col2:
                 if st.button("🔄 Reset Form"):
