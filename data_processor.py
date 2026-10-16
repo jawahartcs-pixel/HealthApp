@@ -16,7 +16,8 @@ class DataProcessor:
         test_date: date,
         test_results: List[Dict[str, Any]],
         user_id: int = None,
-        show_feedback: bool = True
+        show_feedback: bool = True,
+        validate_patient_name: bool = True
     ) -> bool:
         """Save test results for a patient."""
         try:
@@ -26,7 +27,7 @@ class DataProcessor:
                 return False
             
             # Validate patient name
-            if not self._validate_patient_name(patient_name):
+            if validate_patient_name and not self._validate_patient_name(patient_name):
                 if show_feedback:
                     st.error("Invalid patient name format")
                 return False
