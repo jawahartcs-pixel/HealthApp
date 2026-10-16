@@ -10,21 +10,31 @@ class DataProcessor:
         self.db = database
         self.standards = InvestigationStandards()
     
-    def save_test_results(self, patient_name: str, test_date: date, test_results: List[Dict[str, Any]], user_id: int = None) -> bool:
+    def save_test_results(
+        self,
+        patient_name: str,
+        test_date: date,
+        test_results: List[Dict[str, Any]],
+        user_id: int = None,
+        show_feedback: bool = True
+    ) -> bool:
         """Save test results for a patient."""
         try:
             if not patient_name or not test_results:
-                st.error("Patient name and test results are required")
+                if show_feedback:
+                    st.error("Patient name and test results are required")
                 return False
             
             # Validate patient name
             if not self._validate_patient_name(patient_name):
-                st.error("Invalid patient name format")
+                if show_feedback:
+                    st.error("Invalid patient name format")
                 return False
             
             # Validate test date
             if not self._validate_test_date(test_date):
-                st.error("Invalid test date")
+                if show_feedback:
+                    st.error("Invalid test date")
                 return False
             
             # Add or get patient
@@ -58,17 +68,21 @@ class DataProcessor:
                     if success:
                         saved_count += 1
                 else:
-                    st.warning(f"Skipped invalid test result: {result}")
+                    if show_feedback:
+                        st.warning(f"Skipped invalid test result: {result}")
             
             if saved_count > 0:
-                st.success(f"Successfully saved {saved_count} test results for {patient_name}")
+                if show_feedback:
+                    st.success(f"Successfully saved {saved_count} test results for {patient_name}")
                 return True
             else:
-                st.error("No valid test results were saved")
+                if show_feedback:
+                    st.error("No valid test results were saved")
                 return False
                 
         except Exception as e:
-            st.error(f"Error saving test results: {str(e)}")
+            if show_feedback:
+                st.error(f"Error saving test results: {str(e)}")
             return False
     
     def _validate_patient_name(self, patient_name: str) -> bool:
