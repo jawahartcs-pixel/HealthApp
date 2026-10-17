@@ -9,6 +9,7 @@ import pandas as pd
 from typing import Dict, List, Tuple, Optional
 from difflib import SequenceMatcher
 import re
+from result_values import qualitative_polarity
 
 class InvestigationStandards:
     def __init__(self, db_path: str = "blood_test_results.db"):
@@ -54,6 +55,15 @@ class InvestigationStandards:
             # Add exclusions column if it doesn't exist (migration)
             try:
                 cursor.execute('ALTER TABLE investigation_standards ADD COLUMN exclusions TEXT')
+                conn.commit()
+            except sqlite3.OperationalError:
+                pass
+
+            # Store the expected polarity for qualitative tests without guessing it.
+            try:
+                cursor.execute(
+                    'ALTER TABLE investigation_standards ADD COLUMN qualitative_good_result TEXT'
+                )
                 conn.commit()
             except sqlite3.OperationalError:
                 pass
@@ -207,91 +217,29 @@ class InvestigationStandards:
         """Get all investigation standards."""
         with sqlite3.connect(self.db_path) as conn:
             cursor = conn.cursor()
-            cursor.execute("PRAGMA table_info(investigation_standards)")
-            columns = [column[1] for column in cursor.fetchall()]
-            
-            has_common_unit = 'common_unit' in columns
-            has_exclusions = 'exclusions' in columns
-            
-            if has_common_unit and has_exclusions:
-                cursor.execute('''
-                    SELECT id, standard_name, aliases, exclusions, male_range_min, male_range_max, male_unit,
-                           female_range_min, female_range_max, female_unit, description, category, common_unit
-                    FROM investigation_standards
-                    ORDER BY category, standard_name
-                ''')
-                
-                results = cursor.fetchall()
-                standards = []
-                for row in results:
-                    standards.append({
-                        'id': row[0],
-                        'standard_name': row[1],
-                        'aliases': row[2],
-                        'exclusions': row[3] or '',
-                        'male_range_min': row[4],
-                        'male_range_max': row[5],
-                        'male_unit': row[6],
-                        'female_range_min': row[7],
-                        'female_range_max': row[8],
-                        'female_unit': row[9],
-                        'description': row[10],
-                        'category': row[11],
-                        'common_unit': row[12]
-                    })
-            elif has_common_unit:
-                cursor.execute('''
-                    SELECT id, standard_name, aliases, male_range_min, male_range_max, male_unit,
-                           female_range_min, female_range_max, female_unit, description, category, common_unit
-                    FROM investigation_standards
-                    ORDER BY category, standard_name
-                ''')
-                
-                results = cursor.fetchall()
-                standards = []
-                for row in results:
-                    standards.append({
-                        'id': row[0],
-                        'standard_name': row[1],
-                        'aliases': row[2],
-                        'exclusions': '',
-                        'male_range_min': row[3],
-                        'male_range_max': row[4],
-                        'male_unit': row[5],
-                        'female_range_min': row[6],
-                        'female_range_max': row[7],
-                        'female_unit': row[8],
-                        'description': row[9],
-                        'category': row[10],
-                        'common_unit': row[11]
-                    })
-            else:
-                cursor.execute('''
-                    SELECT id, standard_name, aliases, male_range_min, male_range_max, male_unit,
-                           female_range_min, female_range_max, female_unit, description, category
-                    FROM investigation_standards
-                    ORDER BY category, standard_name
-                ''')
-                
-                results = cursor.fetchall()
-                standards = []
-                for row in results:
-                    standards.append({
-                        'id': row[0],
-                        'standard_name': row[1],
-                        'aliases': row[2],
-                        'exclusions': '',
-                        'male_range_min': row[3],
-                        'male_range_max': row[4],
-                        'male_unit': row[5],
-                        'female_range_min': row[6],
-                        'female_range_max': row[7],
-                        'female_unit': row[8],
-                        'description': row[9],
-                        'category': row[10],
-                        'common_unit': None
-                    })
-            return standards
+            cursor.execute('''
+                SELECT id, standard_name, aliases, exclusions, male_range_min, male_range_max,
+                       male_unit, female_range_min, female_range_max, female_unit,
+                       description, category, common_unit, qualitative_good_result
+                FROM investigation_standards
+                ORDER BY category, standard_name
+            ''')
+            return [{
+                'id': row[0],
+                'standard_name': row[1],
+                'aliases': row[2],
+                'exclusions': row[3] or '',
+                'male_range_min': row[4],
+                'male_range_max': row[5],
+                'male_unit': row[6],
+                'female_range_min': row[7],
+                'female_range_max': row[8],
+                'female_unit': row[9],
+                'description': row[10],
+                'category': row[11],
+                'common_unit': row[12],
+                'qualitative_good_result': row[13] or '',
+            } for row in cursor.fetchall()]
     
     def get_test_category(self, test_name: str) -> str:
         """Get the medical category for a test name."""
@@ -308,54 +256,46 @@ class InvestigationStandards:
         """Add a new investigation standard."""
         try:
             # Trim all string fields
-            for key in ['standard_name', 'aliases', 'exclusions', 'description', 'category', 'male_unit', 'female_unit', 'common_unit']:
+            for key in ['standard_name', 'aliases', 'exclusions', 'description', 'category', 'male_unit', 'female_unit', 'common_unit', 'qualitative_good_result']:
                 if key in standard_data and isinstance(standard_data[key], str):
                     standard_data[key] = standard_data[key].strip()
-            
+            good_result = standard_data.get('qualitative_good_result', '')
+            if good_result and good_result.casefold() not in {'not set', 'none'}:
+                good_result = qualitative_polarity(good_result)
+                if good_result is None:
+                    return False
+            else:
+                good_result = ''
+
             with sqlite3.connect(self.db_path) as conn:
                 cursor = conn.cursor()
-                
-                # Check if common_unit column exists
                 cursor.execute("PRAGMA table_info(investigation_standards)")
-                columns = [column[1] for column in cursor.fetchall()]
-                
-                if 'common_unit' in columns and 'exclusions' in columns:
-                    cursor.execute('''
-                        INSERT INTO investigation_standards 
-                        (standard_name, aliases, exclusions, male_range_min, male_range_max, male_unit,
-                         female_range_min, female_range_max, female_unit, description, category, common_unit)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    ''', (
-                        standard_data['standard_name'], standard_data['aliases'], standard_data.get('exclusions', ''),
-                        standard_data['male_range_min'], standard_data['male_range_max'], standard_data['male_unit'],
-                        standard_data['female_range_min'], standard_data['female_range_max'], standard_data['female_unit'],
-                        standard_data['description'], standard_data['category'], standard_data.get('common_unit', '')
-                    ))
-                elif 'common_unit' in columns:
-                    cursor.execute('''
-                        INSERT INTO investigation_standards 
-                        (standard_name, aliases, male_range_min, male_range_max, male_unit,
-                         female_range_min, female_range_max, female_unit, description, category, common_unit)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    ''', (
-                        standard_data['standard_name'], standard_data['aliases'],
-                        standard_data['male_range_min'], standard_data['male_range_max'], standard_data['male_unit'],
-                        standard_data['female_range_min'], standard_data['female_range_max'], standard_data['female_unit'],
-                        standard_data['description'], standard_data['category'], standard_data.get('common_unit', '')
-                    ))
-                else:
-                    cursor.execute('''
-                        INSERT INTO investigation_standards 
-                        (standard_name, aliases, male_range_min, male_range_max, male_unit,
-                         female_range_min, female_range_max, female_unit, description, category)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    ''', (
-                        standard_data['standard_name'], standard_data['aliases'],
-                        standard_data['male_range_min'], standard_data['male_range_max'], standard_data['male_unit'],
-                        standard_data['female_range_min'], standard_data['female_range_max'], standard_data['female_unit'],
-                        standard_data['description'], standard_data['category']
-                    ))
-                
+                available = {column[1] for column in cursor.fetchall()}
+                fields = [
+                    'standard_name', 'aliases', 'exclusions', 'male_range_min',
+                    'male_range_max', 'male_unit', 'female_range_min',
+                    'female_range_max', 'female_unit', 'description', 'category',
+                    'common_unit', 'qualitative_good_result',
+                ]
+                insert_fields = [field for field in fields if field in available]
+                defaults = {
+                    'aliases': '', 'exclusions': '', 'male_range_min': None,
+                    'male_range_max': None, 'male_unit': '', 'female_range_min': None,
+                    'female_range_max': None, 'female_unit': '', 'description': '',
+                    'category': 'Other', 'common_unit': '',
+                    'qualitative_good_result': good_result,
+                }
+                values = {
+                    field: standard_data.get(field, defaults.get(field))
+                    for field in insert_fields
+                }
+                if 'qualitative_good_result' in values:
+                    values['qualitative_good_result'] = good_result
+                cursor.execute(
+                    f"INSERT INTO investigation_standards ({', '.join(insert_fields)}) "
+                    f"VALUES ({', '.join('?' for _ in insert_fields)})",
+                    [values[field] for field in insert_fields],
+                )
                 conn.commit()
                 return True
         except Exception as e:
@@ -396,6 +336,8 @@ class InvestigationStandards:
                     insert_columns.insert(2, 'exclusions')
                 if 'common_unit' in available_columns:
                     insert_columns.append('common_unit')
+                if 'qualitative_good_result' in available_columns:
+                    insert_columns.append('qualitative_good_result')
 
                 cursor.execute("SELECT LOWER(standard_name) FROM investigation_standards")
                 existing_names = {row[0] for row in cursor.fetchall() if row[0]}
@@ -438,6 +380,17 @@ class InvestigationStandards:
                         'description': str(source.get('description') or '').strip(),
                         'category': category,
                     }
+                    raw_good_result = str(source.get('qualitative_good_result') or '').strip()
+                    if raw_good_result.casefold() in {'', 'not set', 'none'}:
+                        values['qualitative_good_result'] = ''
+                    else:
+                        values['qualitative_good_result'] = qualitative_polarity(raw_good_result)
+                        if values['qualitative_good_result'] is None:
+                            failed.append({
+                                'row': row_number, 'name': name,
+                                'error': 'Good qualitative result must be Negative, Positive, or Not set.',
+                            })
+                            continue
                     values['male_unit'] = values['common_unit']
                     values['female_unit'] = values['common_unit']
                     invalid_number = None
@@ -531,51 +484,31 @@ class InvestigationStandards:
                     print(f"Error updating standard: Standard name '{standard_data['standard_name']}' already exists (ID: {existing_record[0]})")
                     return False
                 
-                # Check if common_unit column exists
                 cursor.execute("PRAGMA table_info(investigation_standards)")
-                columns = [column[1] for column in cursor.fetchall()]
-                
-                if 'common_unit' in columns and 'exclusions' in columns:
-                    cursor.execute('''
-                        UPDATE investigation_standards 
-                        SET standard_name=?, aliases=?, exclusions=?, male_range_min=?, male_range_max=?, male_unit=?,
-                            female_range_min=?, female_range_max=?, female_unit=?, description=?, category=?,
-                            common_unit=?, updated_date=CURRENT_TIMESTAMP
-                        WHERE id=?
-                    ''', (
-                        standard_data['standard_name'], standard_data['aliases'], standard_data.get('exclusions', ''),
-                        standard_data['male_range_min'], standard_data['male_range_max'], standard_data['male_unit'],
-                        standard_data['female_range_min'], standard_data['female_range_max'], standard_data['female_unit'],
-                        standard_data['description'], standard_data['category'], standard_data.get('common_unit', ''),
-                        standard_id
-                    ))
-                elif 'common_unit' in columns:
-                    cursor.execute('''
-                        UPDATE investigation_standards 
-                        SET standard_name=?, aliases=?, male_range_min=?, male_range_max=?, male_unit=?,
-                            female_range_min=?, female_range_max=?, female_unit=?, description=?, category=?,
-                            common_unit=?, updated_date=CURRENT_TIMESTAMP
-                        WHERE id=?
-                    ''', (
-                        standard_data['standard_name'], standard_data['aliases'],
-                        standard_data['male_range_min'], standard_data['male_range_max'], standard_data['male_unit'],
-                        standard_data['female_range_min'], standard_data['female_range_max'], standard_data['female_unit'],
-                        standard_data['description'], standard_data['category'], standard_data.get('common_unit', ''),
-                        standard_id
-                    ))
+                available = {column[1] for column in cursor.fetchall()}
+                editable_fields = [
+                    'standard_name', 'aliases', 'exclusions', 'male_range_min',
+                    'male_range_max', 'male_unit', 'female_range_min',
+                    'female_range_max', 'female_unit', 'description', 'category',
+                    'common_unit', 'qualitative_good_result',
+                ]
+                update_fields = [field for field in editable_fields if field in available]
+                values = {}
+                for field in update_fields:
+                    values[field] = standard_data.get(field, current_standard.get(field))
+                raw_good_result = str(values.get('qualitative_good_result') or '').strip()
+                if raw_good_result.casefold() in {'', 'not set', 'none'}:
+                    values['qualitative_good_result'] = ''
                 else:
-                    cursor.execute('''
-                        UPDATE investigation_standards 
-                        SET standard_name=?, aliases=?, male_range_min=?, male_range_max=?, male_unit=?,
-                            female_range_min=?, female_range_max=?, female_unit=?, description=?, category=?,
-                            updated_date=CURRENT_TIMESTAMP
-                        WHERE id=?
-                    ''', (
-                        standard_data['standard_name'], standard_data['aliases'],
-                        standard_data['male_range_min'], standard_data['male_range_max'], standard_data['male_unit'],
-                        standard_data['female_range_min'], standard_data['female_range_max'], standard_data['female_unit'],
-                        standard_data['description'], standard_data['category'], standard_id
-                    ))
+                    values['qualitative_good_result'] = qualitative_polarity(raw_good_result)
+                    if values['qualitative_good_result'] is None:
+                        return False
+                assignments = ', '.join(f"{field} = ?" for field in update_fields)
+                cursor.execute(
+                    f"UPDATE investigation_standards SET {assignments}, "
+                    "updated_date=CURRENT_TIMESTAMP WHERE id=?",
+                    [values[field] for field in update_fields] + [standard_id],
+                )
                 
                 # Now sync changes to test results if reference ranges or units were updated
                 self._sync_standard_changes_to_test_results(cursor, current_standard, standard_data)
@@ -854,59 +787,24 @@ class InvestigationStandards:
         try:
             with sqlite3.connect(self.db_path) as conn:
                 cursor = conn.cursor()
-                # Check if common_unit column exists
-                cursor.execute("PRAGMA table_info(investigation_standards)")
-                columns = [column[1] for column in cursor.fetchall()]
-                
-                if 'common_unit' in columns:
-                    cursor.execute('''
-                        SELECT id, standard_name, aliases, male_range_min, male_range_max, male_unit,
-                               female_range_min, female_range_max, female_unit, description, category, common_unit
-                        FROM investigation_standards
-                        WHERE id = ?
-                    ''', (standard_id,))
-                    
-                    row = cursor.fetchone()
-                    if row:
-                        return {
-                            'id': row[0],
-                            'standard_name': row[1],
-                            'aliases': row[2],
-                            'male_range_min': row[3],
-                            'male_range_max': row[4],
-                            'male_unit': row[5],
-                            'female_range_min': row[6],
-                            'female_range_max': row[7],
-                            'female_unit': row[8],
-                            'description': row[9],
-                            'category': row[10],
-                            'common_unit': row[11]
-                        }
-                else:
-                    cursor.execute('''
-                        SELECT id, standard_name, aliases, male_range_min, male_range_max, male_unit,
-                               female_range_min, female_range_max, female_unit, description, category
-                        FROM investigation_standards
-                        WHERE id = ?
-                    ''', (standard_id,))
-                    
-                    row = cursor.fetchone()
-                    if row:
-                        return {
-                            'id': row[0],
-                            'standard_name': row[1],
-                            'aliases': row[2],
-                            'male_range_min': row[3],
-                            'male_range_max': row[4],
-                            'male_unit': row[5],
-                            'female_range_min': row[6],
-                            'female_range_max': row[7],
-                            'female_unit': row[8],
-                            'description': row[9],
-                            'category': row[10],
-                            'common_unit': None
-                        }
-                return None
+                cursor.execute('''
+                    SELECT id, standard_name, aliases, exclusions, male_range_min, male_range_max,
+                           male_unit, female_range_min, female_range_max, female_unit,
+                           description, category, common_unit, qualitative_good_result
+                    FROM investigation_standards WHERE id = ?
+                ''', (standard_id,))
+                row = cursor.fetchone()
+                if not row:
+                    return None
+                return {
+                    'id': row[0], 'standard_name': row[1], 'aliases': row[2],
+                    'exclusions': row[3] or '', 'male_range_min': row[4],
+                    'male_range_max': row[5], 'male_unit': row[6],
+                    'female_range_min': row[7], 'female_range_max': row[8],
+                    'female_unit': row[9], 'description': row[10],
+                    'category': row[11], 'common_unit': row[12],
+                    'qualitative_good_result': row[13] or '',
+                }
         except Exception as e:
             print(f"Error getting standard by ID: {e}")
             return None
@@ -1058,6 +956,9 @@ class InvestigationStandards:
         standards = self.get_all_standards()
         for standard in standards:
             if standard['standard_name'] == standard_name:
+                good_result = standard.get('qualitative_good_result')
+                if good_result:
+                    return f"Expected: {good_result}"
                 if gender.lower() == 'male':
                     return f"{standard['male_range_min']}-{standard['male_range_max']} {standard['male_unit']}"
                 elif gender.lower() == 'female':
