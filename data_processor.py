@@ -3,13 +3,12 @@ from typing import List, Dict, Any, Optional
 import streamlit as st
 from database import Database
 from investigation_standards import InvestigationStandards
-from result_values import normalize_test_value
 
 class DataProcessor:
     def __init__(self, database: Database):
         """Initialize data processor with database connection."""
         self.db = database
-        self.standards = InvestigationStandards(database)
+        self.standards = InvestigationStandards()
     
     def save_test_results(
         self,
@@ -45,9 +44,7 @@ class DataProcessor:
             # Save each test result
             saved_count = 0
             for result in test_results:
-                normalized_result = dict(result)
-                normalized_result['value'] = normalize_test_value(result.get('value'))
-                if self._validate_test_result(normalized_result):
+                if self._validate_test_result(result):
                     # Use the test type exactly as provided - no additional standardization
                     # The UI layer has already handled standardization vs custom choice
                     test_type_to_save = result['test_type']
@@ -64,7 +61,7 @@ class DataProcessor:
                         patient_id=patient_id,
                         test_date=test_date,
                         test_type=test_type_to_save,
-                        test_value=normalized_result['value'],
+                        test_value=result['value'],
                         unit=result.get('unit', ''),
                         reference_range=reference_range,
                         user_id=user_id
@@ -140,14 +137,12 @@ class DataProcessor:
                 return False
             
             # Validate value
-            value = normalize_test_value(result['value'])
-            if value is None:
+            value = result['value']
+            if not isinstance(value, (int, float)):
                 return False
-            if isinstance(value, (int, float)):
-                # Keep numeric medical values within the accepted range.
-                if value < 0 or value > 1000000:
-                    return False
-            elif len(value) > 200:
+            
+            # Check for reasonable value range (not negative, not extremely large)
+            if value < 0 or value > 1000000:
                 return False
             
             return True
@@ -187,14 +182,6 @@ class DataProcessor:
     
     def validate_test_value_range(self, test_type: str, value: float) -> Dict[str, Any]:
         """Validate if test value is within normal ranges and provide interpretation."""
-        value = normalize_test_value(value)
-        if not isinstance(value, (int, float)):
-            return {
-                'is_normal': True,
-                'status': 'Qualitative',
-                'message': 'Qualitative result; see its expected result in Investigation Standards.',
-                'severity': 'unknown'
-            }
         # Define normal ranges for common tests
         normal_ranges = {
             'Glucose': {'min': 70, 'max': 100, 'unit': 'mg/dL'},
@@ -319,15 +306,8 @@ class DataProcessor:
                 return {'error': 'Not enough data points for trend analysis'}
             
             # Extract values and dates
-            numeric_history = []
-            for test in test_history:
-                value = normalize_test_value(test[1])
-                if isinstance(value, (int, float)):
-                    numeric_history.append((test[0], float(value)))
-            if len(numeric_history) < 2:
-                return {'error': 'Trend analysis is only available after at least two numeric results.'}
-            values = [value for _, value in numeric_history]
-            dates = [test_date for test_date, _ in numeric_history]
+            values = [float(test[1]) for test in test_history]
+            dates = [test[0] for test in test_history]
             
             # Calculate trend
             if len(values) >= 2:

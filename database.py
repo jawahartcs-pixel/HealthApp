@@ -3,7 +3,6 @@ import os
 from datetime import datetime, date
 from typing import List, Tuple, Optional, Dict, Any
 import pandas as pd
-from result_values import normalize_test_value
 
 class Database:
     def __init__(self, db_path: str = "blood_test_results.db"):
@@ -554,23 +553,24 @@ class Database:
                 
                 for result in test_results:
                     test_type = result.get('test_type', '')
-                    test_value = normalize_test_value(
-                        result.get('value', result.get('test_value'))
-                    )
-                    if test_value is None:
-                        continue
+                    test_value = result.get('value', result.get('test_value', 0))
+                    
+                    try:
+                        test_value_float = float(test_value) if test_value else 0
+                    except (ValueError, TypeError):
+                        test_value_float = 0
                     
                     cursor.execute('''
                         SELECT result_id, test_type, test_value, test_date
                         FROM test_results 
                         WHERE patient_id = ? AND test_date = ? AND test_type = ? AND test_value = ?
-                    ''', (patient_id, test_date, test_type, test_value))
+                    ''', (patient_id, test_date, test_type, test_value_float))
                     
                     existing = cursor.fetchone()
                     if existing:
                         duplicates.append({
                             'test_type': test_type,
-                            'value': test_value,
+                            'value': test_value_float,
                             'date': test_date,
                             'existing_id': existing[0]
                         })
@@ -580,13 +580,10 @@ class Database:
         
         return duplicates
     
-    def add_test_result(self, patient_id: int, test_date: date, test_type: str,
-                       test_value: Any, unit: str = None, reference_range: str = None, user_id: int = None) -> bool:
+    def add_test_result(self, patient_id: int, test_date: date, test_type: str, 
+                       test_value: float, unit: str = None, reference_range: str = None, user_id: int = None) -> bool:
         """Add a test result to the database."""
         try:
-            test_value = normalize_test_value(test_value)
-            if test_value is None:
-                return False
             test_type = test_type.strip() if test_type else test_type
             unit = unit.strip() if unit else unit
             with sqlite3.connect(self.db_path) as conn:
@@ -812,15 +809,13 @@ class Database:
             print(f"Error deleting test result: {e}")
             return False
     
-    def update_test_result(self, result_id: int, test_type: str, value: Any,
+    def update_test_result(self, result_id: int, test_type: str, value: float, 
                           unit: str, test_date: date, reference_range: str = None) -> bool:
         """Update a specific test result by ID."""
         try:
             # Convert numpy types to Python native types for SQLite compatibility
             result_id = int(result_id)
-            value = normalize_test_value(value)
-            if value is None:
-                return False
+            value = float(value)
             test_type = test_type.strip() if test_type else test_type
             unit = unit.strip() if unit else unit
             
