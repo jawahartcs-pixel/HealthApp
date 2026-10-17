@@ -14,7 +14,6 @@ from auth_system import AuthSystem
 from auth_ui import AuthUI
 from anomaly_detection_simple import SimpleAnomalyDetector
 from utils import validate_date, format_test_value
-from result_values import normalize_test_value, qualitative_polarity, test_value_key
 from image_snippet_extractor import ImageSnippetExtractor
 from investigation_standards import InvestigationStandards
 from heatmap_view import render_heatmap_view
@@ -294,7 +293,7 @@ def upload_results_page(file_parser, data_processor, user_id):
                     column_config = {
                         'Include': st.column_config.CheckboxColumn('Include', help='Check to include this test', default=True),
                         'Investigation': st.column_config.TextColumn('Investigation', width='medium'),
-                        'Value': st.column_config.TextColumn('Value', width='small', help='Enter a number or a qualitative result such as Negative or Positive'),
+                        'Value': st.column_config.NumberColumn('Value', format='%.2f', width='small'),
                         'Unit': st.column_config.TextColumn('Unit', width='small'),
                         'Source Text': st.column_config.TextColumn('Source Text', width='medium'),
                     }
@@ -331,9 +330,9 @@ def upload_results_page(file_parser, data_processor, user_id):
                                         st.warning(f"Found {len(duplicates)} duplicate test(s) already in database:")
                                         for dup in duplicates:
                                             st.write(f"  - **{dup['test_type']}**: {dup['value']} on {dup['date']}")
-                                        duplicate_keys = {(d['test_type'], test_value_key(d['value'])) for d in duplicates}
+                                        duplicate_keys = {(d['test_type'], d['value']) for d in duplicates}
                                         final_results = [r for r in final_results
-                                                        if (r['test_type'], test_value_key(r.get('value'))) not in duplicate_keys]
+                                                        if (r['test_type'], float(r['value']) if r['value'] else 0) not in duplicate_keys]
 
                                     if final_results:
                                         success = data_processor.save_test_results(
@@ -800,9 +799,9 @@ def upload_results_page(file_parser, data_processor, user_id):
                                 user_id=user_id
                             )
                             if _dups:
-                                _dup_keys = {(d["test_type"], test_value_key(d["value"])) for d in _dups}
+                                _dup_keys = {(d["test_type"], d["value"]) for d in _dups}
                                 _date_rows = [r for r in _date_rows
-                                              if (r["test_type"], test_value_key(r.get("value"))) not in _dup_keys]
+                                              if (r["test_type"], float(r["value"]) if r["value"] else 0) not in _dup_keys]
                                 _total_skipped += len(_dups)
                             if _date_rows:
                                 _ok = data_processor.save_test_results(
@@ -1075,9 +1074,10 @@ def upload_results_page(file_parser, data_processor, user_id):
                                                 help='Standardized investigation name',
                                                 width='medium'
                                             ),
-                                            'Value': st.column_config.TextColumn(
+                                            'Value': st.column_config.NumberColumn(
                                                 'Value',
-                                                help='Numeric or Negative/Positive result',
+                                                help='Test result value',
+                                                format='%.2f',
                                                 width='small'
                                             ),
                                             'Unit': st.column_config.TextColumn(
@@ -1298,9 +1298,9 @@ def upload_results_page(file_parser, data_processor, user_id):
                                                             st.write(f"  • **{dup['test_type']}**: {dup['value']} on {dup['date']}")
                                                         
                                                         # Filter out duplicates
-                                                        duplicate_keys = {(d['test_type'], test_value_key(d['value'])) for d in duplicates}
+                                                        duplicate_keys = {(d['test_type'], d['value']) for d in duplicates}
                                                         standards_final_results = [r for r in standards_final_results 
-                                                                                  if (r['test_type'], test_value_key(r.get('value'))) not in duplicate_keys]
+                                                                                  if (r['test_type'], float(r['value']) if r['value'] else 0) not in duplicate_keys]
                                                         
                                                         if not standards_final_results:
                                                             st.info("All tests are duplicates. No new results to save.")
@@ -1436,9 +1436,10 @@ def upload_results_page(file_parser, data_processor, user_id):
                                                 help='Standardized investigation name',
                                                 width='medium'
                                             ),
-                                            'Value': st.column_config.TextColumn(
+                                            'Value': st.column_config.NumberColumn(
                                                 'Value',
-                                                help='Numeric or Negative/Positive result',
+                                                help='Test result value',
+                                                format='%.2f',
                                                 width='small'
                                             ),
                                             'Unit': st.column_config.TextColumn(
@@ -1662,9 +1663,9 @@ def upload_results_page(file_parser, data_processor, user_id):
                                                             st.write(f"  • **{dup['test_type']}**: {dup['value']} on {dup['date']}")
                                                         
                                                         # Filter out duplicates
-                                                        duplicate_keys = {(d['test_type'], test_value_key(d['value'])) for d in duplicates}
+                                                        duplicate_keys = {(d['test_type'], d['value']) for d in duplicates}
                                                         standards_final_results = [r for r in standards_final_results 
-                                                                                  if (r['test_type'], test_value_key(r.get('value'))) not in duplicate_keys]
+                                                                                  if (r['test_type'], float(r['value']) if r['value'] else 0) not in duplicate_keys]
                                                         
                                                         if not standards_final_results:
                                                             st.info("All tests are duplicates. No new results to save.")
@@ -1938,11 +1939,12 @@ Extraction Method: {result.get('source', 'regex')}""")
 
                                         
                                         # Editable value
-                                        st.text_input(
+                                        st.number_input(
                                             "Value",
-                                            value=str(result['value']),
-                                            key=f"test_value_text_{uploaded_file.name}_{i}",
-                                            help="Enter a number or a qualitative result such as Negative or Positive"
+                                            value=float(result['value']),
+                                            key=f"test_value_{uploaded_file.name}_{i}",
+                                            format="%.2f",
+                                            help="Edit the test value if needed"
                                         )
                                         
                                         # Editable unit
@@ -2021,12 +2023,12 @@ Extraction Method: {result.get('source', 'regex')}""")
 
                                     
                                     with col2:
-                                        st.text_input(
+                                        st.number_input(
                                             f"Additional Value {i+1}",
-                                            value="",
-                                            key=f"add_test_value_text_{uploaded_file.name}_{i}",
+                                            value=0.0,
+                                            key=f"add_test_value_{uploaded_file.name}_{i}",
                                             label_visibility="collapsed",
-                                            placeholder="Number or Negative/Positive"
+                                            format="%.2f"
                                         )
                                     
                                     with col3:
@@ -2082,7 +2084,7 @@ Extraction Method: {result.get('source', 'regex')}""")
                                         
                                         final_results.append({
                                             'test_type': final_test_type,
-                                            'value': st.session_state.get(f"test_value_text_{uploaded_file.name}_{i}", str(result['value'])),
+                                            'value': st.session_state.get(f"test_value_{uploaded_file.name}_{i}", result['value']),
                                             'unit': st.session_state.get(f"test_unit_{uploaded_file.name}_{i}", result.get('unit', '')),
                                             'reference_range': st.session_state.get(f"test_ref_range_{uploaded_file.name}_{i}", result.get('reference_range', ''))
                                         })
@@ -2104,12 +2106,12 @@ Extraction Method: {result.get('source', 'regex')}""")
                                                 # User selected a standard from dropdown - use that standard
                                                 test_name = add_dropdown_selection
                                             
-                                            test_value = st.session_state.get(f"add_test_value_text_{uploaded_file.name}_{i}", "")
+                                            test_value = st.session_state.get(f"add_test_value_{uploaded_file.name}_{i}", 0.0)
                                             test_unit = st.session_state.get(f"add_test_unit_{uploaded_file.name}_{i}", "").strip()
                                             test_ref_range = st.session_state.get(f"add_test_ref_range_{uploaded_file.name}_{i}", "").strip()
                                             
-                                            # Zero is valid; omit only a blank value.
-                                            if test_name and str(test_value).strip():
+                                            # Only add if test name is provided and value is not zero
+                                            if test_name and test_value != 0.0:
                                                 final_results.append({
                                                     'test_type': test_name,
                                                     'value': test_value,
@@ -2132,9 +2134,9 @@ Extraction Method: {result.get('source', 'regex')}""")
                                         st.write(f"  • **{dup['test_type']}**: {dup['value']} on {dup['date']}")
                                     
                                     # Filter out duplicates from final results
-                                    duplicate_keys = {(d['test_type'], test_value_key(d['value'])) for d in duplicates}
+                                    duplicate_keys = {(d['test_type'], d['value']) for d in duplicates}
                                     final_results = [r for r in final_results 
-                                                    if (r['test_type'], test_value_key(r.get('value'))) not in duplicate_keys]
+                                                    if (r['test_type'], float(r['value']) if r['value'] else 0) not in duplicate_keys]
                                     
                                     if not final_results:
                                         st.info("All tests are duplicates. No new results to save.")
@@ -2247,12 +2249,12 @@ Extraction Method: {result.get('source', 'regex')}""")
                                             )
                                     
                                     with col2:
-                                        st.text_input(
+                                        st.number_input(
                                             f"Value {i+1}",
-                                            value="",
-                                            key=f"add_test_value_text_{uploaded_file.name}_{i}",
+                                            value=0.0,
+                                            key=f"add_test_value_{uploaded_file.name}_{i}",
                                             label_visibility="collapsed",
-                                            placeholder="Number or Negative/Positive"
+                                            format="%.2f"
                                         )
                                     
                                     with col3:
@@ -2303,12 +2305,12 @@ Extraction Method: {result.get('source', 'regex')}""")
                                             else:
                                                 test_name = add_dropdown_selection
                                             
-                                            test_value = st.session_state.get(f"add_test_value_text_{uploaded_file.name}_{i}", "")
+                                            test_value = st.session_state.get(f"add_test_value_{uploaded_file.name}_{i}", 0.0)
                                             test_unit = st.session_state.get(f"add_test_unit_{uploaded_file.name}_{i}", "").strip()
                                             test_ref_range = st.session_state.get(f"add_test_ref_range_{uploaded_file.name}_{i}", "").strip()
                                             
-                                            # Zero is valid; omit only a blank value.
-                                            if test_name and str(test_value).strip():
+                                            # Only add if test name is provided and value is not zero
+                                            if test_name and test_value != 0.0:
                                                 final_results.append({
                                                     'test_type': test_name,
                                                     'value': test_value,
@@ -2332,9 +2334,9 @@ Extraction Method: {result.get('source', 'regex')}""")
                                             st.write(f"  • **{dup['test_type']}**: {dup['value']} on {dup['date']}")
                                         
                                         # Filter out duplicates
-                                        duplicate_keys = {(d['test_type'], test_value_key(d['value'])) for d in duplicates}
+                                        duplicate_keys = {(d['test_type'], d['value']) for d in duplicates}
                                         final_results = [r for r in final_results 
-                                                        if (r['test_type'], test_value_key(r.get('value'))) not in duplicate_keys]
+                                                        if (r['test_type'], float(r['value']) if r['value'] else 0) not in duplicate_keys]
                                         
                                         if not final_results:
                                             st.info("All tests are duplicates. No new results to save.")
@@ -2466,11 +2468,11 @@ Extraction Method: {result.get('source', 'regex')}""")
                                         )
                                 
                                 with col2:
-                                    st.text_input(
+                                    st.number_input(
                                         f"Value {i+1}",
-                                        value="",
-                                        key=f"bottom_test_value_text_{uploaded_file.name}_{i}",
-                                        placeholder="Number or Negative/Positive"
+                                        value=0.0,
+                                        key=f"bottom_test_value_{uploaded_file.name}_{i}",
+                                        format="%.2f"
                                     )
                                 
                                 with col3:
@@ -2515,12 +2517,12 @@ Extraction Method: {result.get('source', 'regex')}""")
                                         else:
                                             test_name = dropdown_selection
                                         
-                                        test_value = st.session_state.get(f"bottom_test_value_text_{uploaded_file.name}_{i}", "")
+                                        test_value = st.session_state.get(f"bottom_test_value_{uploaded_file.name}_{i}", 0.0)
                                         test_unit = st.session_state.get(f"bottom_test_unit_{uploaded_file.name}_{i}", "").strip()
                                         test_ref_range = st.session_state.get(f"bottom_test_ref_range_{uploaded_file.name}_{i}", "").strip()
                                         
-                                        # Zero is valid; omit only a blank value.
-                                        if test_name and str(test_value).strip():
+                                        # Only add if test name is provided and value is not zero
+                                        if test_name and test_value != 0.0:
                                             final_results.append({
                                                 'test_type': test_name,
                                                 'value': test_value,
@@ -2544,9 +2546,9 @@ Extraction Method: {result.get('source', 'regex')}""")
                                             st.write(f"  • **{dup['test_type']}**: {dup['value']} on {dup['date']}")
                                         
                                         # Filter out duplicates
-                                        duplicate_keys = {(d['test_type'], test_value_key(d['value'])) for d in duplicates}
+                                        duplicate_keys = {(d['test_type'], d['value']) for d in duplicates}
                                         final_results = [r for r in final_results 
-                                                        if (r['test_type'], test_value_key(r.get('value'))) not in duplicate_keys]
+                                                        if (r['test_type'], float(r['value']) if r['value'] else 0) not in duplicate_keys]
                                         
                                         if not final_results:
                                             st.info("All tests are duplicates. No new results to save.")
@@ -3218,8 +3220,6 @@ def patient_dashboard_page(db, visualization, alert_system, user_id):
         # Convert to DataFrame for easier manipulation
         df = pd.DataFrame(patient_tests, columns=['Date', 'Test Type', 'Value', 'Unit', 'Reference Range'])
         df['Date'] = pd.to_datetime(df['Date'])
-        # Keep numeric chart calculations stable; the separate heatmap and tables
-        # retain the original text result so qualitative values remain visible.
         df['Value'] = pd.to_numeric(df['Value'], errors='coerce')
         
         # Get unique report dates and test types
@@ -3428,8 +3428,8 @@ def patient_dashboard_page(db, visualization, alert_system, user_id):
                             value_1_data = report_1_data[report_1_data['Test Type'] == test_type]
                             value_2_data = report_2_data[report_2_data['Test Type'] == test_type]
                             
-                            value_1 = normalize_test_value(value_1_data['Value'].iloc[0]) if not value_1_data.empty else None
-                            value_2 = normalize_test_value(value_2_data['Value'].iloc[0]) if not value_2_data.empty else None
+                            value_1 = value_1_data['Value'].iloc[0] if not value_1_data.empty else None
+                            value_2 = value_2_data['Value'].iloc[0] if not value_2_data.empty else None
                             
                             baseline_date_used = str(threshold_report_1_date)
                             
@@ -3439,7 +3439,7 @@ def patient_dashboard_page(db, visualization, alert_system, user_id):
                                     (df['Date'].dt.date < threshold_report_2_date)
                                 ].sort_values('Date', ascending=False)
                                 if not earlier_data.empty:
-                                    value_1 = normalize_test_value(earlier_data['Value'].iloc[0])
+                                    value_1 = earlier_data['Value'].iloc[0]
                                     fallback_date = earlier_data['Date'].iloc[0]
                                     if hasattr(fallback_date, 'date'):
                                         fallback_date = fallback_date.date()
@@ -3452,9 +3452,6 @@ def patient_dashboard_page(db, visualization, alert_system, user_id):
                                     pct_change = 0
                                 else:
                                     continue
-
-                            if not isinstance(value_1, (int, float)) or not isinstance(value_2, (int, float)):
-                                continue
                             else:
                                 value_1_display = value_1
                                 value_2_display = value_2
@@ -4000,12 +3997,7 @@ def patient_dashboard_page(db, visualization, alert_system, user_id):
                                         unit = unit if unit is not None else ''
                                         
                                         if len(test_data) > 1:
-                                            latest_numeric = normalize_test_value(test_data.iloc[-1]['Value'])
-                                            previous_numeric = normalize_test_value(test_data.iloc[-2]['Value'])
-                                        else:
-                                            latest_numeric = previous_numeric = None
-                                        if isinstance(latest_numeric, (int, float)) and isinstance(previous_numeric, (int, float)):
-                                            trend_change = latest_numeric - previous_numeric
+                                            trend_change = test_data.iloc[-1]['Value'] - test_data.iloc[-2]['Value']
                                             trend_icon = "📈" if trend_change > 0 else "📉" if trend_change < 0 else "➡️"
                                             st.caption(f"Latest: **{latest_value} {unit}** ({latest_date}) {trend_icon}")
                                         else:
@@ -4068,12 +4060,7 @@ def patient_dashboard_page(db, visualization, alert_system, user_id):
                                                 
                                                 # Calculate trend (if more than one data point)
                                                 if len(test_data) > 1:
-                                                    latest_numeric = normalize_test_value(test_data.iloc[-1]['Value'])
-                                                    previous_numeric = normalize_test_value(test_data.iloc[-2]['Value'])
-                                                else:
-                                                    latest_numeric = previous_numeric = None
-                                                if isinstance(latest_numeric, (int, float)) and isinstance(previous_numeric, (int, float)):
-                                                    trend_change = latest_numeric - previous_numeric
+                                                    trend_change = test_data.iloc[-1]['Value'] - test_data.iloc[-2]['Value']
                                                     trend_icon = "📈" if trend_change > 0 else "📉" if trend_change < 0 else "➡️"
                                                     
                                                     st.caption(f"Latest: **{latest_value} {unit}** ({latest_date}) {trend_icon}")
@@ -4159,6 +4146,7 @@ def search_filter_page(db, visualization, user_id):
             # Convert to DataFrame
             df = pd.DataFrame(results, columns=['Patient Name', 'Date', 'Test Type', 'Value', 'Unit', 'Reference Range'])
             df['Date'] = pd.to_datetime(df['Date'])
+            df['Value'] = pd.to_numeric(df['Value'], errors='coerce')
             
             # Display results table
             st.dataframe(df, use_container_width=True, hide_index=True)
@@ -4314,6 +4302,7 @@ def manage_data_page(db, user_id):
             if all_test_data:
                 edit_df = pd.DataFrame(all_test_data, columns=['ID', 'Date', 'Test Type', 'Value', 'Unit', 'Reference Range'])
                 edit_df['Date'] = pd.to_datetime(edit_df['Date']).dt.strftime('%Y-%m-%d')
+                edit_df['Value'] = pd.to_numeric(edit_df['Value'], errors='coerce')
                 render_heatmap_view(db, selected_patient, user_id, edit_df, key_prefix="manage", editable=True)
             else:
                 st.info("No test results found for this patient.")
@@ -4344,7 +4333,7 @@ def manage_data_page(db, user_id):
                         'ID': row[0],
                         'Date': row[1],
                         'Test Type': row[2],
-                        'Value': normalize_test_value(row[3]) if row[3] is not None else '',
+                        'Value': float(row[3]) if row[3] else 0.0,
                         'Unit': row[4] or '',
                         'Reference Range': row[5] or '',
                         'Patient Name': selected_patient,
@@ -4372,7 +4361,7 @@ def manage_data_page(db, user_id):
                     'ID': 0,  # 0 indicates new entry
                     'Date': pd.Timestamp.now().strftime('%Y-%m-%d'),
                     'Test Type': '',
-                    'Value': '',
+                    'Value': 0.0,
                     'Unit': '',
                     'Reference Range': '',
                     'Patient Name': selected_patient if selected_patient != "Add New Patient" else '',
@@ -4390,10 +4379,7 @@ def manage_data_page(db, user_id):
                 'ID': st.column_config.NumberColumn('ID', width='small', disabled=True, help='0 = New Entry'),
                 'Date': st.column_config.DateColumn('Date', width='medium', required=True),
                 'Test Type': st.column_config.TextColumn('Test Type', width='medium', required=True),
-                'Value': st.column_config.TextColumn(
-                    'Value', width='small', required=False,
-                    help='Enter a number, Negative, or Positive.'
-                ),
+                'Value': st.column_config.NumberColumn('Value', width='small', format="%.2f", required=True),
                 'Unit': st.column_config.TextColumn('Unit', width='small'),
                 'Reference Range': st.column_config.TextColumn('Reference Range', width='medium'),
                 'Patient Name': st.column_config.TextColumn('Patient Name', width='medium', required=True),
@@ -4443,13 +4429,9 @@ def manage_data_page(db, user_id):
             
             with filter_col4:
                 # Value range filter and search
-                _numeric_editor_values = [
-                    float(value) for value in edit_df['Value'].map(normalize_test_value)
-                    if isinstance(normalize_test_value(value), (int, float))
-                ]
-                if _numeric_editor_values:
-                    min_val = min(_numeric_editor_values)
-                    max_val = max(_numeric_editor_values)
+                if len(edit_df[edit_df['Value'] > 0]) > 0:
+                    min_val = float(edit_df[edit_df['Value'] > 0]['Value'].min())
+                    max_val = float(edit_df[edit_df['Value'] > 0]['Value'].max())
                     value_range = st.slider(
                         "Value Range",
                         min_value=min_val,
@@ -4493,22 +4475,15 @@ def manage_data_page(db, user_id):
                     ]
                 
                 # Apply value range filter (only to rows with non-zero values)
-                _normalized_existing_values = existing_rows['Value'].map(normalize_test_value)
-                _value_filter_mask = pd.Series(
-                    [
-                        not isinstance(value, (int, float))
-                        or value_range[0] <= value <= value_range[1]
-                        for value in _normalized_existing_values
-                    ],
-                    index=existing_rows.index,
-                )
-                existing_rows = existing_rows[_value_filter_mask]
+                existing_rows = existing_rows[
+                    (existing_rows['Value'] >= value_range[0]) & 
+                    (existing_rows['Value'] <= value_range[1])
+                ]
                 
                 # Apply search filter
                 if search_term:
                     search_mask = (
                         existing_rows['Test Type'].str.contains(search_term, case=False, na=False) |
-                            existing_rows['Value'].astype(str).str.contains(search_term, case=False, na=False) |
                         existing_rows['Unit'].str.contains(search_term, case=False, na=False) |
                         existing_rows['Reference Range'].str.contains(search_term, case=False, na=False) |
                         existing_rows['Patient Name'].str.contains(search_term, case=False, na=False)
@@ -4524,24 +4499,7 @@ def manage_data_page(db, user_id):
             # Apply sorting to the combined data
             if not filtered_df.empty:
                 ascending = (sort_order == "Ascending")
-                if sort_by == "Value":
-                    _normalized_sort_values = filtered_df['Value'].map(normalize_test_value)
-                    filtered_df['_sort_kind'] = _normalized_sort_values.map(
-                        lambda value: 0 if isinstance(value, (int, float))
-                        else 1 if isinstance(value, str) else 2
-                    )
-                    filtered_df['_sort_numeric'] = _normalized_sort_values.map(
-                        lambda value: float(value) if isinstance(value, (int, float)) else 0.0
-                    )
-                    filtered_df['_sort_text'] = _normalized_sort_values.map(
-                        lambda value: value.casefold() if isinstance(value, str) else ''
-                    )
-                    filtered_df = filtered_df.sort_values(
-                        by=['_sort_kind', '_sort_numeric', '_sort_text'],
-                        ascending=ascending,
-                    ).drop(columns=['_sort_kind', '_sort_numeric', '_sort_text'])
-                else:
-                    filtered_df = filtered_df.sort_values(by=sort_by, ascending=ascending)
+                filtered_df = filtered_df.sort_values(by=sort_by, ascending=ascending)
             
             # Show filtering results
             st.info(f"📊 Showing {len(filtered_df)} of {len(edit_df)} total records")
@@ -4583,11 +4541,14 @@ def manage_data_page(db, user_id):
                             unit = "" if pd.isna(row.get("Unit")) else str(row.get("Unit")).strip()
                             reference_range = "" if pd.isna(row.get("Reference Range")) else str(row.get("Reference Range")).strip()
 
-                            result_value = normalize_test_value(row.get("Value"))
+                            try:
+                                numeric_value = float(row.get("Value"))
+                            except (TypeError, ValueError):
+                                numeric_value = None
 
                             # Empty template rows are not save attempts.
                             row_has_data = bool(test_type or unit or reference_range)
-                            row_has_data = row_has_data or result_value is not None
+                            row_has_data = row_has_data or (numeric_value is not None and numeric_value != 0)
                             if selected_patient == "Add New Patient" and patient_name:
                                 row_has_data = True
                             if is_new and not row_has_data:
@@ -4628,10 +4589,10 @@ def manage_data_page(db, user_id):
                                 elif test_date > date.today():
                                     row_errors.append("Date cannot be in the future.")
 
-                            if result_value is None:
-                                row_errors.append("Value is required; enter a number or qualitative result.")
-                            elif isinstance(result_value, (int, float)) and (result_value < 0 or result_value > 1_000_000):
-                                row_errors.append("Numeric values must be between 0 and 1,000,000.")
+                            if numeric_value is None or pd.isna(numeric_value):
+                                row_errors.append("Value must be a valid number.")
+                            elif numeric_value < 0 or numeric_value > 1_000_000:
+                                row_errors.append("Value must be between 0 and 1,000,000.")
 
                             if row_errors:
                                 errors.append(f"{row_label}: {' '.join(row_errors)}")
@@ -4641,7 +4602,7 @@ def manage_data_page(db, user_id):
                                 if is_new:
                                     new_result = {
                                         "test_type": test_type,
-                                        "value": result_value,
+                                        "value": numeric_value,
                                         "unit": unit,
                                         "reference_range": reference_range
                                     }
@@ -4662,7 +4623,7 @@ def manage_data_page(db, user_id):
                                     if db.update_test_result(
                                         result_id=int(result_id),
                                         test_type=test_type,
-                                        value=result_value,
+                                        value=numeric_value,
                                         unit=unit,
                                         test_date=test_date,
                                         reference_range=reference_range
@@ -4736,6 +4697,7 @@ def manage_data_page(db, user_id):
                 # Convert to DataFrame with IDs
                 edit_df = pd.DataFrame(all_test_data, columns=['ID', 'Date', 'Test Type', 'Value', 'Unit', 'Reference Range'])
                 edit_df['Date'] = pd.to_datetime(edit_df['Date']).dt.strftime('%Y-%m-%d')
+                edit_df['Value'] = pd.to_numeric(edit_df['Value'], errors='coerce')
                 
                 # Show total count
                 st.info(f"Total records: {len(edit_df)} test results")
@@ -4778,7 +4740,7 @@ def manage_data_page(db, user_id):
                                 
                                 with col1:
                                     new_test_type = st.text_input("Test Type", value=result_row['Test Type'])
-                                    new_value = st.text_input("Value", value=str(result_row['Value']))
+                                    new_value = st.number_input("Value", value=float(result_row['Value']), format="%.2f")
                                     new_unit = st.text_input("Unit", value=result_row['Unit'])
                                 
                                 with col2:
@@ -4894,15 +4856,8 @@ def manage_data_page(db, user_id):
                 edit_df['Date_dt'] = pd.to_datetime(edit_df['Date'])
                 min_date = edit_df['Date_dt'].min().date()
                 max_date = edit_df['Date_dt'].max().date()
-                _numeric_patient_values = [
-                    float(normalized)
-                    for value in edit_df['Value']
-                    if isinstance((normalized := normalize_test_value(value)), (int, float))
-                ]
-                min_value = min(_numeric_patient_values) if _numeric_patient_values else 0.0
-                max_value = max(_numeric_patient_values) if _numeric_patient_values else 1.0
-                if min_value == max_value:
-                    max_value = min_value + 1.0
+                min_value = edit_df['Value'].min()
+                max_value = edit_df['Value'].max()
                 
                 # Reset filters button
                 if st.button("🔄 Reset All Filters"):
@@ -4993,22 +4948,15 @@ def manage_data_page(db, user_id):
                 ]
                 
                 # Apply value range filter
-                _normalized_values = filtered_df['Value'].map(normalize_test_value)
-                _value_filter_mask = pd.Series(
-                    [
-                        not isinstance(value, (int, float))
-                        or value_range[0] <= value <= value_range[1]
-                        for value in _normalized_values
-                    ],
-                    index=filtered_df.index,
-                )
-                filtered_df = filtered_df[_value_filter_mask]
+                filtered_df = filtered_df[
+                    (filtered_df['Value'] >= value_range[0]) & 
+                    (filtered_df['Value'] <= value_range[1])
+                ]
                 
                 # Apply search filter
                 if search_term:
                     search_mask = (
                         filtered_df['Test Type'].str.contains(search_term, case=False, na=False) |
-                        filtered_df['Value'].astype(str).str.contains(search_term, case=False, na=False) |
                         filtered_df['Unit'].str.contains(search_term, case=False, na=False) |
                         filtered_df['Reference Range'].str.contains(search_term, case=False, na=False)
                     )
@@ -5019,9 +4967,7 @@ def manage_data_page(db, user_id):
                 if sort_column == 'Date':
                     filtered_df = filtered_df.sort_values('Date', ascending=ascending)
                 elif sort_column == 'Value':
-                    filtered_df = filtered_df.sort_values(
-                        'Value', ascending=ascending, key=lambda values: values.astype(str).str.casefold()
-                    )
+                    filtered_df = filtered_df.sort_values('Value', ascending=ascending)
                 else:
                     filtered_df = filtered_df.sort_values(sort_column, ascending=ascending)
                 
@@ -5059,7 +5005,7 @@ def manage_data_page(db, user_id):
                                 "Test Type",
                                 width="medium"
                             ),
-                            "Value": st.column_config.TextColumn(
+                            "Value": st.column_config.NumberColumn(
                                 "Value",
                                 format="%.2f",
                                 width="small"
@@ -6106,10 +6052,8 @@ def investigation_standards_page(investigation_standards, db=None, user_id=None)
                     'female_range_max': 0.0,
                     'aliases': '',
                     'exclusions': '',
-                    'description': '',
-                    'qualitative_good_result': 'Not set'
+                    'description': ''
                 })
-                edit_df['qualitative_good_result'] = edit_df['qualitative_good_result'].replace('', 'Not set')
                 
                 # Define column configuration for editing
                 edit_column_config = {
@@ -6120,12 +6064,6 @@ def investigation_standards_page(investigation_standards, db=None, user_id=None)
                         width='small',
                         options=investigation_standards.get_predefined_categories(),
                         required=True
-                    ),
-                    'qualitative_good_result': st.column_config.SelectboxColumn(
-                        'Good Qualitative Result',
-                        width='medium',
-                        options=['Not set', 'Negative', 'Positive'],
-                        help="Choose which binary result is considered good for this test."
                     ),
                     'computed_unit': st.column_config.TextColumn('Unit', width='small'),
                     'male_range_min': st.column_config.NumberColumn('Male Min', width='small', format="%.2f"),
@@ -6139,7 +6077,7 @@ def investigation_standards_page(investigation_standards, db=None, user_id=None)
                 
                 # Select columns for editing (include id for tracking)
                 edit_columns = [
-                    'id', 'standard_name', 'category', 'qualitative_good_result', 'computed_unit',
+                    'id', 'standard_name', 'category', 'computed_unit',
                     'male_range_min', 'male_range_max', 'female_range_min', 'female_range_max',
                     'aliases', 'exclusions', 'description'
                 ]
@@ -6188,11 +6126,7 @@ def investigation_standards_page(investigation_standards, db=None, user_id=None)
                                     'female_unit': row['computed_unit'] if pd.notna(row['computed_unit']) else '',
                                     'common_unit': row['computed_unit'] if pd.notna(row['computed_unit']) else '',
                                     'description': row['description'] if pd.notna(row['description']) else '',
-                                    'category': row['category'] if pd.notna(row['category']) else 'Other',
-                                    'qualitative_good_result': (
-                                        '' if row.get('qualitative_good_result') == 'Not set'
-                                        else row.get('qualitative_good_result', '')
-                                    )
+                                    'category': row['category'] if pd.notna(row['category']) else 'Other'
                                 }
                                 
                                 if investigation_standards.add_standard(standard_data):
@@ -6244,11 +6178,7 @@ def investigation_standards_page(investigation_standards, db=None, user_id=None)
                                     'female_unit': edited_row['computed_unit'] if pd.notna(edited_row['computed_unit']) else '',
                                     'common_unit': edited_row['computed_unit'] if pd.notna(edited_row['computed_unit']) else '',
                                     'description': edited_row['description'] if pd.notna(edited_row['description']) else '',
-                                    'category': edited_row['category'] if pd.notna(edited_row['category']) else 'Other',
-                                    'qualitative_good_result': (
-                                        '' if edited_row.get('qualitative_good_result') == 'Not set'
-                                        else edited_row.get('qualitative_good_result', '')
-                                    )
+                                    'category': edited_row['category'] if pd.notna(edited_row['category']) else 'Other'
                                 }
                                 
                                 if investigation_standards.update_standard(record_id, update_data):
@@ -6305,15 +6235,6 @@ def investigation_standards_page(investigation_standards, db=None, user_id=None)
                             else:
                                 edit_category = selected_card_cat
                             edit_description = st.text_area("Description", value=standard['description'] or '', key=f"desc_{standard['id']}")
-                            current_good_result = standard.get('qualitative_good_result') or 'Not set'
-                            edit_good_result = st.selectbox(
-                                "Good Qualitative Result",
-                                ["Not set", "Negative", "Positive"],
-                                index=["Not set", "Negative", "Positive"].index(current_good_result)
-                                if current_good_result in ["Not set", "Negative", "Positive"] else 0,
-                                key=f"good_result_{standard['id']}",
-                                help="For Negative/Positive tests, select the result associated with a good outcome."
-                            )
                             edit_aliases = st.text_area("Aliases (comma-separated)", value=standard['aliases'] or '', key=f"alias_{standard['id']}")
                             edit_exclusions = st.text_area("Exclusions (comma-separated)", 
                                 value=standard.get('exclusions', '') or '', 
@@ -6362,8 +6283,7 @@ def investigation_standards_page(investigation_standards, db=None, user_id=None)
                                     'female_unit': common_unit_edit,  # Use common unit for female
                                     'common_unit': common_unit_edit,
                                     'description': edit_description,
-                                    'category': edit_category,
-                                    'qualitative_good_result': '' if edit_good_result == 'Not set' else edit_good_result,
+                                    'category': edit_category
                                 }
                                 
                                 if investigation_standards.update_standard(standard['id'], update_data):
@@ -6434,7 +6354,7 @@ def investigation_standards_page(investigation_standards, db=None, user_id=None)
                 "standard_name", "description", "common_unit",
                 "male_range_min", "male_range_max",
                 "female_range_min", "female_range_max",
-                "category", "aliases", "exclusions", "qualitative_good_result",
+                "category", "aliases", "exclusions",
             ]
             _bulk_numeric_columns = {
                 "male_range_min", "male_range_max",
@@ -6451,25 +6371,18 @@ def investigation_standards_page(investigation_standards, db=None, user_id=None)
                 "category": "Category *",
                 "aliases": "Aliases (comma-separated)",
                 "exclusions": "Exclusions (comma-separated)",
-                "qualitative_good_result": "Good Qualitative Result",
             }
             def _bulk_row_has_values(row):
-                for column, value in row.items():
-                    if pd.isna(value) or not str(value).strip():
-                        continue
-                    if column == "qualitative_good_result" and str(value).strip().casefold() == "not set":
-                        continue
-                    return True
-                return False
+                return any(
+                    not pd.isna(value) and str(value).strip()
+                    for value in row
+                )
 
             _bulk_template = pd.DataFrame({
                 column: (
                     pd.Series([float("nan")] * 50, dtype="float64")
                     if column in _bulk_numeric_columns
-                        else pd.Series(
-                            ["Not set"] * 50 if column == "qualitative_good_result" else [""] * 50,
-                            dtype="object",
-                        )
+                    else pd.Series([""] * 50, dtype="object")
                 )
                 for column in _bulk_columns
             })
@@ -6522,12 +6435,6 @@ def investigation_standards_page(investigation_standards, db=None, user_id=None)
                                 )
 
                         _uploaded_df = _uploaded_df[_bulk_columns].copy()
-                        _uploaded_df["qualitative_good_result"] = (
-                            _uploaded_df["qualitative_good_result"]
-                            .fillna("")
-                            .astype(str)
-                            .replace("", "Not set")
-                        )
                         for _column in _bulk_numeric_columns:
                             _raw_values = _uploaded_df[_column]
                             _parsed_values = pd.to_numeric(_raw_values, errors="coerce")
@@ -6569,13 +6476,8 @@ def investigation_standards_page(investigation_standards, db=None, user_id=None)
                         required=column == "standard_name",
                     )
                     for column in _bulk_columns
-                    if column not in _bulk_numeric_columns and column != "qualitative_good_result"
+                    if column not in _bulk_numeric_columns
                 }
-                _bulk_column_config["qualitative_good_result"] = st.column_config.SelectboxColumn(
-                    _bulk_labels["qualitative_good_result"],
-                    options=["Not set", "Negative", "Positive"],
-                    help="Select the result associated with a good outcome for binary tests; Not set disables qualitative coloring.",
-                )
                 for _column in _bulk_numeric_columns:
                     _bulk_column_config[_column] = st.column_config.NumberColumn(
                         _bulk_labels[_column],
@@ -6838,12 +6740,6 @@ def investigation_standards_page(investigation_standards, db=None, user_id=None)
 
         with col2:
             st.markdown("**Reference Ranges**")
-            new_qualitative_good_result = st.selectbox(
-                "Good Qualitative Result",
-                ["Not set", "Negative", "Positive"],
-                key="new_qualitative_good_result",
-                help="For Negative/Positive tests, select which result is considered good. Leave Not set if this test is numeric or direction is unknown."
-            )
             st.markdown("**Common Unit:**")
             new_common_unit = st.text_input(
                 "Unit (for both ranges)", placeholder="mg/dL", key="new_common_unit"
@@ -6877,11 +6773,7 @@ def investigation_standards_page(investigation_standards, db=None, user_id=None)
                     'female_unit': new_common_unit,
                     'common_unit': new_common_unit,
                     'description': new_description,
-                    'category': new_category,
-                    'qualitative_good_result': (
-                        '' if new_qualitative_good_result == 'Not set'
-                        else new_qualitative_good_result
-                    )
+                    'category': new_category
                 }
 
                 if investigation_standards.add_standard(new_standard):
@@ -6897,7 +6789,7 @@ def investigation_standards_page(investigation_standards, db=None, user_id=None)
                     form_keys = [
                         "new_name", "new_category", "new_description", "new_aliases",
                         "new_common_unit", "new_m_min", "new_m_max", "new_f_min", "new_f_max",
-                        "new_af_category", "af_search_name", "new_qualitative_good_result",
+                        "new_af_category", "af_search_name",
                     ]
                     for _k in form_keys:
                         if _k in st.session_state:
@@ -7323,12 +7215,6 @@ def investigation_standards_page(investigation_standards, db=None, user_id=None)
                                                 investigation_standards.get_predefined_categories(),
                                                 key=f"category_{form_key}"
                                             )
-                                            qualitative_good_result = st.selectbox(
-                                                "Good Qualitative Result",
-                                                ["Not set", "Negative", "Positive"],
-                                                key=f"qualitative_good_result_{form_key}",
-                                                help="For binary tests, choose which result is considered good."
-                                            )
                                             
                                             # Common unit first
                                             st.write("**Common Unit:**")
@@ -7386,11 +7272,7 @@ def investigation_standards_page(investigation_standards, db=None, user_id=None)
                                                         'female_unit': common_unit,  # Use common unit for female
                                                         'common_unit': common_unit,
                                                         'description': description,
-                                                        'aliases': ", ".join(aliases_list),
-                                                        'qualitative_good_result': (
-                                                            '' if qualitative_good_result == 'Not set'
-                                                            else qualitative_good_result
-                                                        )
+                                                        'aliases': ", ".join(aliases_list)
                                                     }
                                                     
                                                     success = investigation_standards.add_standard(standard_data)

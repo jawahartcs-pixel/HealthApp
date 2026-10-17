@@ -11,7 +11,6 @@ import matplotlib.colors as mcolors
 from matplotlib.backends.backend_agg import FigureCanvasAgg
 import numpy as np
 from investigation_standards import InvestigationStandards
-from result_values import classify_test_result, normalize_test_value, qualitative_polarity, test_value_key
 from openpyxl import Workbook
 from openpyxl.styles import PatternFill, Font, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
@@ -65,8 +64,7 @@ def render_heatmap_view(db, selected_patient, user_id, edit_df, key_prefix="mana
                 'category': category,
                 'min': range_min,
                 'max': range_max,
-                'unit': unit,
-                'qualitative_good_result': standard.get('qualitative_good_result', '')
+                'unit': unit
             }
 
             if aliases:
@@ -212,7 +210,6 @@ def render_heatmap_view(db, selected_patient, user_id, edit_df, key_prefix="mana
 
         pivot_data = {}
         reference_ranges = {}
-        qualitative_good_results = {}
         value_ids = {}
         units_map = {}
 
@@ -222,8 +219,6 @@ def render_heatmap_view(db, selected_patient, user_id, edit_df, key_prefix="mana
             test_rows = heatmap_df[heatmap_df['Test Type'] == test]
 
             info = test_info.get(test)
-            if info and info.get('qualitative_good_result'):
-                qualitative_good_results[test] = qualitative_polarity(info['qualitative_good_result'])
             if info and info.get('min') is not None and info.get('max') is not None:
                 try:
                     reference_ranges[test] = {'min': float(info['min']), 'max': float(info['max'])}
@@ -295,38 +290,108 @@ def render_heatmap_view(db, selected_patient, user_id, edit_df, key_prefix="mana
             brightness = 0.299 * r + 0.587 * g + 0.114 * b
             return "white" if brightness < 140 else "black"
 
-        def get_deviation_color(value, ref_info, good_result=None):
+        def get_deviation_color(value, ref_info):
             if value is None or pd.isna(value):
                 return ""
-            status = classify_test_result(
-                value,
-                good_result=good_result,
-                min_value=ref_info.get('min') if isinstance(ref_info, dict) else None,
-                max_value=ref_info.get('max') if isinstance(ref_info, dict) else None,
-            )
-            if status == "good":
-                return "background-color: #d8f3dc; color: #155724"
-            if status == "bad":
-                return "background-color: #f8d7da; color: #721c24"
-            if isinstance(normalize_test_value(value), (int, float)):
+
+            try:
+                value = float(value)
+            except (ValueError, TypeError):
                 return ""
-            return "background-color: #eeeeee; color: #555555"
+
+            low, high = None, None
+
+            if isinstance(ref_info, dict) and ref_info:
+                low = ref_info.get('min')
+                high = ref_info.get('max')
+
+            if low is None or high is None:
+                return ""
+
+            try:
+                low, high = float(low), float(high)
+            except (ValueError, TypeError):
+                return ""
+
+            if high <= low:
+                return ""
+
+            range_size = high - low
+
+            if low <= value <= high:
+                mid = (low + high) / 2
+                deviation = abs(value - mid) / (range_size / 2)
+                deviation = min(max(deviation, 0), 1)
+                r = int(144 - deviation * 110)
+                g = int(238 - deviation * 99)
+                b = int(144 - deviation * 110)
+                fc = _text_color_for_bg(r, g, b)
+                return f"background-color: rgb({r}, {g}, {b}); color: {fc}"
+            elif value < low:
+                deviation = (low - value) / range_size
+                deviation = min(max(deviation, 0), 2)
+                intensity = min(deviation / 2, 1)
+                r = int(173 - intensity * 173)
+                g = int(216 - intensity * 216)
+                b = int(230 - intensity * 91)
+                fc = _text_color_for_bg(r, g, b)
+                return f"background-color: rgb({r}, {g}, {b}); color: {fc}"
+            else:
+                deviation = (value - high) / range_size
+                deviation = min(max(deviation, 0), 2)
+                intensity = min(deviation / 2, 1)
+                r = int(255 - intensity * 116)
+                g = int(204 - intensity * 204)
+                b = int(203 - intensity * 203)
+                fc = _text_color_for_bg(r, g, b)
+                return f"background-color: rgb({r}, {g}, {b}); color: {fc}"
 
         st.markdown("""
         <style>
-        .legend-container { display:flex; align-items:center; gap:18px; padding:10px;
-          background:#f8f9fa; border-radius:8px; margin-bottom:10px; flex-wrap:wrap; }
-        .legend-item { display:flex; align-items:center; gap:7px; }
-        .legend-chip { width:18px; height:18px; border:1px solid #bbb; border-radius:4px; }
+        .legend-container {
+            display: flex;
+            align-items: center;
+            gap: 20px;
+            padding: 10px;
+            background: #f8f9fa;
+            border-radius: 8px;
+            margin-bottom: 10px;
+        }
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .legend-gradient {
+            width: 80px;
+            height: 20px;
+            border-radius: 4px;
+            border: 1px solid #ccc;
+        }
+        .blue-gradient {
+            background: linear-gradient(to right, #00008B, #ADD8E6);
+        }
+        .green-gradient {
+            background: linear-gradient(to right, #228B22, #90EE90, #228B22);
+        }
+        .red-gradient {
+            background: linear-gradient(to right, #FFCCCB, #8B0000);
+        }
         </style>
         <div class="legend-container">
-          <strong>Color Legend:</strong>
-          <div class="legend-item"><span class="legend-chip" style="background:#d8f3dc"></span>
-            <span>Good / within numeric range</span></div>
-          <div class="legend-item"><span class="legend-chip" style="background:#f8d7da"></span>
-            <span>Bad / outside numeric range</span></div>
-          <div class="legend-item"><span class="legend-chip" style="background:#eeeeee"></span>
-            <span>Qualitative direction not configured</span></div>
+            <strong>Color Legend:</strong>
+            <div class="legend-item">
+                <div class="legend-gradient blue-gradient"></div>
+                <span>Below Normal</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-gradient green-gradient"></div>
+                <span>Normal Range</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-gradient red-gradient"></div>
+                <span>Above Normal</span>
+            </div>
         </div>
         """, unsafe_allow_html=True)
 
@@ -361,22 +426,22 @@ def render_heatmap_view(db, selected_patient, user_id, edit_df, key_prefix="mana
         stats_data = {}
         for test in unique_tests:
             values = [v for v in pivot_data[test].values() if v is not None and not pd.isna(v)]
-            float_values = [
-                float(normalized)
-                for value in values
-                if isinstance((normalized := normalize_test_value(value)), (int, float))
-            ]
-            stats_data[test] = {
-                'Count': len(values),
-                'Numeric Count': len(float_values),
-                'Sum': round(sum(float_values), 2),
-                'Average': round(sum(float_values) / len(float_values), 2) if float_values else 0,
-            }
+            if values:
+                try:
+                    float_values = [float(v) for v in values]
+                    stats_data[test] = {
+                        'Count': len(float_values),
+                        'Sum': round(sum(float_values), 2),
+                        'Average': round(sum(float_values) / len(float_values), 2)
+                    }
+                except:
+                    stats_data[test] = {'Count': 0, 'Sum': 0, 'Average': 0}
+            else:
+                stats_data[test] = {'Count': 0, 'Sum': 0, 'Average': 0}
 
         st.markdown("**Statistics Summary:**")
-        st.caption("Average and sum use numeric results only. Qualitative results are counted and color-coded, but are not included in arithmetic.")
         stats_cols = st.columns(3)
-        total_count = sum(s.get('Numeric Count', 0) for s in stats_data.values())
+        total_count = sum(s['Count'] for s in stats_data.values())
         total_sum = sum(s['Sum'] for s in stats_data.values())
         overall_avg = total_sum / total_count if total_count > 0 else 0
         with stats_cols[0]:
@@ -389,9 +454,7 @@ def render_heatmap_view(db, selected_patient, user_id, edit_df, key_prefix="mana
         range_column = {}
         for test in unique_tests:
             ref = reference_ranges.get(test)
-            if qualitative_good_results.get(test):
-                range_column[test] = f"Expected: {qualitative_good_results[test]}"
-            elif ref and isinstance(ref, dict):
+            if ref and isinstance(ref, dict):
                 unit = units_map.get(test, '')
                 range_column[test] = f"{ref['min']}-{ref['max']} {unit}".strip()
             else:
@@ -490,9 +553,7 @@ def render_heatmap_view(db, selected_patient, user_id, edit_df, key_prefix="mana
                 if col in event_columns:
                     styles.append('background-color: #FFF3CD; font-weight: bold; writing-mode: vertical-rl; text-orientation: mixed; font-size: 10px; color: #856404;')
                 elif col in date_columns:
-                    color = get_deviation_color(
-                        row[col], ref_info, qualitative_good_results.get(test_name)
-                    )
+                    color = get_deviation_color(row[col], ref_info)
                     styles.append(color if color else "")
                 else:
                     styles.append("")
@@ -629,7 +690,10 @@ def render_heatmap_view(db, selected_patient, user_id, edit_df, key_prefix="mana
             if sel_test_ai and sel_date_ai:
                 raw = pivot_data.get(sel_test_ai, {}).get(sel_date_ai)
                 if raw is not None and not pd.isna(raw):
-                    cell_value = normalize_test_value(raw)
+                    try:
+                        cell_value = float(raw)
+                    except (ValueError, TypeError):
+                        cell_value = None
 
             ref_info = reference_ranges.get(sel_test_ai, {})
             ref_min = ref_info.get('min') if isinstance(ref_info, dict) else None
@@ -776,22 +840,50 @@ def render_heatmap_view(db, selected_patient, user_id, edit_df, key_prefix="mana
                     if note:
                         st.caption(note)
 
-        def get_deviation_color_rgb(value, ref_info, good_result=None):
+        def get_deviation_color_rgb(value, ref_info):
             if value is None or pd.isna(value):
                 return None
-            status = classify_test_result(
-                value,
-                good_result=good_result,
-                min_value=ref_info.get('min') if isinstance(ref_info, dict) else None,
-                max_value=ref_info.get('max') if isinstance(ref_info, dict) else None,
-            )
-            if status == "good":
-                return (216, 243, 220)
-            if status == "bad":
-                return (248, 215, 218)
-            if isinstance(normalize_test_value(value), (int, float)):
+            try:
+                value = float(value)
+            except (ValueError, TypeError):
                 return None
-            return (238, 238, 238)
+            low, high = None, None
+            if isinstance(ref_info, dict) and ref_info:
+                low = ref_info.get('min')
+                high = ref_info.get('max')
+            if low is None or high is None:
+                return None
+            try:
+                low, high = float(low), float(high)
+            except (ValueError, TypeError):
+                return None
+            if high <= low:
+                return None
+            range_size = high - low
+            if low <= value <= high:
+                mid = (low + high) / 2
+                deviation = abs(value - mid) / (range_size / 2)
+                deviation = min(max(deviation, 0), 1)
+                r = int(144 - deviation * 110)
+                g = int(238 - deviation * 99)
+                b = int(144 - deviation * 110)
+                return (r, g, b)
+            elif value < low:
+                deviation = (low - value) / range_size
+                deviation = min(max(deviation, 0), 2)
+                intensity = min(deviation / 2, 1)
+                r = int(173 - intensity * 173)
+                g = int(216 - intensity * 216)
+                b = int(230 - intensity * 91)
+                return (r, g, b)
+            else:
+                deviation = (value - high) / range_size
+                deviation = min(max(deviation, 0), 2)
+                intensity = min(deviation / 2, 1)
+                r = int(255 - intensity * 116)
+                g = int(204 - intensity * 204)
+                b = int(203 - intensity * 203)
+                return (r, g, b)
 
         def get_tests_grouped_by_category():
             grouped = {}
@@ -927,15 +1019,12 @@ def render_heatmap_view(db, selected_patient, user_id, edit_df, key_prefix="mana
                     else:
                         val = pivot_data.get(test, {}).get(date_col)
                         if val is not None and not pd.isna(val):
-                            normalized_value = normalize_test_value(val)
-                            if isinstance(normalized_value, (int, float)):
-                                cell.value = round(float(normalized_value), 2)
-                                cell.number_format = '0.0'
-                            else:
-                                cell.value = str(normalized_value)
-                            rgb = get_deviation_color_rgb(
-                                val, ref_info, qualitative_good_results.get(test)
-                            )
+                            try:
+                                cell.value = round(float(val), 2)
+                            except:
+                                cell.value = val
+                            cell.number_format = '0.0'
+                            rgb = get_deviation_color_rgb(val, ref_info)
                             if rgb:
                                 hex_color = f"{rgb[0]:02X}{rgb[1]:02X}{rgb[2]:02X}"
                                 cell.fill = PatternFill(start_color=hex_color, end_color=hex_color, fill_type="solid")
@@ -1167,10 +1256,11 @@ def render_heatmap_view(db, selected_patient, user_id, edit_df, key_prefix="mana
                     else:
                         val = pivot_data.get(test, {}).get(date_col)
                         if val is not None and not pd.isna(val):
-                            normalized_value = normalize_test_value(val)
-                            rgb = get_deviation_color_rgb(
-                                val, ref_info, qualitative_good_results.get(test)
-                            )
+                            try:
+                                fval = float(val)
+                            except:
+                                continue
+                            rgb = get_deviation_color_rgb(fval, ref_info)
                             if rgb:
                                 norm_color = (rgb[0]/255, rgb[1]/255, rgb[2]/255)
                                 ax.add_patch(plt.Rectangle((cell_x + 0.02, y + 0.02), cell_w - 0.04, row_height - 0.04,
@@ -1179,14 +1269,12 @@ def render_heatmap_view(db, selected_patient, user_id, edit_df, key_prefix="mana
                                 tc = 'white' if lum < 128 else 'black'
                             else:
                                 tc = 'black'
-                            if isinstance(normalized_value, (int, float)) and normalized_value >= 1000:
-                                display = f"{normalized_value:.0f}"
-                            elif isinstance(normalized_value, (int, float)) and normalized_value >= 100:
-                                display = f"{normalized_value:.1f}"
-                            elif isinstance(normalized_value, (int, float)):
-                                display = f"{normalized_value:.2f}"
+                            if fval >= 1000:
+                                display = f"{fval:.0f}"
+                            elif fval >= 100:
+                                display = f"{fval:.1f}"
                             else:
-                                display = str(normalized_value)
+                                display = f"{fval:.2f}"
                             ax.text(cx, y + row_height / 2, display, ha='center', va='center', fontsize=3.2, color=tc, fontfamily='sans-serif')
 
                 stats = stats_data.get(test, {})
@@ -1244,9 +1332,9 @@ def render_heatmap_view(db, selected_patient, user_id, edit_df, key_prefix="mana
 
             legend_y = -0.15
             legend_items = [
-                ('Good / Expected', '#D8F3DC', '#D8F3DC'),
-                ('Bad / Outside Range', '#F8D7DA', '#F8D7DA'),
-                ('Direction Not Set', '#EEEEEE', '#EEEEEE')
+                ('Below Normal', '#ADD8E6', '#00008B'),
+                ('Normal Range', '#90EE90', '#228B22'),
+                ('Above Normal', '#FFCCCB', '#8B0000')
             ]
             legend_x = 0.3
             for label, c1, c2 in legend_items:
@@ -1389,10 +1477,7 @@ def render_heatmap_view(db, selected_patient, user_id, edit_df, key_prefix="mana
                     'Sum': st.column_config.NumberColumn('Sum', disabled=True, format="%.2f")
                 }
                 for date_col in unique_dates:
-                    column_config[date_col] = st.column_config.TextColumn(
-                        date_col, required=False,
-                        help="Enter a number or a qualitative result such as Negative or Positive."
-                    )
+                    column_config[date_col] = st.column_config.NumberColumn(date_col, format="%.2f", required=False)
 
                 edited_df = st.data_editor(
                     editable_df,
@@ -1464,15 +1549,12 @@ def render_heatmap_view(db, selected_patient, user_id, edit_df, key_prefix="mana
                         if new_is_empty != orig_is_empty:
                             value_changed = True
                         elif not new_is_empty and not orig_is_empty:
-                            normalized_new = normalize_test_value(new_value)
-                            normalized_original = normalize_test_value(original_value)
-                            if (
-                                isinstance(normalized_new, (int, float))
-                                and isinstance(normalized_original, (int, float))
-                            ):
-                                value_changed = abs(normalized_new - normalized_original) > 0.001
-                            else:
-                                value_changed = test_value_key(new_value) != test_value_key(original_value)
+                            try:
+                                if abs(float(new_value) - float(original_value)) > 0.001:
+                                    value_changed = True
+                            except (ValueError, TypeError):
+                                if str(new_value) != str(original_value):
+                                    value_changed = True
                         if value_changed:
                             already_tracked = any(c[0] == test_name and c[1] == date_col for c in cells_to_save)
                             if not already_tracked:
@@ -1515,20 +1597,15 @@ def render_heatmap_view(db, selected_patient, user_id, edit_df, key_prefix="mana
 
                         unit = units_map.get(test_name, '')
                         ref_info = reference_ranges.get(test_name, '')
-                        good_result = qualitative_good_results.get(test_name)
-                        if good_result:
-                            ref_str = f"Expected: {good_result}"
-                        elif isinstance(ref_info, dict):
-                            ref_str = f"{ref_info['min']}-{ref_info['max']}"
-                        else:
-                            ref_str = str(ref_info or '')
+                        ref_str = f"{ref_info['min']}-{ref_info['max']}" if isinstance(ref_info, dict) else str(ref_info)
 
-                        result_value = None
+                        numeric_value = None
                         if not new_is_empty:
-                            result_value = normalize_test_value(new_value)
-                            if result_value is None:
+                            try:
+                                numeric_value = float(new_value)
+                            except (ValueError, TypeError):
                                 errors += 1
-                                st.error(f"Invalid result '{new_value}' for {test_name}")
+                                st.error(f"Invalid number '{new_value}' for {test_name}")
                                 continue
 
                         if result_id is not None:
@@ -1543,14 +1620,14 @@ def render_heatmap_view(db, selected_patient, user_id, edit_df, key_prefix="mana
                                 update_result = db.update_test_result(
                                     result_id=result_id,
                                     test_type=test_name,
-                                    value=result_value,
+                                    value=numeric_value,
                                     unit=unit,
                                     test_date=parsed_date,
                                     reference_range=ref_str
                                 )
                                 if update_result:
                                     changes_made += 1
-                                    changes_list.append(f"{test_name} ({date_col}): {original_value} → {result_value}")
+                                    changes_list.append(f"{test_name} ({date_col}): {original_value} → {numeric_value}")
                                 else:
                                     st.error(f"Update failed for {test_name} (id={result_id})")
                         else:
@@ -1563,13 +1640,13 @@ def render_heatmap_view(db, selected_patient, user_id, edit_df, key_prefix="mana
                                     patient_id=patient_id,
                                     test_date=parsed_date,
                                     test_type=test_name,
-                                    test_value=result_value,
+                                    test_value=numeric_value,
                                     unit=unit,
                                     reference_range=ref_str,
                                     user_id=user_id
                                 ):
                                     new_entries += 1
-                                    changes_list.append(f"{test_name} ({date_col}): → {result_value}")
+                                    changes_list.append(f"{test_name} ({date_col}): → {numeric_value}")
                                 else:
                                     st.error(f"Failed to add {test_name}")
                                     errors += 1

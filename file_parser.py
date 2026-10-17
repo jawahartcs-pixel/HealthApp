@@ -2,7 +2,6 @@ import re
 import io
 from datetime import datetime, date
 from typing import Dict, List, Any, Optional
-from result_values import normalize_test_value, qualitative_polarity, test_value_key
 import pdfplumber
 import streamlit as st
 import pytesseract
@@ -941,9 +940,7 @@ class FileParser:
                 continue  # Skip non-medical terms
                 
             test_name = result['test_type'].lower().strip()
-            test_value = normalize_test_value(result.get('value'))
-            if test_value is None:
-                continue
+            test_value = round(result['value'], 2)
             
             # Create key based on test name similarity
             test_key = re.sub(r'[^a-z0-9]', '', test_name)
@@ -953,32 +950,46 @@ class FileParser:
             for existing_key, existing_result in list(seen.items()):
                 existing_name = re.sub(r'[^a-z0-9]', '', existing_key)
                 
+                # Enhanced duplicate detection for scanned documents
+                # Check if test names are similar
                 name_similarity = self._calculate_name_similarity(test_key, existing_name)
-                existing_value = normalize_test_value(existing_result.get('value'))
-                if isinstance(test_value, (int, float)) and isinstance(existing_value, (int, float)):
+                
+                if name_similarity > 0.7 and len(test_key) > 2:  # Similar test names
+                    value_diff = abs(test_value - round(existing_result['value'], 2))
+                    
+                    # For scanned documents, be more lenient with value differences
+                    # due to OCR errors that might cause slight variations
                     threshold = 0.5 if 'ocr' in result.get('source', '') else 0.1
-                    values_match = abs(test_value - existing_value) < threshold
-                    exact_numeric_match = abs(test_value - existing_value) < 0.01
-                else:
-                    values_match = test_value_key(test_value) == test_value_key(existing_value)
-                    exact_numeric_match = False
-
-                similar_name_duplicate = name_similarity > 0.7 and len(test_key) > 2 and values_match
-                ocr_name_duplicate = (
-                    exact_numeric_match
-                    and self._could_be_ocr_variation(test_key, existing_name)
-                )
-                if similar_name_duplicate or ocr_name_duplicate:
-                    current_priority = source_priority.get(result.get('source', 'regex'), 5)
-                    existing_priority = source_priority.get(existing_result.get('source', 'regex'), 5)
-                    if current_priority < existing_priority or (
-                        ocr_name_duplicate and len(test_name) > len(existing_key)
-                    ):
-                        seen[existing_key] = result
-                        unique_results = [r for r in unique_results if r != existing_result]
-                        unique_results.append(result)
-                    is_duplicate = True
-                    break
+                    
+                    if value_diff < threshold:  # Values are close enough
+                        # Choose the result with better source priority
+                        current_priority = source_priority.get(result.get('source', 'regex'), 5)
+                        existing_priority = source_priority.get(existing_result.get('source', 'regex'), 5)
+                        
+                        if current_priority < existing_priority:
+                            # Current result has better source, replace existing
+                            seen[existing_key] = result
+                            unique_results = [r for r in unique_results if r != existing_result]
+                            unique_results.append(result)
+                        
+                        is_duplicate = True
+                        break
+                
+                # Also check for exact value matches with different test names (common OCR issue)
+                elif abs(test_value - round(existing_result['value'], 2)) < 0.01:
+                    # Same value, check if test names could be OCR variations
+                    if self._could_be_ocr_variation(test_key, existing_name):
+                        # Choose the result with better source or more complete name
+                        current_priority = source_priority.get(result.get('source', 'regex'), 5)
+                        existing_priority = source_priority.get(existing_result.get('source', 'regex'), 5)
+                        
+                        if current_priority < existing_priority or len(test_name) > len(existing_key):
+                            seen[existing_key] = result
+                            unique_results = [r for r in unique_results if r != existing_result]
+                            unique_results.append(result)
+                        
+                        is_duplicate = True
+                        break
             
             if not is_duplicate:
                 seen[test_name] = result
@@ -1011,57 +1022,6 @@ class FileParser:
             for term in search_terms:
                 if not term:
                     continue
-
-                qualitative_pattern = (
-                    rf'{re.escape(term)}\s*[:\-]?\s*'
-                    r'(non[\s-]?reactive|not\s+detected|undetected|negative|neg|'
-                    r'positive|pos|reactive|detected)\b'
-                )
-                qualitative_match_found = False
-                for qualitative_match in re.finditer(qualitative_pattern, text, re.IGNORECASE):
-                    polarity = qualitative_polarity(qualitative_match.group(1))
-                    if not polarity:
-                        continue
-                    match_start = max(0, qualitative_match.start() - 50)
-                    match_end = min(len(text), qualitative_match.end() + 50)
-                    matched_context = text[match_start:match_end].lower()
-                    if exclusions and any(
-                        exclusion.strip().lower() in matched_context
-                        for exclusion in exclusions.split(',')
-                        if exclusion.strip()
-                    ):
-                        continue
-
-                    expected_result = standard.get('qualitative_good_result', '')
-                    source_start = max(0, qualitative_match.start() - 30)
-                    source_end = min(len(text), qualitative_match.end() + 10)
-                    original_source_text = ' '.join(
-                        text[source_start:source_end].split()
-                    )
-                    qualitative_result = {
-                        'test_type': standard_name,
-                        'value': polarity,
-                        'unit': '',
-                        'reference_range': f"Expected: {expected_result}" if expected_result else '',
-                        'source': 'standards_scan',
-                        'matched_term': original_source_text,
-                        'search_term': term,
-                        'category': standard.get('category', ''),
-                        'description': standard.get('description', ''),
-                        'document_position': qualitative_match.start(),
-                    }
-                    is_duplicate = any(
-                        existing.get('test_type') == standard_name
-                        and test_value_key(existing.get('value')) == test_value_key(polarity)
-                        for existing in results
-                    )
-                    if not is_duplicate:
-                        results.append(qualitative_result)
-                    qualitative_match_found = True
-                    break
-
-                if qualitative_match_found:
-                    break
                     
                 # Create flexible pattern to find test name and value
                 # Look for the term followed by value patterns
@@ -1139,12 +1099,8 @@ class FileParser:
                             # Check for duplicates before adding
                             is_duplicate = False
                             for existing in results:
-                                existing_value = normalize_test_value(existing.get('value'))
-                                if (
-                                    existing.get('test_type') == standard_name
-                                    and isinstance(existing_value, (int, float))
-                                    and abs(existing_value - value) < 0.01
-                                ):
+                                if (existing['test_type'] == standard_name and 
+                                    abs(existing['value'] - value) < 0.01):
                                     is_duplicate = True
                                     break
                             
