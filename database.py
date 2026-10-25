@@ -800,6 +800,9 @@ class Database:
     def delete_test_result(self, result_id: int) -> bool:
         """Delete a specific test result by ID."""
         try:
+            # Streamlit/Pandas can pass numpy integer scalars, which sqlite3 may
+            # otherwise bind as blobs instead of SQLite INTEGER values.
+            result_id = int(result_id)
             with sqlite3.connect(self.db_path) as conn:
                 cursor = conn.cursor()
                 cursor.execute('DELETE FROM test_results WHERE result_id = ?', (result_id,))
@@ -843,7 +846,7 @@ class Database:
                 cursor = conn.cursor()
                 cursor.execute('''
                     DELETE FROM test_results 
-                    WHERE patient_id = (SELECT patient_id FROM patients WHERE patient_name = ?)
+                    WHERE patient_id IN (SELECT patient_id FROM patients WHERE patient_name = ?)
                     AND test_date = ?
                 ''', (patient_name, test_date))
                 conn.commit()
@@ -915,7 +918,7 @@ class Database:
                 FROM test_results tr
                 JOIN patients p ON tr.patient_id = p.patient_id
                 WHERE p.patient_name = ?
-                GROUP BY tr.test_date, tr.test_type
+                GROUP BY tr.test_date, tr.test_type, tr.test_value, tr.unit, tr.reference_range
                 ORDER BY tr.test_date DESC
             ''', (patient_name,))
             
