@@ -4508,6 +4508,7 @@ def manage_data_page(db, user_id):
             st.markdown("**Instructions:**")
             st.markdown("- **New entries**: ID = 0, fill in all required fields")
             st.markdown("- **Existing entries**: ID > 0, edit any field to update")
+            st.markdown("- **Delete existing entries**: remove their row, confirm below, then save")
             st.markdown("- **Patient Name**: Required for all entries (especially new patients)")
             st.markdown("- **Required fields**: Date, Test Type, Value, Patient Name")
             
@@ -4520,6 +4521,24 @@ def manage_data_page(db, user_id):
                 hide_index=True,
                 key="excel_data_editor"
             )
+
+            original_visible_ids = {
+                int(value) for value in filtered_df["ID"].dropna() if int(value) > 0
+            }
+            edited_visible_ids = {
+                int(value) for value in edited_df["ID"].dropna() if int(value) > 0
+            }
+            deleted_ids = sorted(original_visible_ids - edited_visible_ids)
+            delete_confirmed = False
+            if deleted_ids:
+                st.warning(
+                    f"{len(deleted_ids)} existing record(s) were removed from the editor. "
+                    "They will not be deleted until you confirm."
+                )
+                delete_confirmed = st.checkbox(
+                    f"I confirm deleting the {len(deleted_ids)} removed record(s)",
+                    key=f"excel_delete_confirm_{selected_patient}_{hash(tuple(deleted_ids))}"
+                )
             
             # Process changes
             st.markdown("---")
@@ -4528,6 +4547,7 @@ def manage_data_page(db, user_id):
             with col1:
                 if st.button("💾 Save All Changes", type="primary"):
                     success_count = 0
+                    deleted_count = 0
                     skipped_count = 0
                     errors = []
                     
@@ -4637,9 +4657,24 @@ def manage_data_page(db, user_id):
                             except Exception as e:
                                 errors.append(f"{row_label}: {str(e)}")
 
+                        if deleted_ids and delete_confirmed:
+                            for result_id in deleted_ids:
+                                if db.delete_test_result(result_id):
+                                    deleted_count += 1
+                                else:
+                                    errors.append(
+                                        f"ID {result_id}: The record was not deleted; it may already be gone or the database rejected the delete."
+                                    )
+                        elif deleted_ids:
+                            errors.extend(
+                                f"ID {result_id}: Not deleted because the confirmation box was not checked."
+                                for result_id in deleted_ids
+                            )
+
                     st.session_state["excel_data_save_report"] = {
                         "selected_patient": selected_patient,
                         "saved_count": success_count,
+                        "deleted_count": deleted_count,
                         "skipped_count": skipped_count,
                         "errors": errors,
                     }
@@ -4653,24 +4688,33 @@ def manage_data_page(db, user_id):
                 st.markdown("---")
                 st.markdown("### Save result")
                 saved_count = save_report["saved_count"]
+                deleted_count = save_report.get("deleted_count", 0)
                 error_count = len(save_report["errors"])
                 skipped_count = save_report["skipped_count"]
 
-                result_cols = st.columns(3)
+                result_cols = st.columns(4)
                 result_cols[0].metric("Saved / updated", saved_count)
-                result_cols[1].metric("Failed", error_count)
-                result_cols[2].metric("Blank rows skipped", skipped_count)
+                result_cols[1].metric("Deleted", deleted_count)
+                result_cols[2].metric("Failed", error_count)
+                result_cols[3].metric("Blank rows skipped", skipped_count)
 
                 if error_count:
                     if saved_count:
-                        st.warning(f"Saved or updated {saved_count} record(s); {error_count} failed.")
+                        st.warning(
+                            f"Saved or updated {saved_count}; deleted {deleted_count}; "
+                            f"{error_count} operation(s) failed."
+                        )
+                    elif deleted_count:
+                        st.warning(f"Deleted {deleted_count} record(s); {error_count} operation(s) failed.")
                     else:
-                        st.error(f"No records were saved; {error_count} failed.")
+                        st.error(f"No records were saved or deleted; {error_count} operation(s) failed.")
                     with st.expander("Why records failed", expanded=True):
                         for error in save_report["errors"]:
                             st.write(f"- {error}")
-                elif saved_count:
-                    st.success(f"All {saved_count} record(s) were saved or updated successfully.")
+                elif saved_count or deleted_count:
+                    st.success(
+                        f"Saved or updated {saved_count} record(s) and deleted {deleted_count} record(s)."
+                    )
                 else:
                     st.info("No records were saved. Fill in at least one row and try again.")
     
@@ -5049,6 +5093,16 @@ def manage_data_page(db, user_id):
         selected_patient = st.selectbox("Select Patient", patient_names, index=None, placeholder="Choose a patient...")
         
         if selected_patient:
+            delete_report = st.session_state.get("individual_delete_report")
+            if delete_report and delete_report.get("patient") == selected_patient:
+                deleted_count = delete_report["deleted_count"]
+                failed_ids = delete_report["failed_ids"]
+                if failed_ids:
+                    st.warning(f"Deleted {deleted_count} record(s); {len(failed_ids)} could not be deleted.")
+                    st.error("Failed record ID(s): " + ", ".join(map(str, failed_ids)))
+                else:
+                    st.success(f"Successfully deleted {deleted_count} selected test result(s).")
+
             # Get test results with IDs
             test_results = db.get_patient_test_results_with_ids(selected_patient)
             
@@ -5061,30 +5115,42 @@ def manage_data_page(db, user_id):
             # Create DataFrame for display
             df = pd.DataFrame(test_results, columns=['ID', 'Date', 'Test Type', 'Value', 'Unit', 'Reference Range'])
             
-            # Multi-select for deletion
-            selected_indices = st.multiselect(
+            # Select using stable database IDs so duplicate-looking records remain distinct.
+            result_labels = {
+                int(row["ID"]): (
+                    f"ID {int(row['ID'])} — {row['Date']} - {row['Test Type']}: "
+                    f"{row['Value']} {row['Unit']}"
+                )
+                for _, row in df.iterrows()
+            }
+            selected_result_ids = st.multiselect(
                 "Select test results to delete",
-                options=range(len(df)),
-                format_func=lambda x: f"{df.iloc[x]['Date']} - {df.iloc[x]['Test Type']}: {df.iloc[x]['Value']} {df.iloc[x]['Unit']}"
+                options=list(result_labels),
+                format_func=lambda result_id: result_labels[int(result_id)],
+                key=f"delete_individual_result_ids_{selected_patient}"
             )
             
-            if selected_indices:
-                st.dataframe(df.iloc[selected_indices], use_container_width=True, hide_index=True)
+            if selected_result_ids:
+                selected_df = df[df["ID"].map(int).isin(selected_result_ids)]
+                st.dataframe(selected_df, use_container_width=True, hide_index=True)
                 
                 col1, col2 = st.columns([1, 3])
                 with col1:
                     if st.button("🗑️ Delete Selected", type="primary"):
                         deleted_count = 0
-                        for idx in selected_indices:
-                            result_id = df.iloc[idx]['ID']
-                            if db.delete_test_result(result_id):
+                        failed_ids = []
+                        for result_id in selected_result_ids:
+                            if db.delete_test_result(int(result_id)):
                                 deleted_count += 1
+                            else:
+                                failed_ids.append(int(result_id))
                         
-                        if deleted_count > 0:
-                            st.success(f"Successfully deleted {deleted_count} test results!")
-                            st.rerun()
-                        else:
-                            st.error("Failed to delete test results.")
+                        st.session_state["individual_delete_report"] = {
+                            "patient": selected_patient,
+                            "deleted_count": deleted_count,
+                            "failed_ids": failed_ids,
+                        }
+                        st.rerun()
             else:
                 st.dataframe(df.drop('ID', axis=1), use_container_width=True, hide_index=True)
     
@@ -5101,6 +5167,20 @@ def manage_data_page(db, user_id):
         selected_patient = st.selectbox("Select Patient", patient_names, index=None, placeholder="Choose a patient...")
         
         if selected_patient:
+            delete_report = st.session_state.get("report_date_delete_report")
+            if delete_report and delete_report.get("patient") == selected_patient:
+                deleted_count = delete_report["deleted_count"]
+                failed_ids = delete_report["failed_ids"]
+                if failed_ids:
+                    st.warning(f"Deleted {deleted_count} record(s); {len(failed_ids)} could not be deleted.")
+                    st.error("Failed record ID(s): " + ", ".join(map(str, failed_ids)))
+                elif delete_report.get("failed_entire_report"):
+                    st.error(f"Could not delete the report for {delete_report['date']}.")
+                else:
+                    st.success(
+                        f"Deleted {deleted_count} record(s) from {delete_report['date']}."
+                    )
+
             # Get test results grouped by date
             results_by_date = db.get_test_results_by_date(selected_patient)
             
@@ -5109,19 +5189,73 @@ def manage_data_page(db, user_id):
                 return
             
             st.write(f"**Test Reports for {selected_patient}**")
+            records_with_ids = db.get_patient_test_results_with_ids(selected_patient)
             
             for test_date, tests in results_by_date.items():
                 with st.expander(f"📋 Report from {test_date} ({len(tests)} tests)"):
                     # Show tests for this date
                     date_df = pd.DataFrame(tests, columns=['Test Type', 'Value', 'Unit', 'Reference Range', 'Count'])
                     st.dataframe(date_df, use_container_width=True, hide_index=True)
+
+                    day_records = [
+                        row for row in records_with_ids
+                        if str(row[1])[:10] == str(test_date)[:10]
+                    ]
+                    day_labels = {
+                        int(row[0]): (
+                            f"ID {int(row[0])} — {row[2]}: {row[3]} {row[4] or ''} "
+                            f"(reference: {row[5] or 'not set'})"
+                        )
+                        for row in day_records
+                    }
+                    st.caption("Select records by ID to delete individual duplicates or a subset of this report.")
+                    selected_day_ids = st.multiselect(
+                        "Select specific records",
+                        options=list(day_labels),
+                        format_func=lambda result_id, labels=day_labels: labels[int(result_id)],
+                        key=f"delete_report_rows_{selected_patient}_{test_date}"
+                    )
+
+                    if selected_day_ids and st.button(
+                        f"🗑️ Delete {len(selected_day_ids)} selected record(s)",
+                        key=f"delete_selected_report_rows_{selected_patient}_{test_date}"
+                    ):
+                        deleted_count = 0
+                        failed_ids = []
+                        for result_id in selected_day_ids:
+                            if db.delete_test_result(int(result_id)):
+                                deleted_count += 1
+                            else:
+                                failed_ids.append(int(result_id))
+
+                        st.session_state["report_date_delete_report"] = {
+                            "patient": selected_patient,
+                            "date": str(test_date),
+                            "deleted_count": deleted_count,
+                            "failed_ids": failed_ids,
+                            "failed_entire_report": False,
+                        }
+                        st.rerun()
                     
                     if st.button(f"🗑️ Delete Entire Report ({test_date})", key=f"delete_date_{test_date}"):
                         if db.delete_test_results_by_date(selected_patient, test_date):
-                            st.success(f"Successfully deleted all test results from {test_date}!")
-                            st.rerun()
+                            delete_report = {
+                                "patient": selected_patient,
+                                "date": str(test_date),
+                                "deleted_count": len(day_records),
+                                "failed_ids": [],
+                                "failed_entire_report": False,
+                            }
                         else:
-                            st.error("Failed to delete test results.")
+                            delete_report = {
+                                "patient": selected_patient,
+                                "date": str(test_date),
+                                "deleted_count": 0,
+                                "failed_ids": [],
+                                "failed_entire_report": True,
+                            }
+                        st.session_state["report_date_delete_report"] = delete_report
+                        st.rerun()
     
     elif management_type == "Delete by Test Type":
         st.subheader("🧪 Delete by Test Type")
